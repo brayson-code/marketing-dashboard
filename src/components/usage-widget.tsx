@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
+import { GymClaude, FlagWaver, ConfettiClaude } from '@/components/mascot';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -97,7 +98,7 @@ function ClaudeSpark({ size = 16 }: { size?: number }) {
 }
 
 // ── Limit progress bar with the dancing Claude riding on top ─────
-function LimitBar({ label, limit }: { label: string; limit: UsageLimit }) {
+function LimitBar({ label, limit, mascot }: { label: string; limit: UsageLimit; mascot?: React.ReactNode }) {
   const used = Number(limit?.used ?? 0);
   const max = Number(limit?.limit ?? 0);
   const rawPct = Number.isFinite(limit?.pct) ? Number(limit.pct) : 0;
@@ -117,40 +118,44 @@ function LimitBar({ label, limit }: { label: string; limit: UsageLimit }) {
           {fmtNum(used)} / {fmtNum(max)} <span className="text-xs opacity-60">tokens</span>
         </span>
       </div>
-      {/* extra top padding leaves room for the mascot to sit above the track */}
-      <div className="relative pt-8">
-        <div
-          className="relative h-9 rounded-full overflow-hidden"
-          style={{
-            background: 'rgba(255,255,255,0.08)',
-            border: `1px solid ${CLAUDE.border}`,
-            boxShadow: 'inset 0 1px 4px rgba(0,0,0,0.45)',
-          }}
-        >
-          {/* gradient fill */}
+      {/* pt leaves room for the mascot to stand on top of the bar */}
+      <div className="pt-14">
+        {/* relative anchor = the bar track's box; the mascot is positioned to its
+            top edge (bottom:100%) so it stands ON the bar at the fill point. */}
+        <div className="relative">
+          {/* mascot — feet on the top edge of the bar, centered on the fill % */}
+          {mascot && (
+            <div
+              className="absolute transition-all duration-700 ease-out"
+              style={{ left: `${ridePct}%`, bottom: '100%', transform: 'translateX(-50%)', zIndex: 3, lineHeight: 0 }}
+              title={`${Math.round(rawPct)}% of ${label.toLowerCase()}`}
+            >
+              <div className="claude-mascot-bob">{mascot}</div>
+            </div>
+          )}
+
           <div
-            className="absolute inset-y-0 left-0 rounded-full transition-all duration-700 ease-out"
+            className="relative h-9 rounded-full overflow-hidden"
             style={{
-              width: `${Math.max(fillPct, 2)}%`,
-              background: over
-                ? 'linear-gradient(90deg, #EA580C 0%, #DC2626 60%, #B91C1C 100%)'
-                : 'linear-gradient(90deg, #EA580C 0%, #F59E0B 45%, #D97757 100%)',
-              boxShadow: `0 0 14px ${over ? 'rgba(220,38,38,0.6)' : 'rgba(234,88,12,0.55)'}`,
+              background: 'rgba(255,255,255,0.08)',
+              border: `1px solid ${CLAUDE.border}`,
+              boxShadow: 'inset 0 1px 4px rgba(0,0,0,0.45)',
             }}
           >
-            {/* moving shimmer highlight across the fill */}
-            <div className="claude-bar-shimmer absolute inset-0 rounded-full" />
-          </div>
-        </div>
-
-        {/* dancing mascot, sitting ON TOP of the bar at the fill edge */}
-        <div
-          className="absolute transition-all duration-700 ease-out"
-          style={{ left: `${ridePct}%`, top: 0, transform: 'translateX(-50%)', zIndex: 3 }}
-          title={`${Math.round(rawPct)}% of ${label.toLowerCase()}`}
-        >
-          <div className="claude-mascot-bob">
-            <ClaudeMascot size={58} />
+            {/* gradient fill */}
+            <div
+              className="absolute inset-y-0 left-0 rounded-full transition-all duration-700 ease-out"
+              style={{
+                width: `${Math.max(fillPct, 2)}%`,
+                background: over
+                  ? 'linear-gradient(90deg, #EA580C 0%, #DC2626 60%, #B91C1C 100%)'
+                  : 'linear-gradient(90deg, #EA580C 0%, #F59E0B 45%, #D97757 100%)',
+                boxShadow: `0 0 14px ${over ? 'rgba(220,38,38,0.6)' : 'rgba(234,88,12,0.55)'}`,
+              }}
+            >
+              {/* moving shimmer highlight across the fill */}
+              <div className="claude-bar-shimmer absolute inset-0 rounded-full" />
+            </div>
           </div>
         </div>
       </div>
@@ -203,6 +208,21 @@ function AgentSparkline({ days }: { days: AgentDailyPoint[] }) {
 
 export function UsageWidget() {
   const [showChart, setShowChart] = useState(false);
+
+  // Pick two DISTINCT mascots for the daily vs weekly bars. Reshuffled each load
+  // (useMemo on mount), so it varies over time but the two are never the same.
+  const [dailyMascot, weeklyMascot] = useMemo(() => {
+    const pool = [GymClaude, FlagWaver, ConfettiClaude];
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    const A = pool[0];
+    const B = pool[1];
+    const size = 54;
+    return [<A key="daily" size={size} />, <B key="weekly" size={size} />];
+  }, []);
+
   const { data } = useSmartPoll<UsageSummary>(
     () => fetch('/api/usage?days=14', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
@@ -249,8 +269,8 @@ export function UsageWidget() {
       <div className="panel-body space-y-4">
         {/* Limit bars — the default view (headroom is always visible) */}
         <div className="space-y-4">
-          <LimitBar label="Daily limit" limit={daily} />
-          <LimitBar label="Weekly limit" limit={weekly} />
+          <LimitBar label="Daily limit" limit={daily} mascot={dailyMascot} />
+          <LimitBar label="Weekly limit" limit={weekly} mascot={weeklyMascot} />
         </div>
 
         {/* Dropdown toggle — sits right under the bars so you never scroll to hide */}
