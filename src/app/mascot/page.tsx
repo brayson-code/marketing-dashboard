@@ -12,11 +12,15 @@ import {
 
 /**
  * Demo route for the Claude mascot animation kit.
- * - Every animation with play/pause + restart controls.
- * - MascotDance "riding" a sample gradient progress bar.
  *
- * No sprite art is bundled, so Gym/Confetti/Flag render their framework
- * placeholders until PNG frames are dropped into public/sprites/<anim>/.
+ * Showcases the FOUR real-SVG animations (assets in public/sprites/, driven by
+ * GSAP) plus the synthetic MascotDance idle:
+ *   - WalkingClaude  — tweened walk/jump on the real claude-walking.svg rig
+ *   - GymClaude      — frame-cycled lift   (claude-gym.svg)
+ *   - FlagWaver      — frame-cycled wave   (claude-flag-waver.svg)
+ *   - ConfettiClaude — frame-cycled stomp  (claude-confetti.svg)
+ *
+ * Each has play/pause + restart wired through the component's GSAP timeline.
  */
 
 function Section({
@@ -39,6 +43,17 @@ function Section({
   );
 }
 
+const btn: React.CSSProperties = {
+  border: "1px solid #DD775B",
+  background: "#fff",
+  color: "#C2613F",
+  borderRadius: 8,
+  padding: "6px 14px",
+  fontSize: 13,
+  fontWeight: 600,
+  cursor: "pointer",
+};
+
 function Controls({
   playing,
   onToggle,
@@ -48,16 +63,6 @@ function Controls({
   onToggle: () => void;
   onRestart: () => void;
 }) {
-  const btn: React.CSSProperties = {
-    border: "1px solid #DD775B",
-    background: "#fff",
-    color: "#C2613F",
-    borderRadius: 8,
-    padding: "6px 14px",
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: "pointer",
-  };
   return (
     <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
       <button style={btn} onClick={onToggle}>
@@ -66,6 +71,66 @@ function Controls({
       <button style={btn} onClick={onRestart}>
         Restart
       </button>
+    </div>
+  );
+}
+
+/** Shared prop shape of the three frame animations. */
+type FrameAnim = React.ComponentType<{
+  size?: number;
+  onTimeline?: (tl: gsap.core.Timeline) => void;
+}>;
+
+/**
+ * A timeline-backed animation card. Captures the animation's GSAP timeline via
+ * its `onTimeline` prop and drives play/pause/restart through it (no remount).
+ */
+function TimelineCard({
+  title,
+  asset,
+  Component,
+}: {
+  title: string;
+  asset: string;
+  Component: FrameAnim;
+}) {
+  const tlRef = useRef<gsap.core.Timeline | null>(null);
+  const [playing, setPlaying] = useState(true);
+
+  return (
+    <div style={card}>
+      <h3 style={{ margin: "0 0 2px", fontSize: 15, color: "#1f1a17" }}>{title}</h3>
+      <code style={{ fontSize: 11, color: "#8a7a70" }}>{asset}</code>
+      <div
+        style={{
+          display: "grid",
+          placeItems: "center",
+          minHeight: 180,
+          marginTop: 8,
+          overflow: "visible",
+        }}
+      >
+        <Component
+          size={200}
+          onTimeline={(tl) => {
+            tlRef.current = tl;
+          }}
+        />
+      </div>
+      <Controls
+        playing={playing}
+        onToggle={() => {
+          const tl = tlRef.current;
+          if (!tl) return;
+          if (playing) tl.pause();
+          else tl.play();
+          setPlaying((p) => !p);
+        }}
+        onRestart={() => {
+          tlRef.current?.restart();
+          setPlaying(true);
+        }}
+      />
     </div>
   );
 }
@@ -91,7 +156,7 @@ function ProgressRider() {
           height: 14,
           borderRadius: 999,
           background: "#efe6e0",
-          marginTop: 34, // room for the mascot above the bar
+          marginTop: 34,
         }}
       >
         <div
@@ -104,7 +169,6 @@ function ProgressRider() {
             transition: "width 90ms linear",
           }}
         />
-        {/* Mascot rides the fill edge, anchored by its bottom-center. */}
         <div
           style={{
             position: "absolute",
@@ -120,19 +184,7 @@ function ProgressRider() {
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
         <span style={{ fontSize: 12, color: "#8a7a70" }}>{pct}% — dance idle rides the edge</span>
-        <button
-          onClick={() => setPlaying((p) => !p)}
-          style={{
-            border: "1px solid #DD775B",
-            background: "#fff",
-            color: "#C2613F",
-            borderRadius: 8,
-            padding: "2px 12px",
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
+        <button onClick={() => setPlaying((p) => !p)} style={{ ...btn, padding: "2px 12px", fontSize: 12 }}>
           {playing ? "Pause" : "Play"}
         </button>
       </div>
@@ -140,23 +192,17 @@ function ProgressRider() {
   );
 }
 
+const card: React.CSSProperties = {
+  border: "1px solid #efe6e0",
+  borderRadius: 16,
+  padding: 24,
+  background: "#fffdfb",
+};
+
 export default function MascotDemoPage() {
-  // Walking timeline control
   const walkTl = useRef<gsap.core.Timeline | null>(null);
   const [walkPlaying, setWalkPlaying] = useState(true);
-
-  const [gymPlaying, setGymPlaying] = useState(true);
-  const [confettiPlaying, setConfettiPlaying] = useState(true);
-  const [flagPlaying, setFlagPlaying] = useState(true);
-
   const [dancePlaying, setDancePlaying] = useState(true);
-
-  const card: React.CSSProperties = {
-    border: "1px solid #efe6e0",
-    borderRadius: 16,
-    padding: 24,
-    background: "#fffdfb",
-  };
 
   return (
     <main
@@ -173,54 +219,29 @@ export default function MascotDemoPage() {
           Claude Mascot Animations
         </h1>
         <p style={{ margin: 0, color: "#8a7a70", fontSize: 15 }}>
-          SVG + GSAP recreation following the Codrops reverse-engineering article. Built from
+          The four official Claude mascot SVGs (in{" "}
           <code style={{ background: "#f3ece7", padding: "1px 5px", borderRadius: 4 }}>
-            &lt;rect&gt;
+            public/sprites/
           </code>
-          elements only.
+          ) injected at runtime and driven by GSAP, following the Codrops
+          reverse-engineering article.
         </p>
       </header>
 
       <Section
-        title="Progress bar rider (MascotDance)"
-        subtitle="The priority integration: a compact 30px idle loop that rides the fill edge of a gradient progress bar."
+        title="WalkingClaude — tweened walk + jump"
+        subtitle="Real claude-walking.svg rig. Look around → lean → crouch → jump arc → walk across → look down → crouch → leap back. Loops forever."
       >
-        <div style={card}>
-          <ProgressRider />
-        </div>
-      </Section>
-
-      <Section
-        title="MascotDance — standalone"
-        subtitle="Crisp bob + wiggle + squash/stretch loop at small sizes. Accepts a size prop."
-      >
-        <div style={{ ...card, display: "flex", alignItems: "flex-end", gap: 32 }}>
-          <MascotDance size={24} playing={dancePlaying} />
-          <MascotDance size={34} playing={dancePlaying} />
-          <MascotDance size={64} playing={dancePlaying} />
-          <MascotDance size={96} playing={dancePlaying} />
-          <div style={{ marginLeft: "auto" }}>
-            <Controls
-              playing={dancePlaying}
-              onToggle={() => setDancePlaying((p) => !p)}
-              onRestart={() => setDancePlaying((p) => p)}
+        <div style={{ ...card, overflow: "visible" }}>
+          <div style={{ display: "grid", placeItems: "center", minHeight: 220, overflow: "visible" }}>
+            <WalkingClaude
+              size={260}
+              jumpDist={70}
+              onTimeline={(tl) => {
+                walkTl.current = tl;
+              }}
             />
           </div>
-        </div>
-      </Section>
-
-      <Section
-        title="WalkingClaude — pure GSAP tween"
-        subtitle="Look around → lean → crouch → jump arc → walk across → look down → crouch → leap back. Loops forever."
-      >
-        <div style={{ ...card, overflow: "hidden" }}>
-          <WalkingClaude
-            size={260}
-            jumpDist={70}
-            onTimeline={(tl) => {
-              walkTl.current = tl;
-            }}
-          />
           <Controls
             playing={walkPlaying}
             onToggle={() => {
@@ -239,44 +260,50 @@ export default function MascotDemoPage() {
       </Section>
 
       <Section
-        title="Sprite-frame animations (framework + placeholders)"
-        subtitle="Frame-toggle engine with per-frame timing tables, confetti bursts, and flag hand/sway offsets. Drop PNGs into public/sprites/<anim>/ to light them up."
+        title="Frame-cycled animations (real SVGs)"
+        subtitle="Each SVG bundles many frame <g> groups; GSAP cycles which one is display:inline on a looping timeline with per-frame timing. Frame groups are detected from the live DOM (see README)."
       >
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
             gap: 20,
           }}
         >
-          <div style={card}>
-            <h3 style={{ margin: "0 0 12px", fontSize: 15 }}>GymClaude (lifting)</h3>
-            <GymClaude size={200} playing={gymPlaying} />
-            <Controls
-              playing={gymPlaying}
-              onToggle={() => setGymPlaying((p) => !p)}
-              onRestart={() => setGymPlaying((p) => p)}
-            />
-          </div>
+          <TimelineCard
+            title="GymClaude (lifting · 12 frames)"
+            asset="/sprites/claude-gym.svg"
+            Component={GymClaude}
+          />
+          <TimelineCard
+            title="ConfettiClaude (stomping · 8 frames)"
+            asset="/sprites/claude-confetti.svg"
+            Component={ConfettiClaude}
+          />
+          <TimelineCard
+            title="FlagWaver (waving · 36 frames)"
+            asset="/sprites/claude-flag-waver.svg"
+            Component={FlagWaver}
+          />
+        </div>
+      </Section>
 
-          <div style={card}>
-            <h3 style={{ margin: "0 0 12px", fontSize: 15 }}>ConfettiClaude (stomping)</h3>
-            <ConfettiClaude size={200} playing={confettiPlaying} />
-            <Controls
-              playing={confettiPlaying}
-              onToggle={() => setConfettiPlaying((p) => !p)}
-              onRestart={() => setConfettiPlaying((p) => p)}
-            />
-          </div>
-
-          <div style={card}>
-            <h3 style={{ margin: "0 0 12px", fontSize: 15 }}>FlagWaver (waving)</h3>
-            <FlagWaver size={200} playing={flagPlaying} />
-            <Controls
-              playing={flagPlaying}
-              onToggle={() => setFlagPlaying((p) => !p)}
-              onRestart={() => setFlagPlaying((p) => p)}
-            />
+      <Section
+        title="MascotDance — synthetic idle"
+        subtitle="A compact <rect>-only idle loop (not from a sprite asset) tuned to ride a progress bar's fill edge at small sizes."
+      >
+        <div style={card}>
+          <ProgressRider />
+        </div>
+        <div style={{ ...card, display: "flex", alignItems: "flex-end", gap: 32, marginTop: 20 }}>
+          <MascotDance size={24} playing={dancePlaying} />
+          <MascotDance size={34} playing={dancePlaying} />
+          <MascotDance size={64} playing={dancePlaying} />
+          <MascotDance size={96} playing={dancePlaying} />
+          <div style={{ marginLeft: "auto" }}>
+            <button style={btn} onClick={() => setDancePlaying((p) => !p)}>
+              {dancePlaying ? "Pause" : "Play"}
+            </button>
           </div>
         </div>
       </Section>

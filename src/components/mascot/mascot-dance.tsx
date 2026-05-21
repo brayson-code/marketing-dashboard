@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { gsap } from "gsap";
-import { MASCOT_COLOR, MASCOT_EYE } from "./mascot-art";
+import { MASCOT_COLOR, MASCOT_EYE } from "./colors";
 
 export interface MascotDanceProps {
   /** Rendered height in px. Designed to look crisp at 24–34px. Default 30. */
@@ -17,8 +17,8 @@ export interface MascotDanceProps {
  * MascotDance — a tiny, self-contained looping idle.
  *
  * Built to "ride" the fill edge of a horizontal progress bar, so it is its OWN
- * miniature <rect>-only mascot (separate from the big MascotArt) tuned to stay
- * crisp at ~24–34px: thicker strokes-as-fills, generous corner radii, a small
+ * miniature <rect>-only mascot (synthetic, NOT one of the real sprite SVGs)
+ * tuned to stay crisp at ~24–34px: thicker strokes-as-fills, generous radii, a small
  * viewBox (0 0 32 34) for pixel-snapping.
  *
  * Pure GSAP. The loop combines:
