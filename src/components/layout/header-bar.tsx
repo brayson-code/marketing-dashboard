@@ -24,7 +24,7 @@ export function HeaderBar() {
 
   // Lightweight poll for header stats
   const { data: stats } = useSmartPoll<HeaderStats>(
-    () => fetch(`/api/overview${realOnly ? '?real=true' : ''}`).then(r => r.json()).then(d => d.stats),
+    () => fetch(`/api/overview${realOnly ? '?real=true' : ''}`).then(r => (r.ok ? r.json() : null)).then(d => d?.stats ?? null),
     { interval: 60_000, key: realOnly },
   );
 
@@ -92,11 +92,13 @@ function NotificationBell() {
   const realOnly = useDashboard(s => s.realOnly);
 
   const { data: notifications, refetch } = useSmartPoll<Notification[]>(
-    () => fetch(`/api/notifications?limit=20${realOnly ? '&real=true' : ''}`).then(r => r.json()),
+    () => fetch(`/api/notifications?limit=20${realOnly ? '&real=true' : ''}`)
+      .then(r => (r.ok ? r.json() : []))
+      .then(d => (Array.isArray(d) ? d : [])),
     { interval: 30_000, key: realOnly },
   );
 
-  const unreadCount = notifications?.filter(n => !n.read).length ?? 0;
+  const unreadCount = (Array.isArray(notifications) ? notifications : []).filter(n => !n.read).length;
 
   // Close on outside click
   useEffect(() => {
