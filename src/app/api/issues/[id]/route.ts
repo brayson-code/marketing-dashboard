@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getIssue, getIssueEvents, updateIssue, type IssueStatus, type IssuePriority } from '@/lib/observability';
+import { getIssue, getIssueEvents, getIssueTask, updateIssue, type IssueStatus, type IssuePriority } from '@/lib/observability';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +11,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const issue = await getIssue(id);
   if (!issue) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const events = await getIssueEvents(id, 20);
-  return NextResponse.json({ issue, events });
+  // The Fixer run for this issue (so the UI can show "what went wrong").
+  const task = issue.task_id ? await getIssueTask(issue.task_id) : null;
+  const hasPatch = Array.isArray(issue.proposed_patch) && issue.proposed_patch.length > 0;
+  return NextResponse.json({ issue, events, task, hasPatch });
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {

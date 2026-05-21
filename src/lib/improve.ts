@@ -92,7 +92,7 @@ export async function runImprovementSweep(): Promise<ImproveResult> {
 
   const taskId = await startTask('improver', 'Continuous-improvement sweep');
   const snapshot = await buildSnapshot();
-  const client = new Anthropic();
+  const client = new Anthropic({ maxRetries: 5 });
   const messages: Anthropic.MessageParam[] = [{ role: 'user', content: snapshot }];
   let proposals = 0;
   let totalInput = 0;

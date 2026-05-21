@@ -424,7 +424,7 @@ export async function runOrchestrator(): Promise<{ ok: true; text: string; usage
     return { ok: false, error: 'ANTHROPIC_API_KEY not configured' };
   }
 
-  const client = new Anthropic();
+  const client = new Anthropic({ maxRetries: 5 });
   const template = loadTemplate();
   const memory = await loadCurrentMemory();
   const messages = await loadRecentHistory();

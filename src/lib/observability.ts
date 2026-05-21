@@ -50,6 +50,7 @@ export interface IssueRow {
   pr_url: string | null;
   assignee: string | null;
   task_id: number | null;
+  proposed_patch: Array<{ path: string; new_content: string }> | null;
   first_seen: string;
   last_seen: string;
   resolved_at: string | null;
@@ -217,6 +218,25 @@ export async function getIssueEvents(id: string, limit = 20): Promise<ErrorEvent
     ORDER BY created_at DESC LIMIT ${limit}
   `) as unknown as ErrorEventRow[];
   return rows;
+}
+
+/** Store the Fixer's structured proposed patch so "Approve" can apply it exactly. */
+export async function saveProposedPatch(id: string, files: Array<{ path: string; new_content: string }>): Promise<void> {
+  await sql()`
+    UPDATE public.issues SET proposed_patch = ${jsonb(files)}, updated_at = now()
+    WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+  `;
+}
+
+export interface LinkedTask { id: number; agent_id: string; status: string; error: string | null; result: string | null; started_at: string; completed_at: string | null }
+
+/** The agent_tasks row a Fixer run created for this issue, for "what went wrong". */
+export async function getIssueTask(taskId: number): Promise<LinkedTask | null> {
+  const rows = (await sql()`
+    SELECT id, agent_id, status, error, result, started_at, completed_at
+    FROM public.agent_tasks WHERE id = ${taskId} AND tenant_id = ${DEFAULT_TENANT_ID}
+  `) as unknown as LinkedTask[];
+  return rows[0] ?? null;
 }
 
 export async function updateIssue(

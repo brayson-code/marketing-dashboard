@@ -203,7 +203,7 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
   // Log the dispatch (from keyplayer -> sub-agent)
   await logA2A('keyplayer', type, task, { phase: 'dispatch', task_id: taskId });
 
-  const client = new Anthropic();
+  const client = new Anthropic({ maxRetries: 5 });
   const systemPrompt = loadSubAgentSystemPrompt(type);
 
   const tools: Anthropic.Messages.ToolUnion[] = [

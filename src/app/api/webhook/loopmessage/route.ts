@@ -71,6 +71,12 @@ function isAuthorized(request: Request): boolean {
 
 export async function POST(request: Request) {
   if (!isAuthorized(request)) {
+    // Log rejected hits so we can tell "LoopMessage reached us but the secret
+    // header is wrong" apart from "LoopMessage never called us at all".
+    await sql()`
+      INSERT INTO activity_log (tenant_id, ts, action, detail, result)
+      VALUES (${DEFAULT_TENANT_ID}, now(), 'loopmessage_rejected', 'inbound webhook rejected (missing/incorrect secret header)', 'warn')
+    `.catch(() => {});
     return NextResponse.json({ error: 'Unauthorized webhook' }, { status: 401 });
   }
 

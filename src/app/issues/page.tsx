@@ -161,10 +161,15 @@ function Column({ label, issues, onSelect, dim }: { label: string; issues: Issue
   );
 }
 
+interface FixerTask { id: number; agent_id: string; status: string; error: string | null; result: string | null; started_at: string; completed_at: string | null }
+
 function IssueDrawer({ id, caps, onClose, onChanged }: { id: string; caps: Capabilities; onClose: () => void; onChanged: () => void }) {
   const [issue, setIssue] = useState<Issue | null>(null);
   const [events, setEvents] = useState<ErrorEvent[]>([]);
+  const [task, setTask] = useState<FixerTask | null>(null);
+  const [hasPatch, setHasPatch] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/issues/${id}`, { cache: 'no-store' });
@@ -172,6 +177,8 @@ function IssueDrawer({ id, caps, onClose, onChanged }: { id: string; caps: Capab
     const json = await res.json();
     setIssue(json.issue);
     setEvents(Array.isArray(json.events) ? json.events : []);
+    setTask(json.task ?? null);
+    setHasPatch(!!json.hasPatch);
   }, [id]);
 
   useEffect(() => {
@@ -191,8 +198,22 @@ function IssueDrawer({ id, caps, onClose, onChanged }: { id: string; caps: Capab
 
   async function assign() {
     setBusy('assign');
+    setNotice(null);
     try {
       await fetch(`/api/issues/${id}/assign`, { method: 'POST' });
+      await load();
+      onChanged();
+    } finally { setBusy(null); }
+  }
+
+  async function approve() {
+    setBusy('approve');
+    setNotice(null);
+    try {
+      const res = await fetch(`/api/issues/${id}/approve`, { method: 'POST' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) setNotice(json.error || `Approve failed (${res.status})`);
+      else setNotice('Opened a draft PR for review.');
       await load();
       onChanged();
     } finally { setBusy(null); }
@@ -220,6 +241,11 @@ function IssueDrawer({ id, caps, onClose, onChanged }: { id: string; caps: Capab
               <button onClick={assign} disabled={busy !== null || issue.status === 'assigned'} className="btn btn-primary btn-sm">
                 {busy === 'assign' ? <Loader2 size={12} className="animate-spin" /> : <Bug size={12} />} Assign Fixer
               </button>
+              {hasPatch && !issue.pr_url && (
+                <button onClick={approve} disabled={busy !== null} className="btn btn-primary btn-sm" title={caps.github ? 'Open a draft PR from the proposed patch' : 'Needs a write-enabled GITHUB_TOKEN'}>
+                  {busy === 'approve' ? <Loader2 size={12} className="animate-spin" /> : <GitPullRequest size={12} />} Approve → open PR
+                </button>
+              )}
               {issue.pr_url && (
                 <a href={issue.pr_url} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm">
                   <GitPullRequest size={12} /> View PR <ExternalLink size={11} />
@@ -236,10 +262,34 @@ function IssueDrawer({ id, caps, onClose, onChanged }: { id: string; caps: Capab
               </select>
             </div>
 
+            {notice && (
+              <div className="panel p-2.5 text-[11px]" style={{ color: 'var(--foreground)' }}>{notice}</div>
+            )}
+
             {!caps.github && (
               <div className="panel p-2.5 text-[11px] text-muted-foreground">
-                The Fixer will diagnose and save a proposed patch to this issue. Set <code className="text-foreground">GITHUB_TOKEN</code> + <code className="text-foreground">GITHUB_REPO</code> to have it open a draft PR automatically.
+                The Fixer diagnoses and saves a proposed patch here. To open a draft PR, set a <code className="text-foreground">GITHUB_TOKEN</code> with <strong>Contents + Pull-requests write</strong> (the current token is read-only).
               </div>
+            )}
+
+            {task && (
+              <Section title="Fixer run">
+                <div className="text-[11px] space-y-1">
+                  <div>
+                    Status:{' '}
+                    <span className={task.status === 'error' ? 'text-destructive font-medium' : task.status === 'done' ? 'text-success font-medium' : 'text-warning font-medium'}>
+                      {task.status}
+                    </span>
+                    {task.completed_at && <span className="text-muted-foreground"> · {timeAgo(task.completed_at)}</span>}
+                  </div>
+                  {task.error && (
+                    <pre className="whitespace-pre-wrap bg-destructive/10 text-destructive rounded-lg p-2 overflow-x-auto">{task.error}</pre>
+                  )}
+                  {task.result && !task.error && (
+                    <div className="text-muted-foreground whitespace-pre-wrap">{task.result.slice(0, 400)}</div>
+                  )}
+                </div>
+              </Section>
             )}
 
             {issue.root_cause && (
