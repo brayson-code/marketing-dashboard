@@ -107,7 +107,7 @@ export default function OverviewPage() {
   // Start sync service once
   useEffect(() => { fetch('/api/sync').catch(() => {}); }, []);
 
-  if (!data || loading) {
+  if (loading || !data || !Array.isArray(data.metrics)) {
     return <PageSkeleton />;
   }
 
