@@ -14,7 +14,8 @@
       "mcp__claude_ai_Supabase__execute_sql",
       "mcp__claude_ai_Supabase__get_publishable_keys",
       "mcp__claude_ai_Supabase__get_project_url",
-      "WebFetch(domain:tympanus.net)"
+      "WebFetch(domain:tympanus.net)",
+      "WebFetch(domain:www.youtube.com)"
     ]
   }
 }

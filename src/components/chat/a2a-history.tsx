@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Network, ArrowRight, Loader2 } from 'lucide-react';
+import { Network, ArrowRight, Loader2, Send } from 'lucide-react';
 
 interface A2AParty { id: string; name: string; emoji: string }
 interface A2AMessage {
@@ -39,6 +39,9 @@ export function A2AHistory() {
   const [convs, setConvs] = useState<A2AConversation[]>([]);
   const [active, setActive] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -60,6 +63,34 @@ export function A2AHistory() {
   }, [load]);
 
   const current = convs.find((c) => c.key === active) ?? null;
+  // You message the non-orchestrator agent in the pair (the sub-agent).
+  const target = current ? (current.a.id !== 'keyplayer' ? current.a : current.b) : null;
+
+  async function send() {
+    if (!input.trim() || sending || !target) return;
+    setSending(true);
+    setNotice(null);
+    try {
+      const res = await fetch('/api/boardroom/a2a', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: target.id, content: input.trim() }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setNotice(json.error || `Failed (${res.status})`);
+      } else {
+        setInput('');
+        setNotice(`Dispatched to ${target.name}. Its reply will appear here shortly…`);
+        setTimeout(load, 4000);
+        setTimeout(load, 12000);
+      }
+    } catch (e) {
+      setNotice((e as Error).message);
+    } finally {
+      setSending(false);
+    }
+  }
 
   if (loading && convs.length === 0) {
     return (
@@ -101,22 +132,47 @@ export function A2AHistory() {
         ))}
       </div>
 
-      {/* Transcript */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3 min-w-0">
-        {!current ? (
-          <div className="h-full flex items-center justify-center text-xs text-muted-foreground">Select a thread</div>
-        ) : (
-          current.messages.map((m) => (
-            <div key={m.id} className="rounded-xl border border-border/60 bg-[var(--surface-2)] p-3">
-              <div className="flex items-center gap-1.5 text-[11px] mb-1 flex-wrap">
-                <span className="font-medium">{m.from.emoji} {m.from.name}</span>
-                {m.to && <><ArrowRight size={11} className="text-muted-foreground" /><span className="font-medium">{m.to.emoji} {m.to.name}</span></>}
-                {m.phase && <span className={`badge ${PHASE_STYLE[m.phase] ?? 'badge-neutral'}`}>{m.phase}</span>}
-                <span className="text-muted-foreground ml-auto">{ago(m.created_at)}</span>
+      {/* Transcript + composer */}
+      <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {!current ? (
+            <div className="h-full flex items-center justify-center text-xs text-muted-foreground">Select a thread</div>
+          ) : (
+            current.messages.map((m) => (
+              <div key={m.id} className="rounded-xl border border-border/60 bg-[var(--surface-2)] p-3">
+                <div className="flex items-center gap-1.5 text-[11px] mb-1 flex-wrap">
+                  <span className="font-medium">{m.from.emoji} {m.from.name}</span>
+                  {m.to && <><ArrowRight size={11} className="text-muted-foreground" /><span className="font-medium">{m.to.emoji} {m.to.name}</span></>}
+                  {m.phase && <span className={`badge ${PHASE_STYLE[m.phase] ?? 'badge-neutral'}`}>{m.phase}</span>}
+                  <span className="text-muted-foreground ml-auto">{ago(m.created_at)}</span>
+                </div>
+                <div className="text-sm whitespace-pre-wrap break-words leading-snug">{m.content}</div>
               </div>
-              <div className="text-sm whitespace-pre-wrap break-words leading-snug">{m.content}</div>
+            ))
+          )}
+        </div>
+
+        {current && target && (
+          <form
+            onSubmit={(e) => { e.preventDefault(); send(); }}
+            className="border-t border-border/60 p-3 space-y-1.5"
+          >
+            <div className="flex items-end gap-2">
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); } }}
+                placeholder={`Send a task to ${target.emoji} ${target.name}…`}
+                rows={2}
+                disabled={sending}
+                className="flex-1 resize-none"
+              />
+              <button type="submit" className="btn btn-primary" disabled={sending || !input.trim()}>
+                {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Send
+              </button>
             </div>
-          ))
+            {notice && <div className="text-[11px] text-muted-foreground">{notice}</div>}
+          </form>
         )}
       </div>
     </div>

@@ -1,8 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
 import { squadRoster } from '@/lib/squad';
+import { spawnSubAgent, SUBAGENT_REGISTRY } from '@/lib/subagent';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 300;
 
 // Agent-to-agent conversation history. KeyPlayer logs every sub-agent dispatch +
 // result to the `messages` table under conversation_id "mc:a2a:<from>:<to>"
@@ -70,4 +72,31 @@ export async function GET(request: Request) {
     }));
 
   return NextResponse.json({ conversations });
+}
+
+// Send a message INTO an agent pair: dispatch the target sub-agent with the
+// operator's message as its task. spawnSubAgent logs the dispatch + result to
+// the mc:a2a:keyplayer:<to> thread, so it appears in the A2A history. The run is
+// slow (a full agent turn), so kick it off with after() and return immediately.
+export async function POST(request: Request) {
+  let body: { to?: string; content?: string };
+  try { body = await request.json(); }
+  catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
+
+  const to = (body.to ?? '').trim();
+  const content = (body.content ?? '').trim();
+  if (!content) return NextResponse.json({ error: 'content is required' }, { status: 400 });
+  if (!SUBAGENT_REGISTRY[to]) {
+    return NextResponse.json({ error: `Unknown sub-agent "${to}". Valid: ${Object.keys(SUBAGENT_REGISTRY).join(', ')}` }, { status: 400 });
+  }
+
+  after(async () => {
+    try {
+      await spawnSubAgent(to, content);
+    } catch (err) {
+      console.error('[a2a] dispatch failed:', (err as Error).message);
+    }
+  });
+
+  return NextResponse.json({ ok: true, dispatched: to }, { status: 202 });
 }
