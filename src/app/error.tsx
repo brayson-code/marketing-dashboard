@@ -3,6 +3,7 @@
 // Route-level error boundary: contains a thrown client error to this page
 // (keeping the app shell intact) and offers a retry instead of white-screening.
 import { useEffect } from 'react';
+import { reportClientError } from '@/lib/report-client-error';
 
 export default function Error({
   error,
@@ -13,6 +14,11 @@ export default function Error({
 }) {
   useEffect(() => {
     console.error('[route error]', error);
+    reportClientError({
+      message: error.message || 'Route render error',
+      stack: error.stack ?? null,
+      context: { digest: error.digest ?? null, boundary: 'route' },
+    });
   }, [error]);
 
   return (

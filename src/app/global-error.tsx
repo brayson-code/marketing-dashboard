@@ -3,6 +3,9 @@
 // Last-resort boundary for errors thrown in the root layout itself (it replaces
 // the whole document, so it must render its own <html>/<body>). Prevents the bare
 // "Application error: a client-side exception has occurred" white screen.
+import { useEffect } from 'react';
+import { reportClientError } from '@/lib/report-client-error';
+
 export default function GlobalError({
   error,
   reset,
@@ -10,6 +13,15 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  useEffect(() => {
+    reportClientError({
+      message: error.message || 'Global render error',
+      stack: error.stack ?? null,
+      level: 'fatal',
+      context: { digest: error.digest ?? null, boundary: 'global' },
+    });
+  }, [error]);
+
   return (
     <html lang="en">
       <body style={{ fontFamily: 'system-ui, sans-serif', background: '#0b0b0c', color: '#e5e5e5' }}>

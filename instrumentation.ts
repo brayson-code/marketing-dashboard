@@ -6,6 +6,34 @@
  *
  * Both are opt-in via env vars. Manual `/api/triggers/*` endpoints work either way.
  */
+// KeyWatch server-side capture: Next.js calls this for any error thrown in a
+// Server Component, route handler, or middleware. We feed it into the same
+// dedupe/alert pipeline as client errors.
+export async function onRequestError(
+  error: unknown,
+  request: { path?: string; method?: string; headers?: Record<string, string | string[] | undefined> },
+  context: { routerKind?: string; routePath?: string; renderSource?: string },
+) {
+  try {
+    const { captureError } = await import('./src/lib/observability');
+    const err = error as Error & { digest?: string };
+    const ua = request.headers?.['user-agent'];
+    await captureError({
+      source: process.env.NEXT_RUNTIME === 'edge' ? 'edge' : 'server',
+      level: 'error',
+      message: err?.message || String(error),
+      stack: err?.stack ?? null,
+      route: context?.routePath || request.path || null,
+      method: request.method ?? null,
+      userAgent: Array.isArray(ua) ? ua[0] : ua ?? null,
+      release: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
+      context: { digest: err?.digest ?? null, renderSource: context?.renderSource, routerKind: context?.routerKind },
+    });
+  } catch (e) {
+    console.error('[keywatch] onRequestError capture failed:', (e as Error).message);
+  }
+}
+
 export async function register() {
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
 

@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { LayoutContent } from "@/components/layout/layout-content";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/toast";
+import { ErrorReporter } from "@/components/error-reporter";
 import "./globals.css";
 
 const geist = Geist({
@@ -37,6 +38,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={`${geist.variable} ${geistMono.variable} antialiased`}>
         <ThemeProvider>
+          <ErrorReporter />
           <LayoutContent>{children}</LayoutContent>
           <Toaster />
         </ThemeProvider>
