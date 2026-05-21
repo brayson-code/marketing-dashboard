@@ -111,9 +111,9 @@ function LimitBar({ label, limit }: { label: string; limit: UsageLimit }) {
         </span>
       </div>
       {/* extra top padding leaves room for the mascot to sit above the track */}
-      <div className="relative pt-6">
+      <div className="relative pt-8">
         <div
-          className="relative h-7 rounded-full overflow-hidden"
+          className="relative h-9 rounded-full overflow-hidden"
           style={{
             background: 'rgba(217,119,87,0.12)',
             border: `1px solid ${CLAUDE.border}`,
@@ -143,7 +143,7 @@ function LimitBar({ label, limit }: { label: string; limit: UsageLimit }) {
           title={`${Math.round(rawPct)}% of ${label.toLowerCase()}`}
         >
           <div className="claude-mascot-bob">
-            <ClaudeMascot size={44} />
+            <ClaudeMascot size={58} />
           </div>
         </div>
       </div>

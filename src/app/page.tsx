@@ -247,7 +247,7 @@ export default function OverviewPage() {
 
       {/* Knowledge Graph compact widget */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="panel">
+        <div className="panel lg:col-span-3">
           <div className="panel-header flex items-center justify-between">
             <h3 className="section-title flex items-center gap-2">
               <Network size={14} />
@@ -264,12 +264,10 @@ export default function OverviewPage() {
             </p>
           </div>
         </div>
-
-        {/* Claude API Usage widget */}
-        <div className="lg:col-span-2">
-          <UsageWidget />
-        </div>
       </div>
+
+      {/* Claude API Usage — full-width horizontal section */}
+      <UsageWidget />
 
       {/* Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
