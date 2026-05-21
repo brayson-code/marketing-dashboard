@@ -3,6 +3,8 @@ import { sql, jsonb, DEFAULT_TENANT_ID } from '@/lib/db/client';
 import { runOrchestrator } from '@/lib/orchestrator';
 import { parseAttachments } from '@/lib/vision';
 
+// (usage is returned by runOrchestrator and stored on the assistant message)
+
 export const dynamic = 'force-dynamic';
 // Vision downloads + a full orchestrator turn can take a while; give it room.
 export const maxDuration = 300;
@@ -46,9 +48,9 @@ export async function POST(request: Request) {
   }
 
   await sql()`
-    INSERT INTO boardroom_messages (tenant_id, direction, sender, recipient, text, status)
-    VALUES (${DEFAULT_TENANT_ID}, 'out', 'keyplayer', 'owner', ${result.text}, 'delivered')
+    INSERT INTO boardroom_messages (tenant_id, direction, sender, recipient, text, status, metadata)
+    VALUES (${DEFAULT_TENANT_ID}, 'out', 'keyplayer', 'owner', ${result.text}, 'delivered', ${jsonb({ usage: result.usage })})
   `;
 
-  return NextResponse.json({ ok: true, reply: result.text });
+  return NextResponse.json({ ok: true, reply: result.text, usage: result.usage });
 }

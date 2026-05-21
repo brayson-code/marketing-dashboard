@@ -30,6 +30,12 @@ function costFor(agentId: string, input: number, output: number): number {
   return (input / 1_000_000) * p.input + (output / 1_000_000) * p.output;
 }
 
+/** Estimate USD cost for a given model + token counts. Reused for per-message cost. */
+export function estimateCostUsd(model: string, input: number, output: number): number {
+  const p = PRICING[model] ?? PRICING['claude-sonnet-4-6'];
+  return (input / 1_000_000) * p.input + (output / 1_000_000) * p.output;
+}
+
 export interface DailyUsage {
   day: string; // YYYY-MM-DD
   input_tokens: number;

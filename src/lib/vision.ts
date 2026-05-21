@@ -31,10 +31,12 @@ const SUPPORTED_IMAGE_TYPES = new Set([
 
 // Anthropic rejects images over 5 MB; stay safely under it.
 const TARGET_BYTES = 4_700_000;
-// A supported-format image this small is sent as-is (skip re-encoding).
-const COMFORTABLE_BYTES = 3_800_000;
 // Refuse to even decode absurdly large downloads (memory guard).
 const HARD_INPUT_CAP = 30 * 1024 * 1024;
+// Longest-edge cap. Claude's image token cost ≈ (w×h)/750, and the API already
+// downsizes anything over ~1.15 MP, so 1092px is the cost-optimal sweet spot.
+// Lower it (env VISION_MAX_DIM) to spend fewer tokens at the cost of fine detail.
+const VISION_MAX_DIM = Math.max(256, Number(process.env.VISION_MAX_DIM) || 1092);
 
 // Cap how many images we attach to a single turn to bound token cost.
 export const MAX_IMAGES_PER_MESSAGE = 4;
@@ -106,7 +108,7 @@ async function shrinkToJpeg(buf: Buffer): Promise<Buffer | null> {
     for (const quality of [82, 68, 55, 42]) {
       const out = await sharp(buf, { failOn: 'none' })
         .rotate() // honor EXIF orientation
-        .resize(1568, 1568, { fit: 'inside', withoutEnlargement: true })
+        .resize(VISION_MAX_DIM, VISION_MAX_DIM, { fit: 'inside', withoutEnlargement: true })
         .jpeg({ quality, mozjpeg: true })
         .toBuffer();
       if (out.length <= TARGET_BYTES) return out;
@@ -132,18 +134,24 @@ export async function toImageBlock(att: Attachment): Promise<Anthropic.ImageBloc
       return null;
     }
 
-    // Trust the actual bytes, not the URL/Content-Type (MMS media is often
-    // mislabeled). Fast path: already a Claude-supported format and small enough.
+    // Fast path (keeps text crisp + cheap): already a supported format, under the
+    // byte cap, AND already within the dimension cap → send as-is, no re-encode.
     const sniffed = sniffImageMediaType(buf);
-    if (sniffed && SUPPORTED_IMAGE_TYPES.has(sniffed) && buf.length <= COMFORTABLE_BYTES) {
-      return {
-        type: 'image',
-        source: { type: 'base64', media_type: sniffed as Anthropic.Base64ImageSource['media_type'], data: buf.toString('base64') },
-      };
+    if (sniffed && SUPPORTED_IMAGE_TYPES.has(sniffed) && buf.length <= TARGET_BYTES) {
+      try {
+        const sharp = (await import('sharp')).default;
+        const meta = await sharp(buf).metadata();
+        if ((meta.width ?? 1e9) <= VISION_MAX_DIM && (meta.height ?? 1e9) <= VISION_MAX_DIM) {
+          return {
+            type: 'image',
+            source: { type: 'base64', media_type: sniffed as Anthropic.Base64ImageSource['media_type'], data: buf.toString('base64') },
+          };
+        }
+      } catch { /* fall through to resize */ }
     }
 
-    // Otherwise re-encode: too big, HEIC, or an unsupported/odd format. sharp
-    // decodes HEIC + most formats and shrinks under the 5 MB limit.
+    // Otherwise re-encode: too big, too high-res, HEIC, or an odd/mislabeled
+    // format. sharp decodes HEIC + most formats and caps dimensions to cut tokens.
     const jpeg = await shrinkToJpeg(buf);
     if (!jpeg) {
       console.error(`[vision] could not normalize image (declared=${att.type ?? '?'}, sniffed=${sniffed ?? 'unknown'}, bytes=${buf.length})`);

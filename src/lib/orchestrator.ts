@@ -9,6 +9,9 @@ import { listActiveGoals, createGoal, appendProgress, updateGoalStatus, type Goa
 import { createDraft, listDrafts, publishContent, sendEmail, confirmMeeting, type DraftType } from './drafts';
 import { kgToolDefinitions, handleKgTool } from './kg-tools';
 import { parseAttachments, buildUserContent } from './vision';
+import { estimateCostUsd } from './usage';
+
+export interface OrchestratorUsage { input: number; output: number; cost_usd: number; model: string }
 
 const MODEL = 'claude-sonnet-4-6';
 const HISTORY_LIMIT = 24;
@@ -416,7 +419,7 @@ async function handleClientToolUse(
   };
 }
 
-export async function runOrchestrator(): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+export async function runOrchestrator(): Promise<{ ok: true; text: string; usage: OrchestratorUsage } | { ok: false; error: string }> {
   if (!process.env.ANTHROPIC_API_KEY) {
     return { ok: false, error: 'ANTHROPIC_API_KEY not configured' };
   }
@@ -497,7 +500,11 @@ export async function runOrchestrator(): Promise<{ ok: true; text: string } | { 
       return { ok: false, error: 'Orchestrator produced no text reply' };
     }
     await finishTask(orchestratorTaskId, { status: 'done', result: text, inputTokens: totalInput, outputTokens: totalOutput });
-    return { ok: true, text };
+    return {
+      ok: true,
+      text,
+      usage: { input: totalInput, output: totalOutput, cost_usd: estimateCostUsd(MODEL, totalInput, totalOutput), model: MODEL },
+    };
   } catch (err) {
     const msg = err instanceof Anthropic.APIError ? `Anthropic ${err.status}: ${err.message}` : (err as Error).message;
     await finishTask(orchestratorTaskId, { status: 'error', error: msg, inputTokens: totalInput, outputTokens: totalOutput });

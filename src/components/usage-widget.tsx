@@ -109,9 +109,12 @@ function LimitBar({ label, limit }: { label: string; limit: UsageLimit }) {
   return (
     <div>
       <div className="flex items-end justify-between mb-2 gap-2 flex-wrap">
-        <span className="text-lg font-extrabold tracking-tight uppercase" style={{ color: CLAUDE.bright, letterSpacing: '0.02em' }}>{label}</span>
+        <span className="text-lg font-extrabold tracking-tight uppercase inline-flex items-baseline gap-2" style={{ color: CLAUDE.bright, letterSpacing: '0.02em' }}>
+          {label}
+          <span className="font-mono" style={{ color: over ? CLAUDE.warn : CLAUDE.ink, fontSize: '0.95rem' }}>{Math.round(rawPct)}%</span>
+        </span>
         <span className="font-mono font-bold" style={{ color: over ? CLAUDE.warn : CLAUDE.ink, fontSize: '1.05rem' }}>
-          {fmtNum(used)} / {fmtNum(max)} <span className="text-xs opacity-60">tokens</span> · {Math.round(rawPct)}%
+          {fmtNum(used)} / {fmtNum(max)} <span className="text-xs opacity-60">tokens</span>
         </span>
       </div>
       {/* extra top padding leaves room for the mascot to sit above the track */}

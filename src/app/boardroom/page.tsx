@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Send, Phone, AlertCircle, ArrowDownToLine, ArrowUpFromLine, MessageSquare, Network, Sparkles, Paperclip, X, Loader2, ImageIcon } from 'lucide-react';
+import { Send, Phone, AlertCircle, ArrowDownToLine, ArrowUpFromLine, MessageSquare, Network, Sparkles, Paperclip, X, Loader2, ImageIcon, Info } from 'lucide-react';
 import { AgentChat } from '@/components/chat/agent-chat';
 import { MissionControlChat } from '@/components/chat/mission-control-chat';
 import { createClient } from '@/lib/supabase/client';
@@ -17,6 +17,8 @@ interface Attachment {
   name?: string;
 }
 
+interface MessageUsage { input: number; output: number; cost_usd: number; model?: string }
+
 interface BoardroomMessage {
   id: number;
   direction: Direction;
@@ -26,8 +28,25 @@ interface BoardroomMessage {
   loop_message_id: string | null;
   status: string | null;
   attachments?: Attachment[] | null;
+  metadata?: { usage?: MessageUsage } | null;
   // Supabase returns timestamptz as ISO strings; tolerate legacy unix numbers too.
   created_at: string | number;
+}
+
+function parseUsage(meta: unknown): MessageUsage | null {
+  if (!meta || typeof meta !== 'object') return null;
+  let m = meta as Record<string, unknown>;
+  if (typeof m === 'string') { try { m = JSON.parse(m); } catch { return null; } }
+  const u = (m as { usage?: unknown }).usage;
+  if (!u || typeof u !== 'object') return null;
+  const usage = u as Record<string, unknown>;
+  if (typeof usage.input !== 'number' || typeof usage.output !== 'number') return null;
+  return {
+    input: usage.input,
+    output: usage.output,
+    cost_usd: typeof usage.cost_usd === 'number' ? usage.cost_usd : 0,
+    model: typeof usage.model === 'string' ? usage.model : undefined,
+  };
 }
 
 interface BoardroomResponse {
@@ -75,6 +94,7 @@ function IMessageThread() {
   const [staged, setStaged] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(0);
   const [dragOver, setDragOver] = useState(false);
+  const [openInfo, setOpenInfo] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -209,6 +229,8 @@ function IMessageThread() {
           {messages.map((m) => {
             const mine = m.direction === 'in';
             const atts = parseAttachments(m.attachments).filter(isImage);
+            const usage = parseUsage(m.metadata);
+            const infoOpen = openInfo === m.id;
             return (
               <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                 <div
@@ -224,6 +246,17 @@ function IMessageThread() {
                     <span>·</span>
                     <span>{formatTs(m.created_at)}</span>
                     {m.status && !mine && <><span>·</span><span>{m.status}</span></>}
+                    {usage && (
+                      <button
+                        type="button"
+                        onClick={() => setOpenInfo(infoOpen ? null : m.id)}
+                        className="ml-0.5 inline-flex items-center hover:opacity-100 opacity-70"
+                        title="Token cost for this reply"
+                        aria-label="Token cost"
+                      >
+                        <Info size={11} />
+                      </button>
+                    )}
                   </div>
                   {atts.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mb-1.5">
@@ -240,6 +273,12 @@ function IMessageThread() {
                     </div>
                   )}
                   {m.text && <div className="whitespace-pre-wrap break-words">{m.text}</div>}
+                  {usage && infoOpen && (
+                    <div className="mt-1.5 pt-1.5 border-t border-current/15 text-[10px] font-mono opacity-90 space-y-0.5">
+                      <div>{usage.input.toLocaleString()} in · {usage.output.toLocaleString()} out · {(usage.input + usage.output).toLocaleString()} tokens</div>
+                      <div>≈ {usage.cost_usd < 0.01 ? '<$0.01' : `$${usage.cost_usd.toFixed(4)}`}{usage.model ? ` · ${usage.model}` : ''}</div>
+                    </div>
+                  )}
                 </div>
               </div>
             );

@@ -142,7 +142,7 @@ export async function POST(request: Request) {
           );
           return;
         }
-        const sendResult = await sendIMessage(result.text, { agent: 'keyplayer' });
+        const sendResult = await sendIMessage(result.text, { agent: 'keyplayer', metadata: { usage: result.usage } });
         if (!sendResult.ok) {
           console.error('[orchestrator] reply send failed:', sendResult.error);
         }
