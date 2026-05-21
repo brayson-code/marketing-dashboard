@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
 import { requireApiUser } from '@/lib/api-auth';
 
 /**
@@ -9,26 +9,27 @@ import { requireApiUser } from '@/lib/api-auth';
 export async function GET(request: Request) {
   const auth = requireApiUser(request as Request);
   if (auth) return auth;
-  const db = getDb();
+  const s = sql();
 
-  const rows = db.prepare(`
+  // created_at is timestamptz; expose epoch seconds for back-compat.
+  const rows = await s`
     SELECT
       conversation_id,
       COUNT(*) as message_count,
-      MAX(created_at) as last_message_at,
-      MIN(created_at) as first_message_at
+      EXTRACT(EPOCH FROM MAX(created_at))::bigint as last_message_at,
+      EXTRACT(EPOCH FROM MIN(created_at))::bigint as first_message_at
     FROM messages
-    WHERE conversation_id LIKE 'session:%'
+    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND conversation_id LIKE 'session:%'
     GROUP BY conversation_id
     ORDER BY last_message_at DESC
-  `).all() as Array<{
+  ` as unknown as Array<{
     conversation_id: string;
     message_count: number;
     last_message_at: number;
     first_message_at: number;
   }>;
 
-  const sessions = rows.map(row => {
+  const sessions = await Promise.all(rows.map(async row => {
 
     // Parse conversation_id: "session:{instanceId}:{agentId}:{sessionId}" (back-compat: "session:{agentId}:{sessionId}")
     const parts = row.conversation_id.split(':');
@@ -37,9 +38,13 @@ export async function GET(request: Request) {
     const sessionId = parts.length >= 4 ? (parts[3] || '') : (parts[2] || '');
 
     // Get first user message as preview
-    const firstMsg = db.prepare(
-      "SELECT content FROM messages WHERE conversation_id = ? AND from_agent = 'operator' ORDER BY created_at ASC LIMIT 1"
-    ).get(row.conversation_id) as { content: string } | undefined;
+    const firstRows = await s`
+      SELECT content FROM messages
+      WHERE conversation_id = ${row.conversation_id} AND tenant_id = ${DEFAULT_TENANT_ID}
+        AND from_agent = 'operator'
+      ORDER BY created_at ASC LIMIT 1
+    ` as unknown as { content: string }[];
+    const firstMsg = firstRows[0];
 
     const preview = firstMsg?.content
       ? firstMsg.content.slice(0, 100) + (firstMsg.content.length > 100 ? '...' : '')
@@ -50,12 +55,12 @@ export async function GET(request: Request) {
       agent_id: agentId,
       session_id: sessionId,
       conversation_id: row.conversation_id,
-      message_count: row.message_count,
+      message_count: Number(row.message_count),
       last_message_at: row.last_message_at,
       first_message_at: row.first_message_at,
       preview,
     };
-  });
+  }));
 
   return NextResponse.json({ sessions });
 }

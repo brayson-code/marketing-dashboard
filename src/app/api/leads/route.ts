@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
 import { getLeads, getLeadFunnel, updateLeadStatus } from '@/lib/queries';
 import {
   writebackLeadCreate,
@@ -165,40 +165,22 @@ export async function POST(req: NextRequest) {
     reply_type: null as string | null,
     notes: asNullableString(body?.notes, 20_000) ?? null,
     created_at: createdAt,
-    pause_outreach: body?.pause_outreach ? 1 : 0,
+    pause_outreach: !!body?.pause_outreach,
   };
 
-  const db = getDb();
-  db.prepare(
-    `INSERT INTO leads (
-      id, first_name, last_name, title, company, company_size, industry_segment,
+  await sql()`
+    INSERT INTO leads (
+      tenant_id, id, first_name, last_name, title, company, company_size, industry_segment,
       source, email, linkedin_url, status, score, tier, last_touch_at, next_action_at,
       sequence_name, reply_type, notes, created_at, pause_outreach
     ) VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-    )`,
-  ).run(
-    lead.id,
-    lead.first_name,
-    lead.last_name,
-    lead.title,
-    lead.company,
-    lead.company_size,
-    lead.industry_segment,
-    lead.source,
-    lead.email,
-    lead.linkedin_url,
-    lead.status,
-    lead.score,
-    lead.tier,
-    lead.last_touch_at,
-    lead.next_action_at,
-    lead.sequence_name,
-    lead.reply_type,
-    lead.notes,
-    lead.created_at,
-    lead.pause_outreach,
-  );
+      ${DEFAULT_TENANT_ID}, ${lead.id}, ${lead.first_name}, ${lead.last_name}, ${lead.title},
+      ${lead.company}, ${lead.company_size}, ${lead.industry_segment}, ${lead.source}, ${lead.email},
+      ${lead.linkedin_url}, ${lead.status}, ${lead.score}, ${lead.tier}, ${lead.last_touch_at},
+      ${lead.next_action_at}, ${lead.sequence_name}, ${lead.reply_type}, ${lead.notes},
+      ${lead.created_at}::timestamptz, ${lead.pause_outreach}
+    )
+  `;
 
   writebackLeadCreate(lead);
   await logAudit({
@@ -249,19 +231,17 @@ export async function PATCH(req: NextRequest) {
   }
 
   const updates: Record<string, unknown> = {};
-  const cols: string[] = [];
-  const params: unknown[] = [];
+  const setValues: Record<string, unknown> = {};
 
   function add(col: string, val: unknown) {
-    cols.push(`${col} = ?`);
-    params.push(val);
+    setValues[col] = val;
   }
 
   if (status !== undefined) { add('status', status); updates.status = status; }
   if (tier !== undefined) { add('tier', tier); updates.tier = tier; }
   if (score !== undefined) { add('score', score); updates.score = score; }
   if (body?.pause_outreach !== undefined) {
-    const v = body.pause_outreach ? 1 : 0;
+    const v = !!body.pause_outreach;
     add('pause_outreach', v);
     updates.pause_outreach = v;
   }
@@ -323,20 +303,19 @@ export async function PATCH(req: NextRequest) {
   }
   if (notes !== undefined) { add('notes', notes); updates.notes = notes; }
 
-  if (cols.length === 0) {
+  if (Object.keys(setValues).length === 0) {
     return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
   }
 
-  cols.push("last_touch_at = datetime('now')");
+  setValues.last_touch_at = new Date().toISOString();
 
-  const db = getDb();
-  const before = db.prepare('SELECT id FROM leads WHERE id = ?').get(id) as { id: string } | undefined;
-  if (!before) {
+  const s = sql();
+  const beforeRows = await s`SELECT id FROM leads WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}` as unknown as { id: string }[];
+  if (beforeRows.length === 0) {
     return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
   }
 
-  params.push(id);
-  db.prepare(`UPDATE leads SET ${cols.join(', ')} WHERE id = ?`).run(...params);
+  await s`UPDATE leads SET ${s(setValues)} WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}`;
 
   if (status) {
     await updateLeadStatus(id, status);
@@ -351,8 +330,8 @@ export async function PATCH(req: NextRequest) {
     detail: { updates },
   });
 
-  const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(id);
-  return NextResponse.json({ ok: true, lead });
+  const leadRows = await s`SELECT * FROM leads WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}`;
+  return NextResponse.json({ ok: true, lead: leadRows[0] });
 }
 
 export async function DELETE(req: NextRequest) {
@@ -366,19 +345,17 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'id required' }, { status: 400 });
   }
 
-  const db = getDb();
-  const lead = db.prepare('SELECT id FROM leads WHERE id = ?').get(id) as { id: string } | undefined;
-  if (!lead) {
+  const s = sql();
+  const leadRows = await s`SELECT id FROM leads WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}` as unknown as { id: string }[];
+  if (leadRows.length === 0) {
     return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
   }
 
-  const tx = db.transaction(() => {
-    db.prepare("DELETE FROM seed_registry WHERE table_name = 'sequences' AND record_id IN (SELECT id FROM sequences WHERE lead_id = ?)").run(id);
-    db.prepare('DELETE FROM sequences WHERE lead_id = ?').run(id);
-    db.prepare('DELETE FROM leads WHERE id = ?').run(id);
-    db.prepare("DELETE FROM seed_registry WHERE table_name = 'leads' AND record_id = ?").run(id);
+  // No seed_registry table in Supabase — just remove dependent sequences then the lead.
+  await s.begin(async (tx) => {
+    await tx`DELETE FROM sequences WHERE lead_id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}`;
+    await tx`DELETE FROM leads WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}`;
   });
-  tx();
 
   writebackLeadDelete(id);
   await logAudit({

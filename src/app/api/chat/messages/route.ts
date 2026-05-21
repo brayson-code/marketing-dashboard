@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
 import { sendAgentMessage } from '@/lib/command';
 import { requireApiEditor, requireApiUser } from '@/lib/api-auth';
 import { getAgentIds } from '@/lib/agent-config';
@@ -16,7 +16,7 @@ interface MessageRow {
   to_agent: string | null;
   content: string;
   message_type: string;
-  metadata: string | null;
+  metadata: Record<string, unknown> | null;
   created_at: number;
 }
 
@@ -24,26 +24,29 @@ export async function GET(req: NextRequest) {
   const auth = requireApiUser(req as Request);
   if (auth) return auth;
   try {
-    const db = getDb();
+    const s = sql();
     const { searchParams } = req.nextUrl;
 
     const conversation_id = searchParams.get('conversation_id');
     const limit = Number(searchParams.get('limit')) || 50;
     const since = searchParams.get('since');
 
-    let sql = 'SELECT * FROM messages WHERE 1=1';
-    const params: unknown[] = [];
+    // created_at is timestamptz; expose epoch seconds for back-compat.
+    // `since` is an epoch-seconds cursor from the client.
+    const messages = await s`
+      SELECT id, conversation_id, from_agent, to_agent, content, message_type, metadata, read_at,
+             EXTRACT(EPOCH FROM created_at)::bigint as created_at
+      FROM messages
+      WHERE tenant_id = ${DEFAULT_TENANT_ID}
+      ${conversation_id ? s`AND conversation_id = ${conversation_id}` : s``}
+      ${since ? s`AND created_at > to_timestamp(${Number(since)})` : s``}
+      ORDER BY created_at ASC
+      LIMIT ${limit}
+    ` as unknown as MessageRow[];
 
-    if (conversation_id) { sql += ' AND conversation_id = ?'; params.push(conversation_id); }
-    if (since) { sql += ' AND created_at > ?'; params.push(Number(since)); }
-
-    sql += ' ORDER BY created_at ASC LIMIT ?';
-    params.push(limit);
-
-    const messages = db.prepare(sql).all(...params) as MessageRow[];
     const parsed = messages.map(m => ({
       ...m,
-      metadata: m.metadata ? JSON.parse(m.metadata) : null,
+      metadata: m.metadata ?? null,
     }));
 
     return NextResponse.json({ messages: parsed });
@@ -58,7 +61,7 @@ export async function POST(req: NextRequest) {
   if (auth) return auth;
   try {
     const actor = requireUser(req as Request);
-    const db = getDb();
+    const s = sql();
     const body = await req.json();
     const from = (typeof actor?.username === 'string' && actor.username.trim()) ? actor.username.trim() : 'operator';
     const to = body.to ? (body.to as string).trim() : null;
@@ -71,19 +74,17 @@ export async function POST(req: NextRequest) {
     }
 
     // Save the human message
-    const stmt = db.prepare(`
-      INSERT INTO messages (conversation_id, from_agent, to_agent, content, message_type, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
-    const now = Math.floor(Date.now() / 1000);
-    const result = stmt.run(conversation_id, from, to, content, message_type, now);
-    const messageId = result.lastInsertRowid as number;
-
-    const created = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId) as MessageRow | undefined;
+    const insertRows = await s`
+      INSERT INTO messages (tenant_id, conversation_id, from_agent, to_agent, content, message_type)
+      VALUES (${DEFAULT_TENANT_ID}, ${conversation_id}, ${from}, ${to}, ${content}, ${message_type})
+      RETURNING id, conversation_id, from_agent, to_agent, content, message_type, metadata,
+                EXTRACT(EPOCH FROM created_at)::bigint as created_at
+    ` as unknown as MessageRow[];
+    const created = insertRows[0];
     if (!created) {
       return NextResponse.json({ error: 'Failed to load created message' }, { status: 500 });
     }
-    const parsedMessage = { ...created, metadata: null };
+    const parsedMessage = { ...created, metadata: created.metadata ?? null };
 
     await logAudit({
       actor,
@@ -95,13 +96,13 @@ export async function POST(req: NextRequest) {
     // If recipient is a known agent, forward via gateway (async, non-blocking)
     if (to && getAgentIds().includes(to) && body.forward !== false) {
       // Fire-and-forget: forward to agent, save response when it comes back
-      forwardToAgent(db, to, content, conversation_id, from).catch(err => {
+      forwardToAgent(to, content, conversation_id, from).catch(err => {
         console.error(`Failed to forward to ${to}:`, err);
         // Save error as system message
-        db.prepare(`
-          INSERT INTO messages (conversation_id, from_agent, to_agent, content, message_type, created_at)
-          VALUES (?, 'system', ?, ?, 'system', ?)
-        `).run(conversation_id, from, `Failed to reach ${to}: ${(err as Error).message?.slice(0, 200)}`, Math.floor(Date.now() / 1000));
+        s`
+          INSERT INTO messages (tenant_id, conversation_id, from_agent, to_agent, content, message_type)
+          VALUES (${DEFAULT_TENANT_ID}, ${conversation_id}, 'system', ${from}, ${`Failed to reach ${to}: ${(err as Error).message?.slice(0, 200)}`}, 'system')
+        `.catch(() => {});
       });
     }
 
@@ -113,7 +114,6 @@ export async function POST(req: NextRequest) {
 }
 
 async function forwardToAgent(
-  db: ReturnType<typeof getDb>,
   agentId: string,
   content: string,
   conversationId: string,
@@ -122,9 +122,9 @@ async function forwardToAgent(
   const { response } = await sendAgentMessage(agentId, `Message from ${from}: ${content}`);
 
   if (response) {
-    db.prepare(`
-      INSERT INTO messages (conversation_id, from_agent, to_agent, content, message_type, created_at)
-      VALUES (?, ?, ?, ?, 'text', ?)
-    `).run(conversationId, agentId, from, response, Math.floor(Date.now() / 1000));
+    await sql()`
+      INSERT INTO messages (tenant_id, conversation_id, from_agent, to_agent, content, message_type)
+      VALUES (${DEFAULT_TENANT_ID}, ${conversationId}, ${agentId}, ${from}, ${response}, 'text')
+    `;
   }
 }

@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
-import { isRealMode } from '@/lib/seed-filter';
+import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
 import { requireApiEditor, requireApiUser } from '@/lib/api-auth';
 import { requireUser } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
 
-interface Notification {
+interface NotificationRow {
   id: number;
   type: string;
-  title: string;
-  body: string | null;
+  severity: string;
+  title: string | null;
+  message: string;
   read: boolean;
-  data: unknown;
+  data: Record<string, unknown> | null;
   created_at: string;
 }
 
@@ -19,27 +19,26 @@ export async function GET(req: NextRequest) {
   const auth = requireApiUser(req as Request);
   if (auth) return auth;
   const { searchParams } = req.nextUrl;
-  const db = getDb();
-  const excludeSeed = isRealMode(req);
+  const s = sql();
 
-  let sql = 'SELECT * FROM notifications WHERE 1=1';
-  const params: unknown[] = [];
+  // Note: seed filtering is a no-op (no seed_registry table in Supabase).
+  const unreadOnly = searchParams.get('unread') === 'true';
+  const type = searchParams.get('type') || null;
+  const limit = Number(searchParams.get('limit')) || 50;
 
-  if (searchParams.get('unread') === 'true') { sql += ' AND read = 0'; }
-  if (searchParams.get('type')) { sql += ' AND type = ?'; params.push(searchParams.get('type')); }
+  const rows = await s`
+    SELECT * FROM notifications
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    ${unreadOnly ? s`AND read = false` : s``}
+    ${type ? s`AND type = ${type}` : s``}
+    ORDER BY created_at DESC LIMIT ${limit}
+  ` as unknown as NotificationRow[];
 
-  if (excludeSeed) {
-    sql += ` AND NOT EXISTS (SELECT 1 FROM seed_registry sr WHERE sr.table_name = 'notifications' AND sr.record_id = CAST(id AS TEXT))`;
-  }
-
-  sql += ' ORDER BY created_at DESC LIMIT ?';
-  params.push(Number(searchParams.get('limit')) || 50);
-
-  const rows = db.prepare(sql).all(...params) as (Omit<Notification, 'data' | 'read'> & { data: string | null; read: number })[];
+  // jsonb `data` comes back already parsed; `read` is a real boolean.
   const notifications = rows.map(r => ({
     ...r,
-    read: r.read === 1,
-    data: r.data ? JSON.parse(r.data) : null,
+    read: r.read === true,
+    data: r.data ?? null,
   }));
 
   return NextResponse.json(notifications);
@@ -50,10 +49,10 @@ export async function PATCH(req: NextRequest) {
   if (auth) return auth;
   const actor = requireUser(req as Request);
   const body = await req.json();
-  const db = getDb();
+  const s = sql();
 
   if (body.mark_all_read) {
-    db.prepare('UPDATE notifications SET read = 1 WHERE read = 0').run();
+    await s`UPDATE notifications SET read = true WHERE tenant_id = ${DEFAULT_TENANT_ID} AND read = false`;
     await logAudit({
       actor,
       action: 'notifications.mark_all_read',
@@ -64,7 +63,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   if (body.id) {
-    db.prepare('UPDATE notifications SET read = 1 WHERE id = ?').run(body.id);
+    await s`UPDATE notifications SET read = true WHERE id = ${body.id} AND tenant_id = ${DEFAULT_TENANT_ID}`;
     await logAudit({
       actor,
       action: 'notifications.mark_read',

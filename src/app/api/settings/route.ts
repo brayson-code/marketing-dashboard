@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getDb, getDbPath } from '@/lib/db';
-import { getSeedCount } from '@/lib/queries';
-import fs from 'node:fs';
+import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
 import { requireApiUser } from '@/lib/api-auth';
+
 const TABLE_NAMES = [
   'content_posts',
   'leads',
@@ -15,43 +14,47 @@ const TABLE_NAMES = [
   'daily_metrics',
   'activity_log',
   'notifications',
-];
+] as const;
 
 export async function GET(request: Request) {
   const auth = requireApiUser(request as Request);
   if (auth) return auth;
   try {
-    const db = getDb();
+    const s = sql();
 
-    // Get DB file size
+    // Total DB size (whole Postgres database), reported in MB.
     let db_size_mb = 0;
     try {
-      const stat = fs.statSync(getDbPath());
-      db_size_mb = stat.size / (1024 * 1024);
+      const sizeRows = await s`SELECT pg_database_size(current_database()) AS bytes`;
+      db_size_mb = Number(sizeRows[0]?.bytes ?? 0) / (1024 * 1024);
     } catch {
-      // file might not exist yet
+      // size unavailable
     }
 
-    // Get row counts for each table
-    const tables = TABLE_NAMES.map((name) => {
-      try {
-        const row = db.prepare(`SELECT COUNT(*) as c FROM ${name}`).get() as { c: number };
-        return { name, count: row?.c ?? 0 };
-      } catch {
-        return { name, count: 0 };
-      }
-    });
+    // Per-tenant row counts for each table.
+    const tables = await Promise.all(
+      TABLE_NAMES.map(async (name) => {
+        try {
+          const rows = await s`
+            SELECT COUNT(*) as c FROM ${s(name)} WHERE tenant_id = ${DEFAULT_TENANT_ID}
+          `;
+          return { name, count: Number(rows[0]?.c ?? 0) };
+        } catch {
+          return { name, count: 0 };
+        }
+      }),
+    );
 
-    const seed_count = await getSeedCount();
+    // No seed_registry table in Supabase — seed concept is a no-op.
+    const seed_count = 0;
 
     return NextResponse.json({
       db_size_mb,
       tables,
-      last_sync: null, // could track this in a metadata table
+      last_sync: null,
       seed_count,
     });
   } catch {
     return NextResponse.json({ error: 'Failed to get settings' }, { status: 500 });
   }
 }
-

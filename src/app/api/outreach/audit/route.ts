@@ -1,19 +1,19 @@
 import { NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
 import { requireApiUser } from '@/lib/api-auth';
 
 export async function GET(request: Request) {
   const auth = requireApiUser(request);
   if (auth) return auth;
   try {
-    const db = getDb();
-    const rows = db.prepare(
-      `SELECT id, ts, action, detail, result
-       FROM activity_log
-       WHERE action IN ('outreach_paused', 'outreach_resumed')
-       ORDER BY ts DESC
-       LIMIT 50`
-    ).all();
+    const rows = await sql()`
+      SELECT id, ts, action, detail, result
+      FROM activity_log
+      WHERE tenant_id = ${DEFAULT_TENANT_ID}
+        AND action IN ('outreach_paused', 'outreach_resumed')
+      ORDER BY ts DESC
+      LIMIT 50
+    `;
 
     return NextResponse.json({ history: rows });
   } catch (error) {

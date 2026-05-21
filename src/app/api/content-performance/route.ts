@@ -1,47 +1,41 @@
 import { NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
 import { requireApiUser } from '@/lib/api-auth';
 
 export async function GET(request: Request) {
   const auth = requireApiUser(request);
   if (auth) return auth;
   try {
-    const db = getDb();
+    const s = sql();
 
-    const total = (db.prepare(
-      `SELECT COUNT(*) as c FROM content_posts`
-    ).get() as { c: number })?.c ?? 0;
+    const [
+      totalRow, draftRow, pendingRow, readyRow, publishedRow,
+      published30Row, impressions30Row, avgEngagementRow,
+    ] = await Promise.all([
+      s`SELECT COUNT(*) as c FROM content_posts WHERE tenant_id = ${DEFAULT_TENANT_ID}`,
+      s`SELECT COUNT(*) as c FROM content_posts WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'draft'`,
+      s`SELECT COUNT(*) as c FROM content_posts WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'pending_approval'`,
+      s`SELECT COUNT(*) as c FROM content_posts WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'ready'`,
+      s`SELECT COUNT(*) as c FROM content_posts WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'published'`,
+      s`SELECT COUNT(*) as c FROM content_posts
+        WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'published'
+          AND published_at::date >= (now() - interval '30 days')::date`,
+      s`SELECT SUM(impressions) as v FROM content_posts
+        WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'published'
+          AND published_at::date >= (now() - interval '30 days')::date`,
+      s`SELECT AVG(engagement_rate) as v FROM content_posts
+        WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'published'
+          AND published_at::date >= (now() - interval '30 days')::date`,
+    ]);
 
-    const draft = (db.prepare(
-      `SELECT COUNT(*) as c FROM content_posts WHERE status = 'draft'`
-    ).get() as { c: number })?.c ?? 0;
-
-    const pending = (db.prepare(
-      `SELECT COUNT(*) as c FROM content_posts WHERE status = 'pending_approval'`
-    ).get() as { c: number })?.c ?? 0;
-
-    const ready = (db.prepare(
-      `SELECT COUNT(*) as c FROM content_posts WHERE status = 'ready'`
-    ).get() as { c: number })?.c ?? 0;
-
-    const published = (db.prepare(
-      `SELECT COUNT(*) as c FROM content_posts WHERE status = 'published'`
-    ).get() as { c: number })?.c ?? 0;
-
-    const published30 = (db.prepare(
-      `SELECT COUNT(*) as c FROM content_posts
-       WHERE status = 'published' AND date(published_at) >= date('now', '-30 days')`
-    ).get() as { c: number })?.c ?? 0;
-
-    const impressions30 = (db.prepare(
-      `SELECT SUM(impressions) as v FROM content_posts
-       WHERE status = 'published' AND date(published_at) >= date('now', '-30 days')`
-    ).get() as { v: number | null })?.v ?? 0;
-
-    const avgEngagement = (db.prepare(
-      `SELECT AVG(engagement_rate) as v FROM content_posts
-       WHERE status = 'published' AND date(published_at) >= date('now', '-30 days')`
-    ).get() as { v: number | null })?.v ?? null;
+    const total = Number(totalRow[0]?.c ?? 0);
+    const draft = Number(draftRow[0]?.c ?? 0);
+    const pending = Number(pendingRow[0]?.c ?? 0);
+    const ready = Number(readyRow[0]?.c ?? 0);
+    const published = Number(publishedRow[0]?.c ?? 0);
+    const published30 = Number(published30Row[0]?.c ?? 0);
+    const impressions30 = Number(impressions30Row[0]?.v ?? 0);
+    const avgEngagement = avgEngagementRow[0]?.v != null ? Number(avgEngagementRow[0].v) : null;
 
     const approvalRate = total > 0 ? (ready + published) / total : 0;
 

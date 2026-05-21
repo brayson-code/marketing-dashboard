@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { sql, jsonb, DEFAULT_TENANT_ID } from '@/lib/db/client';
 import { sendAgentMessage, sendOrchestratorMessage } from '@/lib/command';
 import { requireApiAdmin } from '@/lib/api-auth';
 import { requireAdmin } from '@/lib/auth';
@@ -17,7 +17,7 @@ interface MessageRow {
   to_agent: string | null;
   content: string;
   message_type: 'text' | 'system';
-  metadata: string | null;
+  metadata: Record<string, unknown> | null;
   read_at: number | null;
   created_at: number;
 }
@@ -53,21 +53,22 @@ export async function GET(request: NextRequest) {
     const fromAgent = request.nextUrl.searchParams.get('from_agent') || undefined;
     const toAgent = request.nextUrl.searchParams.get('to_agent') || undefined;
     const limit = Math.min(200, Math.max(1, Number(request.nextUrl.searchParams.get('limit') || 100)));
-    const db = getDb();
+    const s = sql();
     const agents = getAgentIds();
 
     if (listOnly) {
       const pattern = mode === 'agent_bridge' ? 'mc:a2a:%' : 'mc:orchestrator';
-      const rows = db.prepare(
-        `SELECT conversation_id, MAX(created_at) as last_message_at, COUNT(*) as message_count
-         FROM messages
-         WHERE conversation_id LIKE ?
-         GROUP BY conversation_id
-         ORDER BY last_message_at DESC
-         LIMIT 100`,
-      ).all(pattern) as ConversationRow[];
+      const rows = await s`
+        SELECT conversation_id, EXTRACT(EPOCH FROM MAX(created_at))::bigint as last_message_at, COUNT(*) as message_count
+        FROM messages
+        WHERE tenant_id = ${DEFAULT_TENANT_ID} AND conversation_id LIKE ${pattern}
+        GROUP BY conversation_id
+        ORDER BY last_message_at DESC
+        LIMIT 100
+      ` as unknown as ConversationRow[];
       const conversations = rows.map((row) => ({
         ...row,
+        message_count: Number(row.message_count),
         ...(parseBridgeConversation(row.conversation_id) || {}),
       }));
       return NextResponse.json({ conversations, agents: agents });
@@ -79,17 +80,18 @@ export async function GET(request: NextRequest) {
       isAgentId(toAgent, agents) ? toAgent : undefined,
     );
 
-    const rows = db.prepare(
-      `SELECT id, conversation_id, from_agent, to_agent, content, message_type, metadata, read_at, created_at
-       FROM messages
-       WHERE conversation_id = ?
-       ORDER BY created_at ASC
-       LIMIT ?`,
-    ).all(conversationId, limit) as MessageRow[];
+    const rows = await s`
+      SELECT id, conversation_id, from_agent, to_agent, content, message_type, metadata, read_at,
+             EXTRACT(EPOCH FROM created_at)::bigint as created_at
+      FROM messages
+      WHERE conversation_id = ${conversationId} AND tenant_id = ${DEFAULT_TENANT_ID}
+      ORDER BY created_at ASC
+      LIMIT ${limit}
+    ` as unknown as MessageRow[];
 
     const messages = rows.map((row) => ({
       ...row,
-      metadata: row.metadata ? JSON.parse(row.metadata) : null,
+      metadata: row.metadata ?? null,
     }));
 
     return NextResponse.json({ conversation_id: conversationId, messages, agents: agents });
@@ -129,19 +131,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const db = getDb();
+    const s = sql();
     const now = Math.floor(Date.now() / 1000);
     const conversationId = body.conversation_id || toConversationId(mode, fromAgent, toAgent);
-    const actorRateKey = `%"source":"mission-control"%`;
 
-    const last = db.prepare(
-      `SELECT created_at
-       FROM messages
-       WHERE from_agent = ? AND metadata LIKE ?
-       ORDER BY created_at DESC
-       LIMIT 1`,
-    ).get(actor.username, actorRateKey) as { created_at?: number } | undefined;
-    const lastTs = Number(last?.created_at ?? 0);
+    // metadata is jsonb; match on the `source` key instead of a LIKE on JSON text.
+    const lastRows = await s`
+      SELECT EXTRACT(EPOCH FROM created_at)::bigint as created_at
+      FROM messages
+      WHERE tenant_id = ${DEFAULT_TENANT_ID} AND from_agent = ${actor.username}
+        AND metadata->>'source' = 'mission-control'
+      ORDER BY created_at DESC
+      LIMIT 1
+    ` as unknown as { created_at?: number }[];
+    const lastTs = Number(lastRows[0]?.created_at ?? 0);
     const cooldownSec = 3;
     if (lastTs > 0 && now - lastTs < cooldownSec) {
       return NextResponse.json(
@@ -152,12 +155,14 @@ export async function POST(request: NextRequest) {
 
     const windowSec = 300;
     const maxPerWindow = 30;
-    const recentCountRow = db.prepare(
-      `SELECT COUNT(*) as c
-       FROM messages
-       WHERE from_agent = ? AND metadata LIKE ? AND created_at >= ?`,
-    ).get(actor.username, actorRateKey, now - windowSec) as { c?: number } | undefined;
-    const recentCount = Number(recentCountRow?.c ?? 0);
+    const recentCountRows = await s`
+      SELECT COUNT(*) as c
+      FROM messages
+      WHERE tenant_id = ${DEFAULT_TENANT_ID} AND from_agent = ${actor.username}
+        AND metadata->>'source' = 'mission-control'
+        AND created_at >= to_timestamp(${now - windowSec})
+    ` as unknown as { c?: string }[];
+    const recentCount = Number(recentCountRows[0]?.c ?? 0);
     if (recentCount >= maxPerWindow) {
       return NextResponse.json(
         { error: 'Rate limit exceeded for mission-control sends. Try again in a few minutes.' },
@@ -165,18 +170,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const metadata = JSON.stringify({
+    const metadata = {
       source: 'mission-control',
       mode,
       actor: actor.username,
       from_agent: fromAgent ?? null,
       to_agent: toAgent ?? null,
-    });
+    };
 
-    db.prepare(
-      `INSERT INTO messages (conversation_id, from_agent, to_agent, content, message_type, metadata, created_at)
-       VALUES (?, ?, ?, ?, 'text', ?, ?)`,
-    ).run(conversationId, actor.username, mode === 'agent_bridge' ? toAgent : 'orchestrator', content, metadata, now);
+    await s`
+      INSERT INTO messages (tenant_id, conversation_id, from_agent, to_agent, content, message_type, metadata)
+      VALUES (
+        ${DEFAULT_TENANT_ID}, ${conversationId}, ${actor.username},
+        ${mode === 'agent_bridge' ? (toAgent ?? null) : 'orchestrator'}, ${content}, 'text', ${jsonb(metadata)}
+      )
+    `;
 
     let responseText = '';
     if (mode === 'orchestrator') {
@@ -189,17 +197,14 @@ export async function POST(request: NextRequest) {
     }
 
     if (responseText) {
-      db.prepare(
-        `INSERT INTO messages (conversation_id, from_agent, to_agent, content, message_type, metadata, created_at)
-         VALUES (?, ?, ?, ?, 'text', ?, ?)`,
-      ).run(
-        conversationId,
-        mode === 'orchestrator' ? 'orchestrator' : (toAgent as string),
-        actor.username,
-        responseText,
-        metadata,
-        Math.floor(Date.now() / 1000),
-      );
+      await s`
+        INSERT INTO messages (tenant_id, conversation_id, from_agent, to_agent, content, message_type, metadata)
+        VALUES (
+          ${DEFAULT_TENANT_ID}, ${conversationId},
+          ${mode === 'orchestrator' ? 'orchestrator' : (toAgent as string)}, ${actor.username},
+          ${responseText}, 'text', ${jsonb(metadata)}
+        )
+      `;
     }
 
     await logAudit({

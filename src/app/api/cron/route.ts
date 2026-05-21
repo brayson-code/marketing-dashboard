@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { sql, jsonb, DEFAULT_TENANT_ID } from '@/lib/db/client';
 import { promises as fs } from 'node:fs';
 import fsSync from 'node:fs';
 import path from 'node:path';
@@ -37,7 +37,7 @@ export async function POST(request: Request) {
     const instance = getInstance(getInstanceId(request));
     const { cronDir } = resolveOpenClawPaths(instance);
 
-    const db = getDb();
+    const s = sql();
     const jobsPath = path.join(cronDir, 'jobs.json');
     if (!fsSync.existsSync(jobsPath)) {
       return NextResponse.json({ notified: 0 });
@@ -52,28 +52,30 @@ export async function POST(request: Request) {
       const jobId = normalizeJobId(job.id ?? job.jobId);
       if (!jobId) continue;
 
-      // Check if we already notified for this run
+      // Check if we already notified for this run (jsonb `data` field match)
       const key = `cron:${instance.id}:${jobId}:${job.state.lastRunAtMs}`;
-      const existing = db
-        .prepare('SELECT 1 FROM notifications WHERE data LIKE ? LIMIT 1')
-        .get(`%${key}%`);
+      const existing = await s`
+        SELECT 1 FROM notifications
+        WHERE tenant_id = ${DEFAULT_TENANT_ID} AND data->>'key' = ${key}
+        LIMIT 1
+      `;
 
-      if (!existing) {
+      if (existing.length === 0) {
         const status = job.state.lastStatus === 'ok' ? 'info' : 'warning';
         const duration = job.state.lastDurationMs
           ? `${Math.round(job.state.lastDurationMs / 1000)}s`
           : '';
         const agentLabel = (job.agentId || 'unknown').charAt(0).toUpperCase() + (job.agentId || 'unknown').slice(1);
 
-        db.prepare(`
-          INSERT INTO notifications (type, severity, title, message, data)
-          VALUES ('cron', ?, ?, ?, ?)
-        `).run(
-          status,
-          `${agentLabel}: ${job.name} completed`,
-          `${job.skill || jobId} finished in ${duration}. Status: ${job.state.lastStatus || 'unknown'}`,
-          JSON.stringify({ key, job_id: jobId, agent_id: job.agentId, duration_ms: job.state.lastDurationMs }),
-        );
+        await s`
+          INSERT INTO notifications (tenant_id, type, severity, title, message, data)
+          VALUES (
+            ${DEFAULT_TENANT_ID}, 'cron', ${status},
+            ${`${agentLabel}: ${job.name} completed`},
+            ${`${job.skill || jobId} finished in ${duration}. Status: ${job.state.lastStatus || 'unknown'}`},
+            ${jsonb({ key, job_id: jobId, agent_id: job.agentId, duration_ms: job.state.lastDurationMs })}
+          )
+        `;
         notified++;
       }
     }

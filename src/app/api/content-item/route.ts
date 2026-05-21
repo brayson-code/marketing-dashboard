@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'node:fs';
 import path from 'node:path';
-import { getDb } from '@/lib/db';
+import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
 import { getHermesStateDir } from '@/lib/hermes-state';
 import { requireApiEditor, requireApiUser } from '@/lib/api-auth';
 
@@ -69,14 +69,6 @@ function computePreviewAndFull(item: QueueItem): { preview: string | null; full:
   };
 }
 
-function extractImageUrl(item: QueueItem): string | null {
-  const direct = (item.image_url as string | undefined) || (item.imageUrl as string | undefined);
-  if (direct) return String(direct);
-  const image = (item.image as { url?: string } | undefined) || null;
-  if (image?.url) return String(image.url);
-  return null;
-}
-
 function rowToQueueItem(row: Record<string, unknown>): QueueItem {
   const queueJson = row.queue_json as string | null | undefined;
   if (queueJson) {
@@ -108,8 +100,11 @@ export async function GET(req: NextRequest) {
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
   try {
-    const db = getDb();
-    const row = db.prepare('SELECT * FROM content_queue_items WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+    // content_queue_items does not exist in Supabase; read from content_posts.
+    const rows = await sql()`
+      SELECT * FROM content_posts WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    ` as unknown as Record<string, unknown>[];
+    const row = rows[0];
     if (row) return NextResponse.json({ item: rowToQueueItem(row) });
 
     // Fallback for legacy deployments not yet synced to DB queue
@@ -135,8 +130,12 @@ export async function PATCH(req: NextRequest) {
     const id = body?.id;
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
-    const db = getDb();
-    const row = db.prepare('SELECT * FROM content_queue_items WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+    const s = sql();
+    // content_queue_items does not exist in Supabase; back the queue with content_posts.
+    const rows = await s`
+      SELECT * FROM content_posts WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    ` as unknown as Record<string, unknown>[];
+    const row = rows[0];
     const current = row ? rowToQueueItem(row) : readQueueFile().find((x) => x?.id === id);
     if (!current) return NextResponse.json({ error: 'not found' }, { status: 404 });
 
@@ -157,52 +156,30 @@ export async function PATCH(req: NextRequest) {
     }
 
     const parsed = computePreviewAndFull(updated);
-    const imageUrl = extractImageUrl(updated);
     const platform = (updated.platform as string | undefined) || 'x';
     const format = (updated.format as string | undefined) || 'short_post';
     const pillar = (updated.pillar as number | null | undefined) ?? null;
     const status = (updated.status as string | undefined) || 'draft';
     const scheduledFor = (updated.scheduled_for as string | null | undefined) ?? null;
-    const queueJson = JSON.stringify(updated);
 
-    db.transaction(() => {
-      db.prepare(`
-        INSERT INTO content_queue_items (
-          id, platform, format, pillar, text_preview, full_content, image_url, status, scheduled_for, queue_json, source, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'dashboard', CURRENT_TIMESTAMP)
-        ON CONFLICT(id) DO UPDATE SET
-          platform = excluded.platform,
-          format = excluded.format,
-          pillar = excluded.pillar,
-          text_preview = excluded.text_preview,
-          full_content = excluded.full_content,
-          image_url = excluded.image_url,
-          status = excluded.status,
-          scheduled_for = excluded.scheduled_for,
-          queue_json = excluded.queue_json,
-          source = excluded.source,
-          updated_at = CURRENT_TIMESTAMP
-      `).run(
-        id, platform, format, pillar, parsed.preview, parsed.full, imageUrl, status, scheduledFor, queueJson,
-      );
-
-      db.prepare(`
-        INSERT INTO content_posts (
-          id, platform, format, pillar, text_preview, full_content, image_url, status, scheduled_for
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-          platform = excluded.platform,
-          format = excluded.format,
-          pillar = excluded.pillar,
-          text_preview = excluded.text_preview,
-          full_content = excluded.full_content,
-          image_url = excluded.image_url,
-          status = excluded.status,
-          scheduled_for = excluded.scheduled_for
-      `).run(
-        id, platform, format, pillar, parsed.preview, parsed.full, imageUrl, status, scheduledFor,
-      );
-    })();
+    // content_posts has no image_url / queue_json columns in Supabase, and the
+    // content_queue_items table does not exist; persist the canonical fields only.
+    await s`
+      INSERT INTO content_posts (
+        id, tenant_id, platform, format, pillar, text_preview, full_content, status, scheduled_for
+      ) VALUES (
+        ${id}, ${DEFAULT_TENANT_ID}, ${platform}, ${format}, ${pillar},
+        ${parsed.preview}, ${parsed.full}, ${status}, ${scheduledFor}
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        platform = excluded.platform,
+        format = excluded.format,
+        pillar = excluded.pillar,
+        text_preview = excluded.text_preview,
+        full_content = excluded.full_content,
+        status = excluded.status,
+        scheduled_for = excluded.scheduled_for
+    `;
 
     // Backward compatibility for workers still reading file queue.
     writeItemToQueueFile(updated);

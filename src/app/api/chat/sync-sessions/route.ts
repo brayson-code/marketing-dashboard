@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { sql, jsonb, DEFAULT_TENANT_ID } from '@/lib/db/client';
 import fs from 'fs';
 import path from 'path';
 import { requireApiUser } from '@/lib/api-auth';
@@ -30,7 +30,11 @@ interface SessionEntry {
 /**
  * POST /api/chat/sync-sessions
  * Reads JSONL session transcripts and imports user<->agent conversation turns
- * into the messages table. Tracks progress via session_sync table.
+ * into the messages table.
+ *
+ * NOTE: the `session_sync` offset-tracking table does not exist in Supabase, so
+ * incremental sync state is no longer persisted. Idempotency is preserved by
+ * comparing against the count of messages already stored for each conversation.
  */
 export async function POST(request: Request) {
   const auth = requireApiUser(request as Request);
@@ -39,7 +43,7 @@ export async function POST(request: Request) {
   const instance = getInstance(getInstanceId(request));
   const { agentsDir } = resolveOpenClawPaths(instance);
 
-  const db = getDb();
+  const s = sql();
   let imported = 0;
   let skipped = 0;
   const errors: string[] = [];
@@ -57,27 +61,15 @@ export async function POST(request: Request) {
       const conversationId = `session:${instance.id}:${agentId}:${sessionId}`;
 
       try {
-        // Check last sync position
-        const syncState = db
-          .prepare('SELECT last_offset FROM session_sync WHERE session_file = ?')
-          .get(filePath) as { last_offset: number } | undefined;
-
-        const lastOffset = syncState?.last_offset || 0;
-
-        // Read file and get current size
-        const stat = fs.statSync(filePath);
-        if (stat.size <= lastOffset) {
-          skipped++;
-          continue; // No new data
-        }
-
-        // Read new content from last offset (simple full read)
+        // Read file content
         const content = fs.readFileSync(filePath, 'utf-8');
         const lines = content.split('\n').filter((l) => l.trim());
 
-        const existingCount = db
-          .prepare('SELECT COUNT(*) as c FROM messages WHERE conversation_id = ?')
-          .get(conversationId) as { c: number };
+        const existingRows = await s`
+          SELECT COUNT(*) as c FROM messages
+          WHERE conversation_id = ${conversationId} AND tenant_id = ${DEFAULT_TENANT_ID}
+        ` as unknown as { c: string }[];
+        const existingCount = Number(existingRows[0]?.c ?? 0);
 
         // Parse all message entries
         const messageEntries: Array<{ role: string; text: string; timestamp: string }> = [];
@@ -118,64 +110,49 @@ export async function POST(request: Request) {
         }
 
         // Only import entries beyond what we already have
-        const toImport = messageEntries.slice(existingCount.c);
+        const toImport = messageEntries.slice(existingCount);
 
-        if (toImport.length > 0) {
-          const insert = db.prepare(`
-            INSERT INTO messages (conversation_id, from_agent, to_agent, content, message_type, metadata, created_at)
-            VALUES (?, ?, ?, ?, 'text', ?, ?)
-          `);
-
-          const insertMany = db.transaction((entries: typeof toImport) => {
-            for (const entry of entries) {
-              const ts = Math.floor(new Date(entry.timestamp).getTime() / 1000);
-              const fromAgent = entry.role === 'user' ? 'operator' : agentId;
-              const toAgent = entry.role === 'user' ? agentId : 'operator';
-              const metadata = JSON.stringify({
-                source: 'session_sync',
-                session_id: sessionId,
-                instance: instance.id,
-              });
-
-              insert.run(conversationId, fromAgent, toAgent, entry.text, metadata, ts);
-              imported++;
-            }
-          });
-
-          insertMany(toImport);
-
-          // Create notification for new session messages
-          const agentLabel = agentId.charAt(0).toUpperCase() + agentId.slice(1);
-          const firstUserMsg = toImport.find((e) => e.role === 'user');
-          let title = `${agentLabel} session activity`;
-
-          if (firstUserMsg) {
-            const cronMatch = firstUserMsg.text.match(/\\[cron:[\\w-]+\\s+([^\\]]+)\\]/);
-            if (cronMatch) title = `${agentLabel}: ${cronMatch[1]}`;
-            else if (firstUserMsg.text.startsWith('[Telegram')) title = `${agentLabel}: Telegram message`;
-          }
-
-          const lastResponse = [...toImport].reverse().find((e) => e.role === 'assistant');
-          const preview = lastResponse ? lastResponse.text.slice(0, 120) : `${toImport.length} new messages`;
-
-          db.prepare(`
-            INSERT INTO notifications (type, severity, title, message, data)
-            VALUES ('session', 'info', ?, ?, ?)
-          `).run(
-            title,
-            preview,
-            JSON.stringify({ conversation_id: conversationId, agent_id: agentId, count: toImport.length, instance: instance.id }),
-          );
+        if (toImport.length === 0) {
+          skipped++;
+          continue;
         }
 
-        // Update sync state
-        db.prepare(`
-          INSERT INTO session_sync (session_file, last_offset, last_synced_at)
-          VALUES (?, ?, unixepoch())
-          ON CONFLICT(session_file) DO UPDATE SET
-            last_offset = excluded.last_offset,
-            last_synced_at = excluded.last_synced_at
-        `).run(filePath, stat.size);
+        for (const entry of toImport) {
+          const ts = new Date(entry.timestamp).toISOString();
+          const fromAgent = entry.role === 'user' ? 'operator' : agentId;
+          const toAgent = entry.role === 'user' ? agentId : 'operator';
+          await s`
+            INSERT INTO messages (tenant_id, conversation_id, from_agent, to_agent, content, message_type, metadata, created_at)
+            VALUES (
+              ${DEFAULT_TENANT_ID}, ${conversationId}, ${fromAgent}, ${toAgent}, ${entry.text}, 'text',
+              ${jsonb({ source: 'session_sync', session_id: sessionId, instance: instance.id })},
+              ${ts}::timestamptz
+            )
+          `;
+          imported++;
+        }
+
+        // Create notification for new session messages
+        const agentLabel = agentId.charAt(0).toUpperCase() + agentId.slice(1);
+        const firstUserMsg = toImport.find((e) => e.role === 'user');
+        let title = `${agentLabel} session activity`;
+
+        if (firstUserMsg) {
+          const cronMatch = firstUserMsg.text.match(/\[cron:[\w-]+\s+([^\]]+)\]/);
+          if (cronMatch) title = `${agentLabel}: ${cronMatch[1]}`;
+          else if (firstUserMsg.text.startsWith('[Telegram')) title = `${agentLabel}: Telegram message`;
+        }
+
+        const lastResponse = [...toImport].reverse().find((e) => e.role === 'assistant');
+        const preview = lastResponse ? lastResponse.text.slice(0, 120) : `${toImport.length} new messages`;
+
+        await s`
+          INSERT INTO notifications (tenant_id, type, severity, title, message, data)
+          VALUES (
+            ${DEFAULT_TENANT_ID}, 'session', 'info', ${title}, ${preview},
+            ${jsonb({ conversation_id: conversationId, agent_id: agentId, count: toImport.length, instance: instance.id })}
+          )
+        `;
       } catch (err) {
         errors.push(`${instance.id}/${agentId}/${file}: ${err}`);
       }
@@ -192,15 +169,15 @@ export async function POST(request: Request) {
 }
 
 /**
- * GET /api/chat/sync-sessions — status of sync
+ * GET /api/chat/sync-sessions — status of sync.
+ * The session_sync table does not exist in Supabase, so there is no persisted
+ * sync state to return.
  */
 export async function GET(request: Request) {
   const auth = requireApiUser(request as Request);
   if (auth) return auth;
-  const db = getDb();
-  const rows = db.prepare('SELECT * FROM session_sync ORDER BY last_synced_at DESC').all();
-  return NextResponse.json({ sessions: rows });
+  // TODO(supabase-migration): session_sync table not yet modeled.
+  return NextResponse.json({ sessions: [] });
 }
 
 export const dynamic = 'force-dynamic';
-

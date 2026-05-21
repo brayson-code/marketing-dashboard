@@ -1,25 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
-import { seedFilter } from '@/lib/queries';
+import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
 import { requireApiUser } from '@/lib/api-auth';
 
 export async function GET(req: NextRequest) {
   const auth = requireApiUser(req as unknown as Request);
   if (auth) return auth;
   try {
-    const real = req.nextUrl.searchParams.get('real') === 'true';
-    const sfContent = real ? ` ${seedFilter('content_posts')}` : '';
-    const sfSeq = real ? ` ${seedFilter('sequences', 's.id')}` : '';
+    // Note: seed filtering is a no-op (no seed_registry table in Supabase).
+    const s = sql();
 
-    const db = getDb();
-
-    const content = db.prepare(
-      `SELECT id, platform, format, pillar, text_preview, full_content, status,
-              scheduled_for, published_at, created_at, image_url
-       FROM content_posts
-       WHERE status = 'pending_approval'${sfContent}
-       ORDER BY created_at ASC`
-    ).all() as {
+    // content_posts has no image_url column in Supabase; return null for compatibility.
+    const content = await s`
+      SELECT id, platform, format, pillar, text_preview, full_content, status,
+             scheduled_for, published_at, created_at, NULL AS image_url
+      FROM content_posts
+      WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'pending_approval'
+      ORDER BY created_at ASC
+    ` as unknown as {
       id: string;
       platform: string;
       format: string;
@@ -33,14 +30,14 @@ export async function GET(req: NextRequest) {
       image_url: string | null;
     }[];
 
-    const sequences = db.prepare(
-      `SELECT s.id, s.lead_id, s.sequence_name, s.step, s.subject, s.body, s.status,
-              s.tier, s.created_at, l.first_name, l.last_name, l.company
-       FROM sequences s
-       LEFT JOIN leads l ON s.lead_id = l.id
-       WHERE s.status = 'pending_approval'${sfSeq}
-       ORDER BY s.created_at ASC`
-    ).all() as {
+    const sequences = await s`
+      SELECT s.id, s.lead_id, s.sequence_name, s.step, s.subject, s.body, s.status,
+             s.tier, s.created_at, l.first_name, l.last_name, l.company
+      FROM sequences s
+      LEFT JOIN leads l ON s.lead_id = l.id AND l.tenant_id = ${DEFAULT_TENANT_ID}
+      WHERE s.tenant_id = ${DEFAULT_TENANT_ID} AND s.status = 'pending_approval'
+      ORDER BY s.created_at ASC
+    ` as unknown as {
       id: string;
       lead_id: string | null;
       sequence_name: string | null;

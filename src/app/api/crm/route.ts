@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
-import { maybeSeedExclude } from '@/lib/seed-filter';
+import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
 import { writebackLeadUpdate, writebackSequenceStatus } from '@/lib/writeback';
 import type { Lead, Sequence, FunnelStep } from '@/types';
 import { requireApiEditor, requireApiUser } from '@/lib/api-auth';
@@ -28,18 +27,20 @@ export async function GET(request: Request) {
   if (auth) return auth;
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
-  const db = getDb();
+  const s = sql();
 
   // Single lead detail
   if (id) {
-    const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(id) as Lead | undefined;
+    const leadRows = await s`SELECT * FROM leads WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}` as unknown as Lead[];
+    const lead = leadRows[0];
     if (!lead) {
       return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
     }
 
-    const sequences = db.prepare(
-      'SELECT * FROM sequences WHERE lead_id = ? ORDER BY step ASC, created_at DESC'
-    ).all(id) as Sequence[];
+    const sequences = await s`
+      SELECT * FROM sequences WHERE lead_id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+      ORDER BY step ASC, created_at DESC
+    ` as unknown as Sequence[];
 
     // Build timeline from sequences + activity
     const timeline: { id: number; type: string; description: string; timestamp: string }[] = [];
@@ -98,15 +99,17 @@ export async function GET(request: Request) {
     }
 
     // CRM activity log entries (status/notes updates, etc.)
-    const activityRows = db.prepare(
-      "SELECT ts, detail FROM activity_log WHERE action = 'crm' AND detail LIKE ? ORDER BY ts DESC LIMIT 50"
-    ).all(`lead:${id}%`) as { ts: string; detail: string }[];
+    const activityRows = await s`
+      SELECT ts, detail FROM activity_log
+      WHERE tenant_id = ${DEFAULT_TENANT_ID} AND action = 'crm' AND detail LIKE ${`lead:${id}%`}
+      ORDER BY ts DESC LIMIT 50
+    ` as unknown as { ts: string | Date; detail: string }[];
     for (const row of activityRows) {
       timeline.push({
         id: ++timelineId,
         type: 'crm',
         description: row.detail,
-        timestamp: row.ts,
+        timestamp: typeof row.ts === 'string' ? row.ts : new Date(row.ts).toISOString(),
       });
     }
 
@@ -116,54 +119,47 @@ export async function GET(request: Request) {
   }
 
   // List all leads with summary stats
+  // Note: seed filtering is a no-op (no seed_registry table in Supabase).
   const status = searchParams.get('status');
   const tier = searchParams.get('tier');
   const search = searchParams.get('search');
-  const seedExcludeLeads = maybeSeedExclude(request, 'leads');
+  const like = search ? `%${search}%` : null;
 
-  let sql = `SELECT * FROM leads WHERE 1=1${seedExcludeLeads}`;
-  const params: unknown[] = [];
+  const leads = await s`
+    SELECT * FROM leads
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    ${status ? s`AND status = ${status}` : s``}
+    ${tier ? s`AND tier = ${tier}` : s``}
+    ${like ? s`AND (first_name ILIKE ${like} OR last_name ILIKE ${like} OR company ILIKE ${like} OR email ILIKE ${like})` : s``}
+    ORDER BY score DESC NULLS LAST, created_at DESC
+  ` as unknown as Lead[];
 
-  if (status) { sql += ' AND status = ?'; params.push(status); }
-  if (tier) { sql += ' AND tier = ?'; params.push(tier); }
-  if (search) {
-    sql += ' AND (first_name LIKE ? OR last_name LIKE ? OR company LIKE ? OR email LIKE ?)';
-    const like = `%${search}%`;
-    params.push(like, like, like, like);
-  }
+  const stages = ["new", "validated", "approved", "contacted", "replied", "interested", "booked", "qualified", "rejected", "disqualified"];
+  const funnelRows = await s`
+    SELECT status, COUNT(*) as c FROM leads
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    GROUP BY status
+  ` as unknown as { status: string; c: string }[];
+  const funnelMap = new Map(funnelRows.map(r => [r.status, Number(r.c)]));
+  const funnel: FunnelStep[] = stages.map(name => ({ name, value: funnelMap.get(name) ?? 0 }));
 
-  sql += ' ORDER BY score DESC, created_at DESC';
-  const leads = db.prepare(sql).all(...params) as Lead[];
+  const [totalRows, avgScoreRows, tierBreakdownRows, pendingApprovalsRows, emailsSentRows, contactedRows, repliedRows] = await Promise.all([
+    s`SELECT COUNT(*) as c FROM leads WHERE tenant_id = ${DEFAULT_TENANT_ID}`,
+    s`SELECT AVG(score) as avg FROM leads WHERE tenant_id = ${DEFAULT_TENANT_ID} AND score IS NOT NULL`,
+    s`SELECT tier, COUNT(*) as c FROM leads WHERE tenant_id = ${DEFAULT_TENANT_ID} AND tier IS NOT NULL GROUP BY tier ORDER BY tier`,
+    s`SELECT COUNT(*) as c FROM sequences WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'pending_approval'`,
+    s`SELECT COUNT(*) as c FROM sequences WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'sent'`,
+    s`SELECT COUNT(*) as c FROM leads WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status IN ('contacted','replied','interested','booked','qualified')`,
+    s`SELECT COUNT(*) as c FROM leads WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status IN ('replied','interested','booked','qualified')`,
+  ]);
 
-  const stages = ["new", "validated", "approved", "contacted", "replied", "interested", "booked", "qualified", "rejected", "disqualified"]; 
-  const funnel: FunnelStep[] = stages.map(name => {
-    const row = db.prepare(`SELECT COUNT(*) as c FROM leads WHERE status = ?${seedExcludeLeads}`).get(name) as { c: number };
-    return { name, value: row?.c ?? 0 };
-  });
-
-  const totalLeads = (db.prepare(`SELECT COUNT(*) as c FROM leads WHERE 1=1${seedExcludeLeads}`).get() as { c: number })?.c ?? 0;
-  const avgScore = (db.prepare(`SELECT AVG(score) as avg FROM leads WHERE score IS NOT NULL${seedExcludeLeads}`).get() as { avg: number | null })?.avg ?? 0;
-  const tierBreakdown = db.prepare(
-    `SELECT tier, COUNT(*) as c FROM leads WHERE tier IS NOT NULL${seedExcludeLeads} GROUP BY tier ORDER BY tier`
-  ).all() as { tier: string; c: number }[];
-
-  // Sequence analytics
-  const seedExcludeSeqs = maybeSeedExclude(request, 'sequences');
-  const pendingApprovals = (db.prepare(
-    `SELECT COUNT(*) as c FROM sequences WHERE status = 'pending_approval'${seedExcludeSeqs}`
-  ).get() as { c: number })?.c ?? 0;
-
-  const emailsSent = (db.prepare(
-    `SELECT COUNT(*) as c FROM sequences WHERE status = 'sent'${seedExcludeSeqs}`
-  ).get() as { c: number })?.c ?? 0;
-
-  // Conversion rate: leads that replied or further / leads that were contacted
-  const contacted = (db.prepare(
-    `SELECT COUNT(*) as c FROM leads WHERE status IN ('contacted','replied','interested','booked','qualified')${seedExcludeLeads}`
-  ).get() as { c: number })?.c ?? 0;
-  const replied = (db.prepare(
-    `SELECT COUNT(*) as c FROM leads WHERE status IN ('replied','interested','booked','qualified')${seedExcludeLeads}`
-  ).get() as { c: number })?.c ?? 0;
+  const totalLeads = Number(totalRows[0]?.c ?? 0);
+  const avgScore = Number(avgScoreRows[0]?.avg ?? 0);
+  const tierBreakdown = (tierBreakdownRows as unknown as { tier: string; c: string }[]).map(r => ({ tier: r.tier, c: Number(r.c) }));
+  const pendingApprovals = Number(pendingApprovalsRows[0]?.c ?? 0);
+  const emailsSent = Number(emailsSentRows[0]?.c ?? 0);
+  const contacted = Number(contactedRows[0]?.c ?? 0);
+  const replied = Number(repliedRows[0]?.c ?? 0);
   const conversionRate = contacted > 0 ? Math.round((replied / contacted) * 100) : 0;
 
   return NextResponse.json({
@@ -192,7 +188,7 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'id required' }, { status: 400 });
     }
 
-    const db = getDb();
+    const s = sql();
 
     // Sequence update (approve/reject)
     if (type === "sequence") {
@@ -203,15 +199,19 @@ export async function PATCH(request: Request) {
       }
 
       if (nextStatus === "approved" || nextStatus === "queued") {
-        const lead = db.prepare(
-          "SELECT l.status as lead_status FROM sequences s LEFT JOIN leads l ON l.id = s.lead_id WHERE s.id = ?"
-        ).get(id) as { lead_status: string | null } | undefined;
+        const rows = await s`
+          SELECT l.status as lead_status
+          FROM sequences seq
+          LEFT JOIN leads l ON l.id = seq.lead_id AND l.tenant_id = ${DEFAULT_TENANT_ID}
+          WHERE seq.id = ${id} AND seq.tenant_id = ${DEFAULT_TENANT_ID}
+        ` as unknown as { lead_status: string | null }[];
+        const lead = rows[0];
         if (!lead || lead.lead_status !== LEAD_APPROVED_STATUS) {
           return NextResponse.json({ error: "Lead must be approved before outreach can be queued or approved" }, { status: 409 });
         }
       }
 
-      db.prepare("UPDATE sequences SET status = ? WHERE id = ?").run(nextStatus, id);
+      await s`UPDATE sequences SET status = ${nextStatus} WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}`;
       writebackSequenceStatus(id, nextStatus);
       await logAudit({
         actor,
@@ -223,10 +223,13 @@ export async function PATCH(request: Request) {
     }
 
     // Lead update
-    const allowed = ["status", "tier", "notes", "pause_outreach", "next_action_at"]; 
-    const cols: string[] = [];
-    const params: unknown[] = [];
-    const before = db.prepare('SELECT status, tier, notes, pause_outreach, next_action_at FROM leads WHERE id = ?').get(id) as Lead | undefined;
+    const allowed = ["status", "tier", "notes", "pause_outreach", "next_action_at"];
+    const setValues: Record<string, unknown> = {};
+    const beforeRows = await s`
+      SELECT status, tier, notes, pause_outreach, next_action_at FROM leads
+      WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    ` as unknown as Lead[];
+    const before = beforeRows[0];
 
     for (const key of allowed) {
       if (updates[key] !== undefined) {
@@ -236,23 +239,23 @@ export async function PATCH(request: Request) {
           }
         }
         if (key === "pause_outreach") {
-          cols.push(`${key} = ?`);
-          params.push(updates[key] ? 1 : 0);
+          setValues[key] = !!updates[key];
         } else {
-          cols.push(`${key} = ?`);
-          params.push(updates[key]);
+          setValues[key] = updates[key];
         }
       }
     }
 
-    if (cols.length === 0) {
+    if (Object.keys(setValues).length === 0) {
       return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
     }
 
-    cols.push("last_touch_at = datetime('now')");
-    params.push(id);
+    setValues.last_touch_at = new Date().toISOString();
 
-    db.prepare(`UPDATE leads SET ${cols.join(', ')} WHERE id = ?`).run(...params);
+    await s`
+      UPDATE leads SET ${s(setValues)}
+      WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    `;
 
     // Writeback to state file
     const writebackUpdates: Record<string, unknown> = {};
@@ -261,13 +264,14 @@ export async function PATCH(request: Request) {
     }
     writebackLeadUpdate(id, writebackUpdates);
 
-    const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(id);
+    const leadRows = await s`SELECT * FROM leads WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}`;
+    const lead = leadRows[0];
     if (before) {
       const changes: string[] = [];
       if (updates.status && before.status !== updates.status) changes.push(`status: ${before.status} -> ${updates.status}`);
       if (updates.tier && before.tier !== updates.tier) changes.push(`tier: ${before.tier ?? '—'} -> ${updates.tier}`);
       if (updates.notes !== undefined && before.notes !== updates.notes) changes.push('notes updated');
-      if (updates.pause_outreach !== undefined && before.pause_outreach !== updates.pause_outreach) {
+      if (updates.pause_outreach !== undefined && Boolean(before.pause_outreach) !== !!updates.pause_outreach) {
         changes.push(`outreach ${updates.pause_outreach ? 'paused' : 'resumed'}`);
       }
       if (updates.next_action_at !== undefined && before.next_action_at !== updates.next_action_at) {
@@ -277,14 +281,10 @@ export async function PATCH(request: Request) {
         changes.push('task completed');
       }
       if (changes.length > 0) {
-        db.prepare(
-          `INSERT INTO activity_log (ts, action, detail, result)
-           VALUES (datetime('now'), ?, ?, ?)`
-        ).run(
-          'crm',
-          `lead:${id} ${changes.join(', ')}`,
-          null,
-        );
+        await s`
+          INSERT INTO activity_log (tenant_id, ts, action, detail, result)
+          VALUES (${DEFAULT_TENANT_ID}, now(), 'crm', ${`lead:${id} ${changes.join(', ')}`}, NULL)
+        `;
       }
     }
     await logAudit({

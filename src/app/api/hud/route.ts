@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import { getDb } from '@/lib/db';
+import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
 import { getHermesStateDir } from '@/lib/hermes-state';
 import { requireApiUser } from '@/lib/api-auth';
 import { getInstance, resolveOpenClawPaths } from '@/lib/instances';
@@ -31,7 +31,7 @@ export async function GET(request: Request) {
     const instance = getInstance(getInstanceId(request));
     const { cronDir } = resolveOpenClawPaths(instance);
 
-    const db = getDb();
+    const s = sql();
 
     const sendingPausedPath = path.join(STATE_DIR, 'sending-paused.flag');
     const sending_paused = fs.existsSync(sendingPausedPath);
@@ -46,25 +46,17 @@ export async function GET(request: Request) {
       }
     }
 
-    const content_pending = db
-      .prepare("SELECT COUNT(*) as c FROM content_posts WHERE status = 'pending_approval'")
-      .get() as { c: number };
+    const [contentPendingRows, seqPendingRows, staleContentRows, staleSeqRows] = await Promise.all([
+      s`SELECT COUNT(*) as c FROM content_posts WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'pending_approval'`,
+      s`SELECT COUNT(*) as c FROM sequences WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'pending_approval'`,
+      s`SELECT COUNT(*) as c FROM content_posts WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'pending_approval' AND created_at < now() - interval '24 hours'`,
+      s`SELECT COUNT(*) as c FROM sequences WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'pending_approval' AND created_at < now() - interval '24 hours'`,
+    ]);
 
-    const seq_pending = db
-      .prepare("SELECT COUNT(*) as c FROM sequences WHERE status = 'pending_approval'")
-      .get() as { c: number };
-
-    const stale_content = db
-      .prepare(
-        "SELECT COUNT(*) as c FROM content_posts WHERE status = 'pending_approval' AND created_at < datetime('now', '-24 hours')",
-      )
-      .get() as { c: number };
-
-    const stale_sequences = db
-      .prepare(
-        "SELECT COUNT(*) as c FROM sequences WHERE status = 'pending_approval' AND created_at < datetime('now', '-24 hours')",
-      )
-      .get() as { c: number };
+    const content_pending = { c: Number(contentPendingRows[0]?.c ?? 0) };
+    const seq_pending = { c: Number(seqPendingRows[0]?.c ?? 0) };
+    const stale_content = { c: Number(staleContentRows[0]?.c ?? 0) };
+    const stale_sequences = { c: Number(staleSeqRows[0]?.c ?? 0) };
 
     let cron_total = 0;
     let cron_errors = 0;

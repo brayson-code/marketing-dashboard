@@ -1,26 +1,18 @@
 import { NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
 import { requireApiUser } from '@/lib/api-auth';
 
 export const dynamic = 'force-dynamic';
 
+// TODO(supabase-migration): the seed_registry table does not exist in Supabase.
+// The seed concept is a no-op now — nothing is tracked as seeded demo data — so
+// this endpoint always reports no seed data.
 export async function GET(request: Request) {
   const auth = requireApiUser(request as Request);
   if (auth) return auth;
-  const db = getDb();
-
-  const seedCount = (db.prepare(
-    'SELECT COUNT(*) as c FROM seed_registry'
-  ).get() as { c: number })?.c ?? 0;
-
-  // Per-table breakdown
-  const breakdown = db.prepare(
-    'SELECT table_name, COUNT(*) as c FROM seed_registry GROUP BY table_name ORDER BY c DESC'
-  ).all() as { table_name: string; c: number }[];
 
   return NextResponse.json({
-    has_seed_data: seedCount > 0,
-    seed_count: seedCount,
-    breakdown,
+    has_seed_data: false,
+    seed_count: 0,
+    breakdown: [],
   });
 }

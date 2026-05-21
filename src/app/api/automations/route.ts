@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
 import { getAgents, ACTION_TO_AGENT } from '@/lib/agent-config';
 import type { ApprovalItem, SkillExecution } from '@/types';
 import { requireApiUser } from '@/lib/api-auth';
@@ -123,14 +123,15 @@ export async function GET(request: Request) {
   const { cronDir } = resolveOpenClawPaths(instance);
   const cronJobsPath = path.join(cronDir, 'jobs.json');
   const cronRunsDir = path.join(cronDir, 'runs');
-  const db = getDb();
+  const s = sql();
 
-  const pendingEmails = db.prepare(
-    `SELECT s.id, s.subject, s.tier, s.status, s.created_at, l.first_name, l.last_name, l.company
-     FROM sequences s LEFT JOIN leads l ON s.lead_id = l.id
-     WHERE s.status = 'pending_approval'
-     ORDER BY s.created_at DESC LIMIT 20`
-  ).all() as { id: string; subject: string | null; tier: string | null; status: string; created_at: string; first_name: string | null; last_name: string | null; company: string | null }[];
+  const pendingEmails = await s`
+    SELECT seq.id, seq.subject, seq.tier, seq.status, seq.created_at, l.first_name, l.last_name, l.company
+    FROM sequences seq
+    LEFT JOIN leads l ON seq.lead_id = l.id AND l.tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE seq.tenant_id = ${DEFAULT_TENANT_ID} AND seq.status = 'pending_approval'
+    ORDER BY seq.created_at DESC LIMIT 20
+  ` as unknown as { id: string; subject: string | null; tier: string | null; status: string; created_at: string; first_name: string | null; last_name: string | null; company: string | null }[];
 
   const approvals: ApprovalItem[] = [
     ...pendingEmails.map(e => ({
@@ -144,19 +145,20 @@ export async function GET(request: Request) {
     })),
   ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-  const actionCounts = db.prepare(
-    `SELECT action, COUNT(*) as c, MAX(ts) as last_run
-     FROM activity_log
-     WHERE ts > datetime('now', '-30 days') AND action IS NOT NULL
-     GROUP BY action ORDER BY c DESC`
-  ).all() as { action: string; c: number; last_run: string }[];
+  const actionCounts = await s`
+    SELECT action, COUNT(*) as c, MAX(ts) as last_run
+    FROM activity_log
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+      AND ts > now() - interval '30 days' AND action IS NOT NULL
+    GROUP BY action ORDER BY c DESC
+  ` as unknown as { action: string; c: string; last_run: string }[];
 
   const skillExecutions: SkillExecution[] = actionCounts
     .filter(a => ACTION_TO_AGENT[a.action])
     .map(a => ({
       skill: ACTION_TO_AGENT[a.action].skill,
       agent: ACTION_TO_AGENT[a.action].agent,
-      count: a.c,
+      count: Number(a.c),
       last_run: a.last_run,
     }));
 
@@ -174,12 +176,13 @@ export async function GET(request: Request) {
     return (parseInt(timeA[1]) * 60 + parseInt(timeA[2])) - (parseInt(timeB[1]) * 60 + parseInt(timeB[2]));
   });
 
-  const today = new Date().toISOString().slice(0, 10);
-  const hourlyActivity = db.prepare(
-    `SELECT CAST(strftime('%H', ts) AS INTEGER) as hour, COUNT(*) as c
-     FROM activity_log WHERE date(ts) = ?
-     GROUP BY hour ORDER BY hour`
-  ).all(today) as { hour: number; c: number }[];
+  const hourlyActivityRows = await s`
+    SELECT CAST(EXTRACT(HOUR FROM ts) AS INTEGER) as hour, COUNT(*) as c
+    FROM activity_log
+    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND ts::date = now()::date
+    GROUP BY hour ORDER BY hour
+  ` as unknown as { hour: number; c: string }[];
+  const hourlyActivity = hourlyActivityRows.map((r) => ({ hour: Number(r.hour), c: Number(r.c) }));
 
   const experiment = computeExperimentInsights(cronJobsPath, cronRunsDir);
 

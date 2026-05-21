@@ -447,6 +447,24 @@ export function deleteUser(userId: number): void {
   })();
 }
 
+/** Number of admins other than the given user. Used to guard "last admin" removal. */
+export function countOtherAdmins(excludingUserId: number): number {
+  ensureAuthTables();
+  const db = getDb();
+  const row = db
+    .prepare("SELECT COUNT(*) as c FROM users WHERE role = 'admin' AND id != ?")
+    .get(excludingUserId) as { c: number };
+  return row?.c ?? 0;
+}
+
+/** Returns a user's role, or null if the user does not exist. */
+export function getUserRole(userId: number): string | null {
+  ensureAuthTables();
+  const db = getDb();
+  const row = db.prepare('SELECT role FROM users WHERE id = ?').get(userId) as { role?: string } | undefined;
+  return row?.role ?? null;
+}
+
 export function getUserFromRequest(request: Request): User | null {
   const cookie = request.headers.get('cookie') || '';
   const match = cookie.match(/(?:^|;\s*)hermes-session=([^;]*)/);

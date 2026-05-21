@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireApiUser } from '@/lib/api-auth';
-import { getDb } from '@/lib/db';
+import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
 import { clampDays } from '@/lib/analytics';
 import { summarizeCycleTimes, percentImprovement } from '@/lib/benchmarks';
-import { maybeSeedExclude } from '@/lib/seed-filter';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,27 +20,23 @@ function toIsoOrNull(date: Date | null): string | null {
   return date ? date.toISOString() : null;
 }
 
-function queryCycleTimes(
-  request: Request,
+async function queryCycleTimes(
   startIso: string,
   endIso: string,
-): number[] {
-  const db = getDb();
-  const leadSeedFilter = maybeSeedExclude(request, 'leads', 'l.id');
-  const seqSeedFilter = maybeSeedExclude(request, 'sequences', 's.id');
-  const rows = db.prepare(
-    `
-      SELECT ((julianday(MIN(s.created_at)) - julianday(l.created_at)) * 24.0) AS cycle_hours
-      FROM leads l
-      JOIN sequences s ON s.lead_id = l.id
-      WHERE s.status IN ('approved', 'queued')
-        AND julianday(l.created_at) >= julianday(?)
-        AND julianday(l.created_at) < julianday(?)
-        ${leadSeedFilter}
-        ${seqSeedFilter}
-      GROUP BY l.id, l.created_at
-    `,
-  ).all(startIso, endIso) as CycleTimeRow[];
+): Promise<number[]> {
+  // Note: seed filtering is a no-op (no seed_registry table in Supabase).
+  // Cycle hours: difference between earliest qualifying sequence and the lead
+  // creation time, expressed in hours (timestamptz epoch math).
+  const rows = await sql()`
+    SELECT (EXTRACT(EPOCH FROM (MIN(s.created_at) - l.created_at)) / 3600.0) AS cycle_hours
+    FROM leads l
+    JOIN sequences s ON s.lead_id = l.id AND s.tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE l.tenant_id = ${DEFAULT_TENANT_ID}
+      AND s.status IN ('approved', 'queued')
+      AND l.created_at >= ${startIso}::timestamptz
+      AND l.created_at < ${endIso}::timestamptz
+    GROUP BY l.id, l.created_at
+  ` as unknown as CycleTimeRow[];
 
   return rows
     .map((r) => Number(r.cycle_hours))
@@ -81,8 +76,8 @@ export async function GET(req: NextRequest) {
     beforeStart = new Date(afterStart.getTime() - dMs);
   }
 
-  const beforeValues = queryCycleTimes(req as Request, beforeStart.toISOString(), beforeEnd.toISOString());
-  const afterValues = queryCycleTimes(req as Request, afterStart.toISOString(), afterEnd.toISOString());
+  const beforeValues = await queryCycleTimes(beforeStart.toISOString(), beforeEnd.toISOString());
+  const afterValues = await queryCycleTimes(afterStart.toISOString(), afterEnd.toISOString());
 
   const beforeStats = summarizeCycleTimes(beforeValues.map((cycleHours) => ({ cycleHours })));
   const afterStats = summarizeCycleTimes(afterValues.map((cycleHours) => ({ cycleHours })));

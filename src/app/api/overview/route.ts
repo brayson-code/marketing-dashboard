@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOverviewStats, getAlerts, getActivityLog, getDailyMetrics } from '@/lib/queries';
-import { getDb } from '@/lib/db';
+import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
 import { getAgents, ACTION_TO_AGENT } from '@/lib/agent-config';
 import { requireApiUser } from '@/lib/api-auth';
 
@@ -26,107 +26,100 @@ interface ActionItem {
   created_at: string;
 }
 
-function getAgentBriefs(excludeSeed: boolean): AgentBrief[] {
-  const db = getDb();
-  const today = new Date().toISOString().slice(0, 10);
+// Note: seed filtering is a no-op (no seed_registry table in Supabase).
+async function getAgentBriefs(): Promise<AgentBrief[]> {
+  const s = sql();
 
-  return getAgents().map((agent) => {
-    // Find actions mapped to this agent
-    const agentActions = Object.entries(ACTION_TO_AGENT)
-      .filter(([, v]) => v.agent === agent.id)
-      .map(([k]) => k);
+  return Promise.all(
+    getAgents().map(async (agent) => {
+      // Find actions mapped to this agent
+      const agentActions = Object.entries(ACTION_TO_AGENT)
+        .filter(([, v]) => v.agent === agent.id)
+        .map(([k]) => k);
 
-    const placeholders = agentActions.map(() => '?').join(',');
+      let actionsToday = 0;
+      let lastAction: string | undefined;
+      let lastActionAt: string | undefined;
 
-    let actionsToday = 0;
-    let lastAction: string | undefined;
-    let lastActionAt: string | undefined;
-
-    if (agentActions.length > 0) {
-      const sf = excludeSeed
-        ? ` AND NOT EXISTS (SELECT 1 FROM seed_registry sr WHERE sr.table_name = 'activity_log' AND sr.record_id = CAST(activity_log.id AS TEXT))`
-        : '';
-      const countRow = db.prepare(
-        `SELECT COUNT(*) as c FROM activity_log WHERE action IN (${placeholders}) AND date(ts) = ?${sf}`
-      ).get(...agentActions, today) as { c: number };
-      actionsToday = countRow?.c ?? 0;
-
-      const lastRow = db.prepare(
-        `SELECT action, detail, ts FROM activity_log WHERE action IN (${placeholders})${sf} ORDER BY ts DESC LIMIT 1`
-      ).get(...agentActions) as { action: string; detail: string; ts: string } | undefined;
-      if (lastRow) {
-        lastAction = lastRow.detail || lastRow.action;
-        lastActionAt = lastRow.ts;
+      if (agentActions.length > 0) {
+        const [countRows, lastRows] = await Promise.all([
+          s`SELECT COUNT(*) as c FROM activity_log
+            WHERE tenant_id = ${DEFAULT_TENANT_ID}
+              AND action IN ${s(agentActions)} AND ts::date = now()::date`,
+          s`SELECT action, detail, ts FROM activity_log
+            WHERE tenant_id = ${DEFAULT_TENANT_ID}
+              AND action IN ${s(agentActions)} ORDER BY ts DESC LIMIT 1`,
+        ]);
+        actionsToday = Number(countRows[0]?.c ?? 0);
+        const lastRow = lastRows[0] as unknown as { action: string; detail: string; ts: string } | undefined;
+        if (lastRow) {
+          lastAction = lastRow.detail || lastRow.action;
+          lastActionAt = typeof lastRow.ts === 'string' ? lastRow.ts : new Date(lastRow.ts).toISOString();
+        }
       }
-    }
 
-    // Determine status based on recent activity
-    let status = 'planned';
-    if (lastActionAt) {
-      const hoursSince = (Date.now() - new Date(lastActionAt).getTime()) / (1000 * 60 * 60);
-      if (hoursSince < 1) status = 'active';
-      else if (hoursSince < 24) status = 'idle';
-    }
-
-    // Find next scheduled job
-    const now = new Date();
-    const currentHour = now.getHours();
-    const currentMinute = now.getMinutes();
-    const currentTimeMinutes = currentHour * 60 + currentMinute;
-
-    let nextJob: string | undefined;
-    let nextJobTime: string | undefined;
-
-    for (const job of agent.cronJobs) {
-      // Parse schedule like "8:00 AM", "2:00 PM"
-      const match = job.schedule.match(/(\d+):(\d+)\s*(AM|PM)/i);
-      if (!match) continue;
-      let hours = parseInt(match[1]);
-      const minutes = parseInt(match[2]);
-      const ampm = match[3].toUpperCase();
-      if (ampm === 'PM' && hours < 12) hours += 12;
-      if (ampm === 'AM' && hours === 12) hours = 0;
-      const jobTimeMinutes = hours * 60 + minutes;
-
-      if (jobTimeMinutes > currentTimeMinutes) {
-        nextJob = job.label;
-        nextJobTime = job.schedule;
-        break;
+      // Determine status based on recent activity
+      let status = 'planned';
+      if (lastActionAt) {
+        const hoursSince = (Date.now() - new Date(lastActionAt).getTime()) / (1000 * 60 * 60);
+        if (hoursSince < 1) status = 'active';
+        else if (hoursSince < 24) status = 'idle';
       }
-    }
 
-    return {
-      id: agent.id,
-      name: agent.name,
-      emoji: agent.emoji,
-      status,
-      model: agent.model,
-      last_action: lastAction,
-      last_action_at: lastActionAt,
-      actions_today: actionsToday,
-      next_job: nextJob,
-      next_job_time: nextJobTime,
-    };
-  });
+      // Find next scheduled job
+      const now = new Date();
+      const currentHour = now.getHours();
+      const currentMinute = now.getMinutes();
+      const currentTimeMinutes = currentHour * 60 + currentMinute;
+
+      let nextJob: string | undefined;
+      let nextJobTime: string | undefined;
+
+      for (const job of agent.cronJobs) {
+        // Parse schedule like "8:00 AM", "2:00 PM"
+        const match = job.schedule.match(/(\d+):(\d+)\s*(AM|PM)/i);
+        if (!match) continue;
+        let hours = parseInt(match[1]);
+        const minutes = parseInt(match[2]);
+        const ampm = match[3].toUpperCase();
+        if (ampm === 'PM' && hours < 12) hours += 12;
+        if (ampm === 'AM' && hours === 12) hours = 0;
+        const jobTimeMinutes = hours * 60 + minutes;
+
+        if (jobTimeMinutes > currentTimeMinutes) {
+          nextJob = job.label;
+          nextJobTime = job.schedule;
+          break;
+        }
+      }
+
+      return {
+        id: agent.id,
+        name: agent.name,
+        emoji: agent.emoji,
+        status,
+        model: agent.model,
+        last_action: lastAction,
+        last_action_at: lastActionAt,
+        actions_today: actionsToday,
+        next_job: nextJob,
+        next_job_time: nextJobTime,
+      };
+    }),
+  );
 }
 
-function getActionItems(excludeSeed: boolean): ActionItem[] {
-  const db = getDb();
+// Note: seed filtering is a no-op (no seed_registry table in Supabase).
+async function getActionItems(): Promise<ActionItem[]> {
+  const s = sql();
   const items: ActionItem[] = [];
 
-  const sfContent = excludeSeed
-    ? `AND NOT EXISTS (SELECT 1 FROM seed_registry sr WHERE sr.table_name = 'content_posts' AND sr.record_id = CAST(id AS TEXT))`
-    : '';
-  const sfSeq = excludeSeed
-    ? `AND NOT EXISTS (SELECT 1 FROM seed_registry sr WHERE sr.table_name = 'sequences' AND sr.record_id = CAST(id AS TEXT))`
-    : '';
-
   // Pending content approvals
-  const contentPending = db.prepare(
-    `SELECT id, platform, text_preview, pillar, created_at FROM content_posts
-     WHERE status = 'pending_approval' ${sfContent}
-     ORDER BY created_at ASC`
-  ).all() as { id: string; platform: string; text_preview: string | null; pillar: number | null; created_at: string }[];
+  const contentPending = await s`
+    SELECT id, platform, text_preview, pillar, created_at FROM content_posts
+    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'pending_approval'
+    ORDER BY created_at ASC
+  ` as unknown as { id: string; platform: string; text_preview: string | null; pillar: number | null; created_at: string }[];
 
   for (const c of contentPending) {
     items.push({
@@ -134,32 +127,32 @@ function getActionItems(excludeSeed: boolean): ActionItem[] {
       type: 'content',
       title: c.text_preview?.slice(0, 60) || 'Untitled content',
       subtitle: `${c.platform} draft`,
-      created_at: c.created_at,
+      created_at: typeof c.created_at === 'string' ? c.created_at : new Date(c.created_at).toISOString(),
     });
   }
 
   // Pending sequence approvals
-  const seqPending = db.prepare(
-    `SELECT s.id, s.subject, s.step, s.sequence_name, s.tier, s.created_at,
-            l.first_name, l.last_name, l.company
-     FROM sequences s
-     LEFT JOIN leads l ON s.lead_id = l.id
-     WHERE s.status = 'pending_approval' ${sfSeq}
-     ORDER BY s.created_at ASC`
-  ).all() as {
+  const seqPending = await s`
+    SELECT seq.id, seq.subject, seq.step, seq.sequence_name, seq.tier, seq.created_at,
+           l.first_name, l.last_name, l.company
+    FROM sequences seq
+    LEFT JOIN leads l ON seq.lead_id = l.id AND l.tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE seq.tenant_id = ${DEFAULT_TENANT_ID} AND seq.status = 'pending_approval'
+    ORDER BY seq.created_at ASC
+  ` as unknown as {
     id: string; subject: string | null; step: number; sequence_name: string | null;
     tier: string | null; created_at: string; first_name: string | null;
     last_name: string | null; company: string | null;
   }[];
 
-  for (const s of seqPending) {
+  for (const seq of seqPending) {
     items.push({
-      id: s.id,
+      id: seq.id,
       type: 'sequence',
-      title: s.subject || `Step ${s.step}`,
-      subtitle: [s.first_name, s.last_name].filter(Boolean).join(' ') + (s.company ? ` at ${s.company}` : ''),
-      tier: s.tier || undefined,
-      created_at: s.created_at,
+      title: seq.subject || `Step ${seq.step}`,
+      subtitle: [seq.first_name, seq.last_name].filter(Boolean).join(' ') + (seq.company ? ` at ${seq.company}` : ''),
+      tier: seq.tier || undefined,
+      created_at: typeof seq.created_at === 'string' ? seq.created_at : new Date(seq.created_at).toISOString(),
     });
   }
 
@@ -177,8 +170,8 @@ export async function GET(req: NextRequest) {
   const alerts = await getAlerts({ excludeSeed: real });
   const recentActivity = await getActivityLog({ limit: 20, excludeSeed: real });
   const metrics = await getDailyMetrics(84, { excludeSeed: real }); // 12 weeks
-  const agents = getAgentBriefs(real);
-  const action_items = getActionItems(real);
+  const agents = await getAgentBriefs();
+  const action_items = await getActionItems();
 
   return NextResponse.json({ stats, alerts, recentActivity, metrics, agents, action_items });
 }

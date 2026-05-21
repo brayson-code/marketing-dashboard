@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
 import { requireApiUser } from '@/lib/api-auth';
 
 const STAGE_ORDER = ['new', 'enriched', 'scored', 'sequenced', 'contacted', 'replied', 'interested', 'booked'];
@@ -28,20 +28,17 @@ const STAGE_LABELS: Record<string, string> = {
 export async function GET(request: NextRequest) {
   const auth = requireApiUser(request as Request);
   if (auth) return auth;
-  const db = getDb();
-  const real = request.nextUrl.searchParams.get('real') === 'true';
 
-  const seedFilter = real
-    ? " AND NOT EXISTS (SELECT 1 FROM seed_registry sr WHERE sr.table_name = 'leads' AND sr.record_id = leads.id)"
-    : '';
-
-  const rows = db.prepare(`
-    SELECT status, COUNT(*) as count FROM leads WHERE 1=1${seedFilter} GROUP BY status
-  `).all() as Array<{ status: string; count: number }>;
+  // Note: seed filtering is a no-op (no seed_registry table in Supabase).
+  const rows = await sql()`
+    SELECT status, COUNT(*) as count FROM leads
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    GROUP BY status
+  ` as unknown as Array<{ status: string; count: string }>;
 
   const countMap: Record<string, number> = {};
   for (const row of rows) {
-    countMap[row.status] = row.count;
+    countMap[row.status] = Number(row.count);
   }
 
   const stages = STAGE_ORDER.map(status => ({

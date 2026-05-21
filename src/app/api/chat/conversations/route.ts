@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
 import { requireApiUser } from '@/lib/api-auth';
 import { requireUser } from '@/lib/auth';
 
@@ -19,7 +19,7 @@ interface MessageRow {
   to_agent: string | null;
   content: string;
   message_type: string;
-  metadata: string | null;
+  metadata: Record<string, unknown> | null;
   read_at: number | null;
   created_at: number;
 }
@@ -28,38 +28,47 @@ export async function GET(request: Request) {
   const auth = requireApiUser(request as Request);
   if (auth) return auth;
   try {
-    const db = getDb();
+    const s = sql();
 
     const actor = requireUser(request as Request);
     const username = (typeof actor?.username === 'string' && actor.username.trim()) ? actor.username.trim() : 'operator';
 
-    const conversations = db.prepare(`
+    // created_at is timestamptz in Supabase; expose epoch seconds for back-compat.
+    const conversations = await s`
       SELECT
         m.conversation_id,
-        MAX(m.created_at) as last_message_at,
+        EXTRACT(EPOCH FROM MAX(m.created_at))::bigint as last_message_at,
         COUNT(*) as message_count,
-        SUM(CASE WHEN m.read_at IS NULL AND m.from_agent != ? THEN 1 ELSE 0 END) as unread_count
+        SUM(CASE WHEN m.read_at IS NULL AND m.from_agent != ${username} THEN 1 ELSE 0 END) as unread_count
       FROM messages m
+      WHERE m.tenant_id = ${DEFAULT_TENANT_ID}
       GROUP BY m.conversation_id
       ORDER BY last_message_at DESC
-    `).all(username) as ConversationRow[];
+    ` as unknown as ConversationRow[];
 
-    const withLastMessage = conversations.map((conv) => {
-      const lastMsg = db.prepare(`
-        SELECT * FROM messages
-        WHERE conversation_id = ?
-        ORDER BY created_at DESC
-        LIMIT 1
-      `).get(conv.conversation_id) as MessageRow | undefined;
+    const withLastMessage = await Promise.all(
+      conversations.map(async (conv) => {
+        const lastRows = await s`
+          SELECT id, conversation_id, from_agent, to_agent, content, message_type, metadata, read_at,
+                 EXTRACT(EPOCH FROM created_at)::bigint as created_at
+          FROM messages
+          WHERE conversation_id = ${conv.conversation_id} AND tenant_id = ${DEFAULT_TENANT_ID}
+          ORDER BY created_at DESC
+          LIMIT 1
+        ` as unknown as MessageRow[];
+        const lastMsg = lastRows[0];
 
-      return {
-        id: conv.conversation_id,
-        ...conv,
-        last_message: lastMsg
-          ? { ...lastMsg, metadata: lastMsg.metadata ? JSON.parse(lastMsg.metadata) : null }
-          : null,
-      };
-    });
+        return {
+          id: conv.conversation_id,
+          ...conv,
+          message_count: Number(conv.message_count),
+          unread_count: Number(conv.unread_count),
+          last_message: lastMsg
+            ? { ...lastMsg, metadata: lastMsg.metadata ?? null }
+            : null,
+        };
+      }),
+    );
 
     return NextResponse.json({ conversations: withLastMessage });
   } catch (error) {

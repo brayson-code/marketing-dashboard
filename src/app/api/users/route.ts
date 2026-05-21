@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server';
-import { createUser, deleteUser, listUsers, requireAdmin, resetUserPassword, updateUserRole } from '@/lib/auth';
-import { getDb } from '@/lib/db';
+import {
+  countOtherAdmins,
+  createUser,
+  deleteUser,
+  getUserRole,
+  listUsers,
+  requireAdmin,
+  resetUserPassword,
+  updateUserRole,
+} from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,11 +21,7 @@ function normalizeRole(value: unknown): Role | null {
 }
 
 function ensureAnotherAdminExists(excludingUserId: number) {
-  const db = getDb();
-  const row = db
-    .prepare("SELECT COUNT(*) as c FROM users WHERE role = 'admin' AND id != ?")
-    .get(excludingUserId) as { c: number };
-  if ((row?.c ?? 0) <= 0) {
+  if (countOtherAdmins(excludingUserId) <= 0) {
     throw new Error('Cannot remove the last admin');
   }
 }
@@ -98,10 +102,9 @@ export async function DELETE(request: Request) {
     if (admin.id === body.id) {
       ensureAnotherAdminExists(admin.id);
     }
-    const db = getDb();
-    const row = db.prepare('SELECT role FROM users WHERE id = ?').get(body.id) as { role?: string } | undefined;
-    if (!row) return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    if (row.role === 'admin') {
+    const role = getUserRole(body.id);
+    if (role === null) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    if (role === 'admin') {
       ensureAnotherAdminExists(body.id);
     }
     deleteUser(body.id);

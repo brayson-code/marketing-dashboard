@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
+import { sql, DEFAULT_TENANT_ID } from "@/lib/db/client";
 import { requireApiEditor } from "@/lib/api-auth";
 import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
@@ -23,32 +23,45 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing id, type, or action" }, { status: 400 });
   }
 
-  const db = getDb();
+  const s = sql();
 
   if (type === "content") {
     const newStatus = action === "approve" ? "ready" : "rejected";
-    db.prepare("UPDATE content_posts SET status = ? WHERE id = ? AND status = ?")
-      .run(newStatus, id, "pending_approval");
+    await s`
+      UPDATE content_posts SET status = ${newStatus}
+      WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID} AND status = 'pending_approval'
+    `;
   } else if (type === "email") {
     const newStatus = action === "approve" ? "approved" : "cancelled";
 
     if (action === "approve") {
-      const lead = db.prepare("SELECT l.status as lead_status FROM sequences s LEFT JOIN leads l ON l.id = s.lead_id WHERE s.id = ?").get(id) as { lead_status: string | null } | undefined;
+      const rows = await s`
+        SELECT l.status as lead_status
+        FROM sequences seq
+        LEFT JOIN leads l ON l.id = seq.lead_id AND l.tenant_id = ${DEFAULT_TENANT_ID}
+        WHERE seq.id = ${id} AND seq.tenant_id = ${DEFAULT_TENANT_ID}
+      ` as unknown as { lead_status: string | null }[];
+      const lead = rows[0];
       if (!lead || lead.lead_status !== LEAD_APPROVED_STATUS) {
         return NextResponse.json({ error: "Lead must be approved before email sequence approval" }, { status: 409 });
       }
     }
 
-    db.prepare("UPDATE sequences SET status = ? WHERE id = ? AND status = ?")
-      .run(newStatus, id, "pending_approval");
+    await s`
+      UPDATE sequences SET status = ${newStatus}
+      WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID} AND status = 'pending_approval'
+    `;
   }
 
-  db.prepare("INSERT INTO activity_log (ts, action, detail, result) VALUES (datetime('now'), ?, ?, ?)")
-    .run(
-      action === "approve" ? "approve" : "reject",
-      `${action === "approve" ? "Approved" : "Rejected"} ${type}: ${id}` ,
-      action === "approve" ? "Moved to ready/approved" : "Rejected/cancelled",
-    );
+  await s`
+    INSERT INTO activity_log (tenant_id, ts, action, detail, result)
+    VALUES (
+      ${DEFAULT_TENANT_ID}, now(),
+      ${action === "approve" ? "approve" : "reject"},
+      ${`${action === "approve" ? "Approved" : "Rejected"} ${type}: ${id}`},
+      ${action === "approve" ? "Moved to ready/approved" : "Rejected/cancelled"}
+    )
+  `;
 
   await logAudit({
     actor,

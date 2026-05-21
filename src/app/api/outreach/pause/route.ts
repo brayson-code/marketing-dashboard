@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'node:fs';
 import path from 'node:path';
 import { getUserFromRequest } from '@/lib/auth';
-import { getDb } from '@/lib/db';
+import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
 import { getHermesStateDir } from '@/lib/hermes-state';
 
 const STATE_DIR = getHermesStateDir();
@@ -32,12 +32,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const db = getDb();
     const ts = new Date().toISOString();
     const action = body.paused ? 'outreach_paused' : 'outreach_resumed';
     const detail = body.paused ? (body.reason || 'Outreach paused') : 'Outreach resumed';
-    db.prepare('INSERT INTO activity_log (ts, action, detail, result) VALUES (?, ?, ?, ?)')
-      .run(ts, action, detail, 'ok');
+    await sql()`
+      INSERT INTO activity_log (tenant_id, ts, action, detail, result)
+      VALUES (${DEFAULT_TENANT_ID}, ${ts}::timestamptz, ${action}, ${detail}, 'ok')
+    `;
 
     return NextResponse.json({ paused: body.paused });
   } catch (error) {

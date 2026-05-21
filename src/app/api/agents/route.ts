@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
-import { isRealMode } from '@/lib/seed-filter';
+import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
 import { getAgents, ACTION_TO_AGENT } from '@/lib/agent-config';
 import type { AgentStatus, AgentStats, ActivityEntry } from '@/types';
 import fs from 'fs';
@@ -141,121 +140,98 @@ export async function GET(req: NextRequest) {
   const instance = getInstance(instanceId);
   const { openclawConfigPath, agentsDir } = resolveOpenClawPaths(instance);
 
-  const db = getDb();
+  const s = sql();
   const now = Date.now();
-  const excludeSeed = isRealMode(req);
-  const sf = excludeSeed
-    ? ` AND NOT EXISTS (SELECT 1 FROM seed_registry sr WHERE sr.table_name = 'activity_log' AND sr.record_id = CAST(activity_log.id AS TEXT))`
-    : '';
+  // Note: seed filtering is a no-op (no seed_registry table in Supabase).
 
-  const agents = getAgents(instance.id).map((agent) => {
-    // Get actions attributable to this agent
-    const agentActions = Object.entries(ACTION_TO_AGENT)
-      .filter(([, v]) => v.agent === agent.id)
-      .map(([action]) => action);
+  const agents = await Promise.all(
+    getAgents(instance.id).map(async (agent) => {
+      // Get actions attributable to this agent
+      const agentActions = Object.entries(ACTION_TO_AGENT)
+        .filter(([, v]) => v.agent === agent.id)
+        .map(([action]) => action);
 
-    const placeholders = agentActions.map(() => '?').join(',');
+      let todayCount = 0;
+      let weekCount = 0;
+      let lastActivity: { action: string; detail: string; ts: string } | undefined;
+      let skillCounts: { action: string; c: string }[] = [];
+      let recentActivity: ActivityEntry[] = [];
 
-    // Stats: today
-    const today = new Date().toISOString().slice(0, 10);
-    const todayCount =
-      agentActions.length > 0
-        ? (
-            db
-              .prepare(
-                `SELECT COUNT(*) as c FROM activity_log WHERE action IN (${placeholders}) AND date(ts) = ?${sf}`,
-              )
-              .get(...agentActions, today) as { c: number }
-          )?.c ?? 0
-        : 0;
+      if (agentActions.length > 0) {
+        const [todayRows, weekRows, lastRows, skillRows, recentRows] = await Promise.all([
+          s`SELECT COUNT(*) as c FROM activity_log
+            WHERE tenant_id = ${DEFAULT_TENANT_ID}
+              AND action IN ${s(agentActions)} AND ts::date = now()::date`,
+          s`SELECT COUNT(*) as c FROM activity_log
+            WHERE tenant_id = ${DEFAULT_TENANT_ID}
+              AND action IN ${s(agentActions)} AND ts > now() - interval '7 days'`,
+          s`SELECT action, detail, ts FROM activity_log
+            WHERE tenant_id = ${DEFAULT_TENANT_ID}
+              AND action IN ${s(agentActions)} ORDER BY ts DESC LIMIT 1`,
+          s`SELECT action, COUNT(*) as c FROM activity_log
+            WHERE tenant_id = ${DEFAULT_TENANT_ID}
+              AND action IN ${s(agentActions)} AND ts > now() - interval '30 days'
+            GROUP BY action ORDER BY c DESC LIMIT 5`,
+          s`SELECT id, ts, action, detail, result FROM activity_log
+            WHERE tenant_id = ${DEFAULT_TENANT_ID}
+              AND action IN ${s(agentActions)} ORDER BY ts DESC LIMIT 10`,
+        ]);
 
-    // Stats: this week
-    const weekCount =
-      agentActions.length > 0
-        ? (
-            db
-              .prepare(
-                `SELECT COUNT(*) as c FROM activity_log WHERE action IN (${placeholders}) AND ts > datetime('now', '-7 days')${sf}`,
-              )
-              .get(...agentActions) as { c: number }
-          )?.c ?? 0
-        : 0;
+        todayCount = Number(todayRows[0]?.c ?? 0);
+        weekCount = Number(weekRows[0]?.c ?? 0);
+        lastActivity = lastRows[0] as unknown as { action: string; detail: string; ts: string } | undefined;
+        skillCounts = skillRows as unknown as { action: string; c: string }[];
+        recentActivity = recentRows as unknown as ActivityEntry[];
+      }
 
-    // Last activity
-    const lastActivity =
-      agentActions.length > 0
-        ? (db
-            .prepare(
-              `SELECT action, detail, ts FROM activity_log WHERE action IN (${placeholders})${sf} ORDER BY ts DESC LIMIT 1`,
-            )
-            .get(...agentActions) as { action: string; detail: string; ts: string } | undefined)
-        : undefined;
+      const topSkills = skillCounts.map((sc) => ({
+        skill: ACTION_TO_AGENT[sc.action]?.skill || sc.action,
+        count: Number(sc.c),
+      }));
 
-    // Top skills (by action count, last 30 days)
-    const skillCounts =
-      agentActions.length > 0
-        ? (db
-            .prepare(
-              `SELECT action, COUNT(*) as c FROM activity_log
-               WHERE action IN (${placeholders}) AND ts > datetime('now', '-30 days')${sf}
-               GROUP BY action ORDER BY c DESC LIMIT 5`,
-            )
-            .all(...agentActions) as { action: string; c: number }[])
-        : [];
+      // Derive status
+      let status: AgentStatus = 'planned';
+      const lastTs = lastActivity?.ts ? new Date(lastActivity.ts as unknown as string).getTime() : NaN;
+      if (Number.isFinite(lastTs)) {
+        const elapsed = now - lastTs;
+        if (elapsed < 30 * 60 * 1000) status = 'active';
+        else if (elapsed < 24 * 60 * 60 * 1000) status = 'idle';
+      }
 
-    const topSkills = skillCounts.map((s) => ({
-      skill: ACTION_TO_AGENT[s.action]?.skill || s.action,
-      count: s.c,
-    }));
+      const lastActionAt = lastActivity?.ts
+        ? (typeof lastActivity.ts === 'string' ? lastActivity.ts : new Date(lastActivity.ts).toISOString())
+        : null;
 
-    // Recent activity (last 10)
-    const recentActivity =
-      agentActions.length > 0
-        ? (db
-            .prepare(
-              `SELECT id, ts, action, detail, result FROM activity_log
-               WHERE action IN (${placeholders})${sf} ORDER BY ts DESC LIMIT 10`,
-            )
-            .all(...agentActions) as ActivityEntry[])
-        : [];
+      const stats: AgentStats = {
+        actions_today: todayCount,
+        actions_week: weekCount,
+        tokens_today: 0,
+        tokens_week: 0,
+        cost_today: 0,
+        cost_week: 0,
+        last_action: lastActivity?.detail || null,
+        last_action_at: lastActionAt,
+        top_skills: topSkills,
+      };
 
-    // Derive status
-    let status: AgentStatus = 'planned';
-    if (lastActivity?.ts) {
-      const elapsed = now - new Date(lastActivity.ts).getTime();
-      if (elapsed < 30 * 60 * 1000) status = 'active';
-      else if (elapsed < 24 * 60 * 60 * 1000) status = 'idle';
-    }
+      const usage = getUsageTotals(agentsDir, agent.id);
+      stats.tokens_today = usage.tokens_today;
+      stats.tokens_week = usage.tokens_week;
+      stats.cost_today = usage.cost_today;
+      stats.cost_week = usage.cost_week;
 
-    const stats: AgentStats = {
-      actions_today: todayCount,
-      actions_week: weekCount,
-      tokens_today: 0,
-      tokens_week: 0,
-      cost_today: 0,
-      cost_week: 0,
-      last_action: lastActivity?.detail || null,
-      last_action_at: lastActivity?.ts || null,
-      top_skills: topSkills,
-    };
+      const modelRouting = getAgentModelRouting(openclawConfigPath, agent.id);
 
-    const usage = getUsageTotals(agentsDir, agent.id);
-    stats.tokens_today = usage.tokens_today;
-    stats.tokens_week = usage.tokens_week;
-    stats.cost_today = usage.cost_today;
-    stats.cost_week = usage.cost_week;
-
-    const modelRouting = getAgentModelRouting(openclawConfigPath, agent.id);
-
-    return {
-      ...agent,
-      model: modelRouting?.primary ?? agent.model,
-      fallbacks: modelRouting?.fallbacks ?? agent.fallbacks,
-      status,
-      stats,
-      recent_activity: recentActivity,
-    };
-  });
+      return {
+        ...agent,
+        model: modelRouting?.primary ?? agent.model,
+        fallbacks: modelRouting?.fallbacks ?? agent.fallbacks,
+        status,
+        stats,
+        recent_activity: recentActivity,
+      };
+    }),
+  );
 
   return NextResponse.json(agents);
 }
