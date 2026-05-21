@@ -105,10 +105,10 @@ function LimitBar({ label, limit }: { label: string; limit: UsageLimit }) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-sm font-extrabold tracking-tight uppercase" style={{ color: CLAUDE.bright, letterSpacing: '0.02em' }}>{label}</span>
-        <span className="text-xs font-mono font-bold" style={{ color: over ? CLAUDE.warn : 'var(--foreground)' }}>
-          {fmtNum(used)} / {fmtNum(max)} <span className="opacity-60">tokens</span> · {Math.round(rawPct)}%
+      <div className="flex items-end justify-between mb-2 gap-2 flex-wrap">
+        <span className="text-lg font-extrabold tracking-tight uppercase" style={{ color: CLAUDE.bright, letterSpacing: '0.02em' }}>{label}</span>
+        <span className="font-mono font-bold" style={{ color: over ? CLAUDE.warn : 'var(--foreground)', fontSize: '1.05rem' }}>
+          {fmtNum(used)} / {fmtNum(max)} <span className="text-xs opacity-60">tokens</span> · {Math.round(rawPct)}%
         </span>
       </div>
       {/* extra top padding leaves room for the mascot to sit above the track */}
@@ -196,7 +196,7 @@ function AgentSparkline({ days }: { days: AgentDailyPoint[] }) {
 }
 
 export function UsageWidget() {
-  const [showChart, setShowChart] = useState(true);
+  const [showChart, setShowChart] = useState(false);
   const { data } = useSmartPoll<UsageSummary>(
     () => fetch('/api/usage?days=14', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
@@ -227,8 +227,8 @@ export function UsageWidget() {
       className="panel overflow-hidden"
       style={{
         borderColor: CLAUDE.primary,
-        background: 'linear-gradient(135deg, rgba(234,88,12,0.16) 0%, rgba(217,119,87,0.06) 45%, rgba(217,119,87,0.02) 100%), var(--card)',
-        boxShadow: '0 8px 28px rgba(234,88,12,0.16), 0 0 0 1px rgba(234,88,12,0.18) inset',
+        background: 'rgba(234,88,12,0.10)',
+        boxShadow: '0 4px 18px rgba(234,88,12,0.12)',
       }}
     >
       <div className="panel-header flex items-center justify-between" style={{ borderColor: 'rgba(234,88,12,0.22)' }}>
@@ -239,91 +239,98 @@ export function UsageWidget() {
         <span className="text-[11px] font-mono font-semibold" style={{ color: CLAUDE.primary }}>Claude API · 14d</span>
       </div>
 
-      <div className="panel-body space-y-5">
-        {/* Limit bars (always shown — they convey headroom even with no usage) */}
+      <div className="panel-body space-y-4">
+        {/* Limit bars — the default view (headroom is always visible) */}
         <div className="space-y-4">
           <LimitBar label="Daily limit" limit={daily} />
           <LimitBar label="Weekly limit" limit={weekly} />
         </div>
 
-        {!hasUsage ? (
-          <div
-            className="flex flex-col items-center justify-center gap-2 py-8 rounded-xl text-center"
-            style={{ background: CLAUDE.fillSofter, border: `1px dashed ${CLAUDE.border}` }}
-          >
-            <ClaudeMascot size={40} />
-            <p className="text-sm font-medium" style={{ color: CLAUDE.primary }}>No usage yet</p>
-            <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
-              Token usage will show up here once your agents start running.
-            </p>
-          </div>
-        ) : (
-          <>
-            {/* Usage over time — collapsible */}
-            <div>
-              <button
-                type="button"
-                onClick={() => setShowChart((v) => !v)}
-                className="w-full flex items-center justify-between mb-2 group"
-                aria-expanded={showChart}
+        {/* Everything below lives in the dropdown — hidden until expanded */}
+        {showChart && (
+          <div className="space-y-5 pt-1">
+            {!hasUsage ? (
+              <div
+                className="flex flex-col items-center justify-center gap-2 py-8 rounded-xl text-center"
+                style={{ background: CLAUDE.fillSofter, border: `1px dashed ${CLAUDE.border}` }}
               >
-                <span className="text-sm font-bold tracking-tight" style={{ color: CLAUDE.bright }}>Usage over time</span>
-                <ChevronDown
-                  size={16}
-                  className="transition-transform duration-200"
-                  style={{ color: CLAUDE.primary, transform: showChart ? 'rotate(0deg)' : 'rotate(-90deg)' }}
-                />
-              </button>
-              {showChart && (
-              <ResponsiveContainer width="100%" height={150}>
-                <AreaChart data={series} margin={{ top: 4, right: 6, bottom: 0, left: -10 }}>
-                  <defs>
-                    <linearGradient id="usageArea" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={CLAUDE.primary} stopOpacity={0.45} />
-                      <stop offset="100%" stopColor={CLAUDE.primary} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="day" stroke="var(--muted-foreground)" fontSize={10} tickLine={false} axisLine={false} />
-                  <YAxis stroke="var(--muted-foreground)" fontSize={10} tickFormatter={fmtNum} tickLine={false} axisLine={false} width={40} />
-                  <Tooltip content={<ChartTip />} cursor={{ stroke: CLAUDE.border }} />
-                  <Area type="monotone" dataKey="tokens" stroke={CLAUDE.primary} fill="url(#usageArea)" strokeWidth={2} />
-                </AreaChart>
-              </ResponsiveContainer>
-              )}
-            </div>
-
-            {/* Per-agent breakdown */}
-            <div>
-              <div className="text-sm font-bold mb-2 tracking-tight" style={{ color: CLAUDE.bright }}>By agent</div>
-              <div className="space-y-2">
-                {byAgentDaily.length === 0 ? (
-                  <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>No agent activity yet.</p>
-                ) : (
-                  byAgentDaily.map((a) => (
-                    <div
-                      key={a.agent_id}
-                      className="flex items-center gap-3 p-2.5 rounded-lg"
-                      style={{ background: CLAUDE.fillSofter, border: `1px solid ${CLAUDE.border}` }}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="text-xs font-bold truncate" style={{ color: 'var(--foreground)' }}>
-                          {agentLabel(a.agent_id)}
-                        </div>
-                        <div className="text-[10px] font-mono font-semibold" style={{ color: 'var(--muted-foreground)' }}>
-                          {fmtNum(Number(a.total_tokens ?? 0))} tokens · {fmtUsd(Number(a.total_cost_usd ?? 0))}
-                        </div>
-                      </div>
-                      <div className="w-24 shrink-0">
-                        <AgentSparkline days={a.days} />
-                      </div>
-                    </div>
-                  ))
-                )}
+                <ClaudeMascot size={40} />
+                <p className="text-sm font-medium" style={{ color: CLAUDE.primary }}>No usage yet</p>
+                <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                  Token usage will show up here once your agents start running.
+                </p>
               </div>
-            </div>
-          </>
+            ) : (
+              <>
+                {/* Usage over time */}
+                <div>
+                  <div className="text-sm font-bold mb-2 tracking-tight" style={{ color: CLAUDE.bright }}>Usage over time</div>
+                  <ResponsiveContainer width="100%" height={150}>
+                    <AreaChart data={series} margin={{ top: 4, right: 6, bottom: 0, left: -10 }}>
+                      <defs>
+                        <linearGradient id="usageArea" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={CLAUDE.primary} stopOpacity={0.45} />
+                          <stop offset="100%" stopColor={CLAUDE.primary} stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="day" stroke="var(--muted-foreground)" fontSize={10} tickLine={false} axisLine={false} />
+                      <YAxis stroke="var(--muted-foreground)" fontSize={10} tickFormatter={fmtNum} tickLine={false} axisLine={false} width={40} />
+                      <Tooltip content={<ChartTip />} cursor={{ stroke: CLAUDE.border }} />
+                      <Area type="monotone" dataKey="tokens" stroke={CLAUDE.primary} fill="url(#usageArea)" strokeWidth={2} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Per-agent breakdown */}
+                <div>
+                  <div className="text-sm font-bold mb-2 tracking-tight" style={{ color: CLAUDE.bright }}>By agent</div>
+                  <div className="space-y-2">
+                    {byAgentDaily.length === 0 ? (
+                      <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>No agent activity yet.</p>
+                    ) : (
+                      byAgentDaily.map((a) => (
+                        <div
+                          key={a.agent_id}
+                          className="flex items-center gap-3 p-2.5 rounded-lg"
+                          style={{ background: CLAUDE.fillSofter, border: `1px solid ${CLAUDE.border}` }}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-bold truncate" style={{ color: 'var(--foreground)' }}>
+                              {agentLabel(a.agent_id)}
+                            </div>
+                            <div className="text-[10px] font-mono font-semibold" style={{ color: 'var(--muted-foreground)' }}>
+                              {fmtNum(Number(a.total_tokens ?? 0))} tokens · {fmtUsd(Number(a.total_cost_usd ?? 0))}
+                            </div>
+                          </div>
+                          <div className="w-24 shrink-0">
+                            <AgentSparkline days={a.days} />
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         )}
+
+        {/* Bottom dropdown arrow — reveals usage over time + by agent */}
+        <button
+          type="button"
+          onClick={() => setShowChart((v) => !v)}
+          className="w-full flex items-center justify-center gap-1.5 pt-2 text-[11px] font-bold uppercase tracking-wide"
+          style={{ color: CLAUDE.primary, borderTop: `1px solid ${CLAUDE.border}` }}
+          aria-expanded={showChart}
+        >
+          {showChart ? 'Hide' : 'Usage over time & by agent'}
+          <ChevronDown
+            size={15}
+            className="transition-transform duration-200"
+            style={{ transform: showChart ? 'rotate(180deg)' : 'rotate(0deg)' }}
+          />
+        </button>
       </div>
     </div>
   );
