@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Play, Pause, RotateCcw, History, ThermometerSun, Pencil, Plus, Trash2, X, BookmarkPlus } from 'lucide-react';
+import { Play, Pause, RotateCcw, History, Pencil, Plus, Trash2, X, BookmarkPlus } from 'lucide-react';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { toast } from '@/components/ui/toast';
 
@@ -47,11 +47,6 @@ interface CronRun {
   nextRunAtMs?: number | null;
 }
 
-interface ModelHealth {
-  ok?: boolean;
-  running?: { name: string; expires_at?: string }[];
-}
-
 function formatTime(ms?: number) {
   if (!ms) return '—';
   return new Date(ms).toLocaleString();
@@ -64,20 +59,11 @@ function formatRunTs(ts?: number | string | null) {
   return Number.isNaN(d.getTime()) ? String(ts) : d.toLocaleString();
 }
 
-function normalizeModel(model?: string | null) {
-  if (!model) return null;
-  return model.replace(/^ollama\//, '');
-}
-
 export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedded' }) {
   const [refreshKey, setRefreshKey] = useState(0);
   const { data } = useSmartPoll<CronStatusPayload>(
     () => fetch('/api/cron').then(r => r.json()),
     { interval: 30_000, key: refreshKey },
-  );
-  const { data: modelHealth } = useSmartPoll<ModelHealth>(
-    () => fetch('/api/model-health').then(r => r.json()),
-    { interval: 30_000 },
   );
   const [pending, setPending] = useState<Record<string, boolean>>({});
   const [runs, setRuns] = useState<Record<string, CronRun[]>>({});
@@ -95,13 +81,6 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
   const jobs = useMemo(() => data?.jobs ?? [], [data?.jobs]);
   const canWrite = !!data?.can_write;
   const canTemplatesWrite = !!data?.can_templates_write;
-  const runningSet = useMemo(() => {
-    const set = new Set<string>();
-    for (const m of modelHealth?.running || []) {
-      if (m?.name) set.add(m.name);
-    }
-    return set;
-  }, [modelHealth]);
 
   const summary = useMemo(() => {
     const total = jobs.length;
@@ -153,21 +132,15 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
     setEditJobId(null);
     setTemplateId('');
     setEditJson(JSON.stringify({
-      id: 'new-job-id',
-      agentId: 'hermes',
-      name: 'New Cron Job',
+      id: 'daily-research',
+      name: 'Daily competitor scan',
+      agentId: 'research-analyst',
       enabled: true,
-      schedule: { kind: 'cron', expr: '0 9 * * 1-5', tz: 'UTC' },
-      sessionTarget: 'isolated',
-      wakeMode: 'now',
+      schedule: { expr: '0 9 * * 1-5', tz: 'America/New_York' },
       payload: {
-        kind: 'agentTurn',
-        message: 'Describe what this cron should do and where it should write results.',
-        thinking: 'low',
-        model: 'ollama/qwen2.5-coder:7b',
+        message: 'Scan for notable AI marketing tool launches in the last 24h. Return 5 bullets with sources.',
       },
-      delivery: { mode: 'none' },
-      skill: 'custom',
+      skill: 'research',
     }, null, 2));
     setEditOpen(true);
   };
@@ -302,7 +275,7 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
                   {editMode === 'create' ? 'Add Cron Job' : `Edit Cron Job${editJobId ? `: ${editJobId}` : ''}`}
                 </h2>
                 <div className="text-[10px] text-muted-foreground mt-1">
-                  Edit the full job JSON. This writes back to OpenClaw&apos;s `cron/jobs.json`.
+                  Edit the job JSON: <code>agentId</code> (a KeyPlayer sub-agent), <code>schedule.expr</code> (5-field cron) + <code>tz</code>, and <code>payload.message</code> (the task). Stored in Supabase; runs on the hourly dispatcher.
                 </div>
               </div>
               <button type="button" aria-label="Close cron editor" onClick={() => setEditOpen(false)} className="text-muted-foreground hover:text-foreground">
@@ -370,7 +343,7 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
           <div>
             <h2 className={variant === 'page' ? 'text-xl font-semibold' : 'text-sm font-medium'}>Cron Jobs</h2>
             {variant === 'page' && (
-              <p className="text-sm text-muted-foreground">Live status from OpenClaw cron jobs</p>
+              <p className="text-sm text-muted-foreground">Schedule recurring KeyPlayer sub-agent tasks. The dispatcher runs due jobs hourly.</p>
             )}
           </div>
           <div className="flex items-center gap-2">
@@ -395,8 +368,6 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
           const busy = !!pending[job.id];
           const isDisabled = job.enabled === false;
           const runList = runs[job.id] || [];
-          const model = normalizeModel(job.payload?.model);
-          const isWarm = model ? runningSet.has(model) : false;
           const message = typeof job.payload?.message === 'string' ? job.payload.message : '';
           return (
             <div key={job.id} className="panel">
@@ -444,19 +415,6 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
                   <div>
                     <div className="text-muted-foreground">Duration</div>
                     <div className="font-mono">{job.state?.lastDurationMs ? `${Math.round(job.state.lastDurationMs / 1000)}s` : '—'}</div>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <div className="flex items-center gap-2">
-                    <ThermometerSun size={12} />
-                    <span className="text-muted-foreground">Model:</span>
-                    <span className="font-mono">{model || '—'}</span>
-                    {model && (
-                      <span className={isWarm ? 'status-pill status-ok' : 'status-pill status-warn'}>
-                        {isWarm ? 'warm' : 'cold'}
-                      </span>
-                    )}
                   </div>
                 </div>
 
