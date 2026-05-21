@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { sql, jsonb, DEFAULT_TENANT_ID } from '@/lib/db/client';
 import { createNotification } from '@/lib/notifications';
 import { runOrchestrator } from '@/lib/orchestrator';
@@ -72,7 +72,9 @@ export async function POST(request: Request) {
     // If matched, execute deterministically and reply in < 1s without burning a Claude call.
     const intent = parseIntent(String(text));
     if (intent) {
-      void (async () => {
+      // after() keeps the serverless function alive until this completes,
+      // so the reply is actually sent (a bare detached promise can be killed).
+      after(async () => {
         try {
           const result = await executeIntent(intent);
           await sendIMessage(result.reply, { agent: 'keyplayer' });
@@ -80,28 +82,32 @@ export async function POST(request: Request) {
           console.error('[intent] failed:', (err as Error).message);
           await sendIMessage(`Something went wrong handling that: ${(err as Error).message}`, { agent: 'keyplayer' });
         }
-      })().catch((err) => console.error('[intent] unexpected:', err));
+      });
       return NextResponse.json({ ok: true, captured: true, mode: 'intent', intent: intent.type });
     }
 
     // Fall through: full orchestrator dispatch for free-form conversation.
-    // Fire-and-forget so LoopMessage gets a fast ack and doesn't retry.
-    // TODO: replace with a real queue (Vercel Queues / BullMQ) before client launch.
-    void (async () => {
-      const result = await runOrchestrator();
-      if (!result.ok) {
-        console.error('[orchestrator] failed:', result.error);
-        await sendIMessage(
-          `I hit a snag and couldn't respond automatically: ${result.error.slice(0, 200)}. Try again, or check the dashboard logs.`,
-          { agent: 'keyplayer' },
-        );
-        return;
+    // after() lets LoopMessage get a fast ack while the (slow) Claude run finishes
+    // in the same invocation. For very long multi-agent runs, move to Vercel Queues.
+    after(async () => {
+      try {
+        const result = await runOrchestrator();
+        if (!result.ok) {
+          console.error('[orchestrator] failed:', result.error);
+          await sendIMessage(
+            `I hit a snag and couldn't respond automatically: ${result.error.slice(0, 200)}. Try again, or check the dashboard logs.`,
+            { agent: 'keyplayer' },
+          );
+          return;
+        }
+        const sendResult = await sendIMessage(result.text, { agent: 'keyplayer' });
+        if (!sendResult.ok) {
+          console.error('[orchestrator] reply send failed:', sendResult.error);
+        }
+      } catch (err) {
+        console.error('[orchestrator] unexpected:', err);
       }
-      const sendResult = await sendIMessage(result.text, { agent: 'keyplayer' });
-      if (!sendResult.ok) {
-        console.error('[orchestrator] reply send failed:', sendResult.error);
-      }
-    })().catch((err) => console.error('[orchestrator] unexpected:', err));
+    });
 
     return NextResponse.json({ ok: true, captured: true, mode: 'orchestrator' });
   }
