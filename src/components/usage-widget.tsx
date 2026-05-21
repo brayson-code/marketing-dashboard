@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -105,9 +106,9 @@ function LimitBar({ label, limit }: { label: string; limit: UsageLimit }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
-        <span className="text-sm font-semibold" style={{ color: CLAUDE.primary }}>{label}</span>
-        <span className="text-xs font-mono font-medium" style={{ color: over ? CLAUDE.warn : 'var(--muted-foreground)' }}>
-          {fmtNum(used)} / {fmtNum(max)} <span className="opacity-70">tokens</span> · {Math.round(rawPct)}%
+        <span className="text-sm font-extrabold tracking-tight uppercase" style={{ color: CLAUDE.bright, letterSpacing: '0.02em' }}>{label}</span>
+        <span className="text-xs font-mono font-bold" style={{ color: over ? CLAUDE.warn : 'var(--foreground)' }}>
+          {fmtNum(used)} / {fmtNum(max)} <span className="opacity-60">tokens</span> · {Math.round(rawPct)}%
         </span>
       </div>
       {/* extra top padding leaves room for the mascot to sit above the track */}
@@ -195,6 +196,7 @@ function AgentSparkline({ days }: { days: AgentDailyPoint[] }) {
 }
 
 export function UsageWidget() {
+  const [showChart, setShowChart] = useState(true);
   const { data } = useSmartPoll<UsageSummary>(
     () => fetch('/api/usage?days=14', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
@@ -222,15 +224,19 @@ export function UsageWidget() {
 
   return (
     <div
-      className="panel"
-      style={{ borderColor: CLAUDE.border, boxShadow: `0 0 0 1px ${CLAUDE.tint} inset` }}
+      className="panel overflow-hidden"
+      style={{
+        borderColor: CLAUDE.primary,
+        background: 'linear-gradient(135deg, rgba(234,88,12,0.16) 0%, rgba(217,119,87,0.06) 45%, rgba(217,119,87,0.02) 100%), var(--card)',
+        boxShadow: '0 8px 28px rgba(234,88,12,0.16), 0 0 0 1px rgba(234,88,12,0.18) inset',
+      }}
     >
-      <div className="panel-header flex items-center justify-between" style={{ borderColor: CLAUDE.border }}>
-        <h3 className="section-title flex items-center gap-2">
-          <ClaudeSpark size={15} />
-          <span style={{ color: CLAUDE.primary }}>Usage</span>
+      <div className="panel-header flex items-center justify-between" style={{ borderColor: 'rgba(234,88,12,0.22)' }}>
+        <h3 className="flex items-center gap-2 text-base font-extrabold tracking-tight">
+          <ClaudeSpark size={17} />
+          <span style={{ color: CLAUDE.bright }}>Usage</span>
         </h3>
-        <span className="text-[10px] font-mono" style={{ color: 'var(--muted-foreground)' }}>Claude API · 14d</span>
+        <span className="text-[11px] font-mono font-semibold" style={{ color: CLAUDE.primary }}>Claude API · 14d</span>
       </div>
 
       <div className="panel-body space-y-5">
@@ -253,9 +259,22 @@ export function UsageWidget() {
           </div>
         ) : (
           <>
-            {/* Usage over time */}
+            {/* Usage over time — collapsible */}
             <div>
-              <div className="text-xs font-medium mb-2" style={{ color: CLAUDE.primary }}>Usage over time</div>
+              <button
+                type="button"
+                onClick={() => setShowChart((v) => !v)}
+                className="w-full flex items-center justify-between mb-2 group"
+                aria-expanded={showChart}
+              >
+                <span className="text-sm font-bold tracking-tight" style={{ color: CLAUDE.bright }}>Usage over time</span>
+                <ChevronDown
+                  size={16}
+                  className="transition-transform duration-200"
+                  style={{ color: CLAUDE.primary, transform: showChart ? 'rotate(0deg)' : 'rotate(-90deg)' }}
+                />
+              </button>
+              {showChart && (
               <ResponsiveContainer width="100%" height={150}>
                 <AreaChart data={series} margin={{ top: 4, right: 6, bottom: 0, left: -10 }}>
                   <defs>
@@ -271,11 +290,12 @@ export function UsageWidget() {
                   <Area type="monotone" dataKey="tokens" stroke={CLAUDE.primary} fill="url(#usageArea)" strokeWidth={2} />
                 </AreaChart>
               </ResponsiveContainer>
+              )}
             </div>
 
             {/* Per-agent breakdown */}
             <div>
-              <div className="text-xs font-medium mb-2" style={{ color: CLAUDE.primary }}>By agent</div>
+              <div className="text-sm font-bold mb-2 tracking-tight" style={{ color: CLAUDE.bright }}>By agent</div>
               <div className="space-y-2">
                 {byAgentDaily.length === 0 ? (
                   <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>No agent activity yet.</p>
@@ -287,10 +307,10 @@ export function UsageWidget() {
                       style={{ background: CLAUDE.fillSofter, border: `1px solid ${CLAUDE.border}` }}
                     >
                       <div className="min-w-0 flex-1">
-                        <div className="text-xs font-medium truncate" style={{ color: 'var(--foreground)' }}>
+                        <div className="text-xs font-bold truncate" style={{ color: 'var(--foreground)' }}>
                           {agentLabel(a.agent_id)}
                         </div>
-                        <div className="text-[10px] font-mono" style={{ color: 'var(--muted-foreground)' }}>
+                        <div className="text-[10px] font-mono font-semibold" style={{ color: 'var(--muted-foreground)' }}>
                           {fmtNum(Number(a.total_tokens ?? 0))} tokens · {fmtUsd(Number(a.total_cost_usd ?? 0))}
                         </div>
                       </div>
