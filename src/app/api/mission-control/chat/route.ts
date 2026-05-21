@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql, jsonb, DEFAULT_TENANT_ID } from '@/lib/db/client';
-import { sendAgentMessage, sendOrchestratorMessage } from '@/lib/command';
+import { runOrchestrator } from '@/lib/orchestrator';
+import { spawnSubAgent } from '@/lib/subagent';
 import { requireApiAdmin } from '@/lib/api-auth';
 import { requireAdmin } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
 import { getAgentIds } from '@/lib/agent-config';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 300;
 
 type Mode = 'orchestrator' | 'agent_bridge';
 
@@ -186,14 +188,29 @@ export async function POST(request: NextRequest) {
       )
     `;
 
+    // Drive the REAL agents (the OpenClaw CLI path is retired). Orchestrator mode
+    // records the message into the boardroom thread so runOrchestrator picks it up
+    // (and so it shows in the iMessage thread); agent_bridge mode spawns the live
+    // sub-agent. Both log to agent_tasks + the A2A history.
     let responseText = '';
     if (mode === 'orchestrator') {
-      const result = await sendOrchestratorMessage(content);
-      responseText = result.response;
+      await s`
+        INSERT INTO boardroom_messages (tenant_id, direction, sender, recipient, text, status)
+        VALUES (${DEFAULT_TENANT_ID}, 'in', 'operator', ${process.env.LOOPMESSAGE_SENDER_NAME ?? 'keyplayers'}, ${content}, 'received')
+      `;
+      const result = await runOrchestrator();
+      if (result.ok) {
+        responseText = result.text;
+        await s`
+          INSERT INTO boardroom_messages (tenant_id, direction, sender, recipient, text, status, metadata)
+          VALUES (${DEFAULT_TENANT_ID}, 'out', 'keyplayer', 'operator', ${result.text}, 'delivered', ${jsonb({ usage: result.usage })})
+        `;
+      } else {
+        responseText = `(orchestrator error: ${result.error})`;
+      }
     } else {
-      const bridgedPrompt = `Message from ${fromAgent}: ${content}`;
-      const result = await sendAgentMessage(toAgent as string, bridgedPrompt);
-      responseText = result.response;
+      const r = await spawnSubAgent(toAgent as string, `Message from ${fromAgent}: ${content}`);
+      responseText = r.ok ? (r.text ?? '') : `(sub-agent error: ${r.error})`;
     }
 
     if (responseText) {

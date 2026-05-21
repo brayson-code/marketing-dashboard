@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Circle } from 'lucide-react';
-import { AgentChat } from '@/components/chat/agent-chat';
+import { A2AHistory } from '@/components/chat/a2a-history';
 import { MissionControlChat } from '@/components/chat/mission-control-chat';
 
 export default function AgentCommsPage() {
@@ -35,7 +35,7 @@ export default function AgentCommsPage() {
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          <AgentChat />
+          <A2AHistory />
           {role === 'admin' ? (
             <MissionControlChat />
           ) : (
