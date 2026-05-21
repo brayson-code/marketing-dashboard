@@ -44,6 +44,8 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const [size, setSize] = useState({ w: 640, h: compact ? 220 : 480 });
+  const sizeRef = useRef(size);
+  sizeRef.current = size;
   const nodes = useRef<Map<number, SimNode>>(new Map());
   const [, forceRender] = useState(0);
   const [hoverId, setHoverId] = useState<number | null>(null);
@@ -52,7 +54,6 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
   // Mutable state the rAF loop reads (avoids stale closures).
   const sim = useRef({ edges: [] as KgGraphRelation[], w: 640, h: 480, dragId: null as number | null, raf: 0, ticks: 0, running: false, compact });
 
-  // Only keep relations whose endpoints both exist.
   const validRelations = useMemo(
     () => relations.filter((r) => entities.some((e) => e.id === r.from_id) && entities.some((e) => e.id === r.to_id)),
     [relations, entities],
@@ -68,7 +69,6 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
     return set;
   }, [hoverId, validRelations]);
 
-  // Keep the loop's view of edges/size fresh.
   sim.current.edges = validRelations;
   sim.current.w = size.w;
   sim.current.h = size.h;
@@ -89,7 +89,6 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
       const list = [...nodes.current.values()];
       const fx = new Map<number, number>(), fy = new Map<number, number>();
       list.forEach((n) => { fx.set(n.id, 0); fy.set(n.id, 0); });
-      // Repulsion (every pair)
       for (let i = 0; i < list.length; i++) {
         for (let j = i + 1; j < list.length; j++) {
           const a = list[i], b = list[j];
@@ -101,7 +100,6 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
           fx.set(b.id, fx.get(b.id)! - ux * f); fy.set(b.id, fy.get(b.id)! - uy * f);
         }
       }
-      // Springs (edges)
       edges.forEach((r) => {
         const a = nodes.current.get(r.from_id), b = nodes.current.get(r.to_id);
         if (!a || !b) return;
@@ -134,7 +132,6 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
     sim.current.raf = requestAnimationFrame(tick);
   }, []);
 
-  // Measure container width.
   useEffect(() => {
     const el = containerRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
@@ -146,7 +143,6 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
     return () => ro.disconnect();
   }, [compact]);
 
-  // Seed nodes when the entity set changes (preserve positions of existing ids).
   useEffect(() => {
     const { w, h } = sim.current;
     const cx = w / 2, cy = h / 2;
@@ -167,7 +163,28 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
 
   useEffect(() => () => { if (sim.current.raf) cancelAnimationFrame(sim.current.raf); }, []);
 
-  // ── Pointer → graph-coordinate helpers ─────────────────────────────────────
+  // Zoom: Shift + scroll only (plain scroll lets the page scroll normally). Native
+  // non-passive listener so we can preventDefault without React's passive default.
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg || compact) return;
+    const handler = (e: WheelEvent) => {
+      if (!e.shiftKey) return; // no modifier → page scrolls, graph stays put
+      e.preventDefault();
+      const delta = e.deltaY !== 0 ? e.deltaY : e.deltaX; // browsers route wheel to deltaX while Shift is held
+      const factor = delta < 0 ? 1.12 : 1 / 1.12;
+      const rect = svg.getBoundingClientRect();
+      const ux = ((e.clientX - rect.left) / rect.width) * sizeRef.current.w;
+      const uy = ((e.clientY - rect.top) / rect.height) * sizeRef.current.h;
+      setView((v) => {
+        const k = Math.max(0.4, Math.min(3, v.k * factor));
+        return { k, x: ux - ((ux - v.x) / v.k) * k, y: uy - ((uy - v.y) / v.k) * k };
+      });
+    };
+    svg.addEventListener('wheel', handler, { passive: false });
+    return () => svg.removeEventListener('wheel', handler);
+  }, [compact]);
+
   const toGraph = useCallback((clientX: number, clientY: number) => {
     const svg = svgRef.current;
     if (!svg) return { x: 0, y: 0 };
@@ -200,29 +217,17 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
       setView((v) => ({ ...v, x: d.panX + (e.clientX - d.startX), y: d.panY + (e.clientY - d.startY) }));
     }
   };
-  const endPointer = (e: React.PointerEvent) => {
+  const endPointer = () => {
     const d = drag.current;
     if (d.id !== null && !d.moved && onSelect) onSelect(d.id);
     drag.current = { ...d, id: null, panning: false };
     sim.current.dragId = null;
     kick();
   };
+  // Pan: Shift + drag the background (prevents accidental "surfing" on a normal click-drag).
   const onBgPointerDown = (e: React.PointerEvent) => {
-    if (compact) return;
+    if (compact || !e.shiftKey) return;
     drag.current = { ...drag.current, panning: true, startX: e.clientX, startY: e.clientY, panX: view.x, panY: view.y };
-  };
-  const onWheel = (e: React.WheelEvent) => {
-    if (compact) return;
-    const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-    setView((v) => {
-      const k = Math.max(0.4, Math.min(3, v.k * factor));
-      const svg = svgRef.current; if (!svg) return { ...v, k };
-      const rect = svg.getBoundingClientRect();
-      const ux = ((e.clientX - rect.left) / rect.width) * size.w;
-      const uy = ((e.clientY - rect.top) / rect.height) * size.h;
-      // keep the point under the cursor stable
-      return { k, x: ux - ((ux - v.x) / v.k) * k, y: uy - ((uy - v.y) / v.k) * k };
-    });
   };
 
   if (entities.length === 0) {
@@ -248,7 +253,6 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
         onPointerMove={onPointerMove}
         onPointerUp={endPointer}
         onPointerLeave={endPointer}
-        onWheel={onWheel}
         style={{
           display: 'block', background: 'var(--card)', borderRadius: 'var(--radius)',
           border: '1px solid var(--border)', touchAction: 'none',
@@ -256,7 +260,6 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
         }}
       >
         <g transform={`translate(${view.x},${view.y}) scale(${view.k})`}>
-          {/* Edges */}
           {validRelations.map((r, i) => {
             const a = nodes.current.get(r.from_id), b = nodes.current.get(r.to_id);
             if (!a || !b) return null;
@@ -275,7 +278,6 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
               </g>
             );
           })}
-          {/* Nodes */}
           {entities.map((e) => {
             const p = nodes.current.get(e.id);
             if (!p) return null;
@@ -290,17 +292,13 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
                 onPointerEnter={() => setHoverId(e.id)}
                 onPointerLeave={() => setHoverId((h) => (h === e.id ? null : h))}
               >
-                {/* glow */}
                 <circle cx={p.x} cy={p.y} r={r * 2.1} fill={color} opacity={isHover ? 0.28 : 0.16} />
-                {/* node */}
                 <circle cx={p.x} cy={p.y} r={r} fill={color}
                   stroke={isHover ? 'var(--foreground)' : 'var(--card)'} strokeWidth={isHover ? 2.5 : 2} />
-                {/* initial */}
                 <text x={p.x} y={p.y} textAnchor="middle" dominantBaseline="central"
                   fill="#fff" fontSize={r} fontWeight={700} style={{ pointerEvents: 'none' }}>
                   {e.name.charAt(0).toUpperCase()}
                 </text>
-                {/* label */}
                 <text x={p.x} y={p.y + r + 12} textAnchor="middle"
                   fill="var(--foreground)" fontSize={compact ? 10 : 12} fontWeight={isHover ? 600 : 400}
                   style={{ pointerEvents: 'none' }}>
@@ -311,11 +309,34 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
           })}
         </g>
       </svg>
+
       {!compact && (
-        <div className="absolute bottom-2 right-3 text-[10px] text-muted-foreground pointer-events-none select-none">
-          drag nodes · scroll to zoom · drag background to pan
-        </div>
+        <>
+          {/* Controls legend */}
+          <div className="absolute top-2 left-2 rounded-lg bg-[var(--card)]/90 border border-[var(--border)] px-2.5 py-2 text-[10px] leading-relaxed text-muted-foreground backdrop-blur-sm pointer-events-none select-none">
+            <div className="font-semibold text-[var(--foreground)] mb-1">Graph controls</div>
+            <div><b className="text-[var(--foreground)]">Drag</b> a node — reposition it</div>
+            <div><Kbd>Shift</Kbd> + drag — pan around</div>
+            <div><Kbd>Shift</Kbd> + scroll — zoom in/out</div>
+            <div><b className="text-[var(--foreground)]">Hover</b> — highlight links · <b className="text-[var(--foreground)]">Click</b> — details</div>
+          </div>
+          {/* Reset view */}
+          <button
+            onClick={() => setView({ x: 0, y: 0, k: 1 })}
+            className="absolute top-2 right-2 rounded-md bg-[var(--card)]/90 border border-[var(--border)] px-2 py-1 text-[10px] font-medium text-muted-foreground hover:text-[var(--foreground)] backdrop-blur-sm"
+          >
+            Reset view
+          </button>
+        </>
       )}
     </div>
+  );
+}
+
+function Kbd({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd className="inline-block rounded border border-[var(--border)] bg-[var(--muted)] px-1 font-mono text-[9px] text-[var(--foreground)]">
+      {children}
+    </kbd>
   );
 }
