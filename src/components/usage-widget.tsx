@@ -62,38 +62,18 @@ function fmtNum(n: number): string {
 function fmtUsd(n: number): string { return n > 0 && n < 0.01 ? '<$0.01' : `$${n.toFixed(2)}`; }
 function fmtDay(day: string): string { return typeof day === 'string' ? day.slice(5) : ''; }
 
-// ── Claude mascot — a friendly little coral blob with two eyes ──
-function ClaudeMascot({ size = 26 }: { size?: number }) {
+// ── Claude mascot — the real "jammin" sprite (dancing, transparent bg) ──
+function ClaudeMascot({ size = 40 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden>
-      {/* soft shadow */}
-      <ellipse cx="16" cy="29" rx="8" ry="2" fill="rgba(217,119,87,0.25)" />
-      {/* body */}
-      <path
-        d="M16 4c-6 0-10 4.2-10 10.5C6 22 10 28 16 28s10-6 10-13.5C26 8.2 22 4 16 4z"
-        fill="url(#mascotBody)"
-        stroke="#C45D3F"
-        strokeWidth="1"
-      />
-      {/* little spark/asterisk on the head */}
-      <path d="M16 3.5l.7 1.6 1.6.7-1.6.7-.7 1.6-.7-1.6-1.6-.7 1.6-.7z" fill="#FBBF8F" />
-      {/* eyes */}
-      <circle cx="12.5" cy="14" r="2.1" fill="#3A1D12" />
-      <circle cx="19.5" cy="14" r="2.1" fill="#3A1D12" />
-      <circle cx="13.2" cy="13.3" r="0.7" fill="#fff" />
-      <circle cx="20.2" cy="13.3" r="0.7" fill="#fff" />
-      {/* cheeks */}
-      <ellipse cx="10" cy="18" rx="1.6" ry="1" fill="rgba(234,88,12,0.35)" />
-      <ellipse cx="22" cy="18" rx="1.6" ry="1" fill="rgba(234,88,12,0.35)" />
-      {/* smile */}
-      <path d="M13.5 18.5q2.5 2.2 5 0" stroke="#3A1D12" strokeWidth="1.1" fill="none" strokeLinecap="round" />
-      <defs>
-        <linearGradient id="mascotBody" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#E8835A" />
-          <stop offset="100%" stopColor="#D97757" />
-        </linearGradient>
-      </defs>
-    </svg>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="/sprites/claude-jammin.gif"
+      alt="Claude"
+      width={size}
+      height={size}
+      style={{ width: size, height: size, imageRendering: 'pixelated', display: 'block', filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.25))' }}
+      aria-hidden
+    />
   );
 }
 
@@ -112,7 +92,7 @@ function ClaudeSpark({ size = 16 }: { size?: number }) {
   );
 }
 
-// ── Limit progress bar with riding mascot ───────────────────────
+// ── Limit progress bar with the dancing Claude riding on top ─────
 function LimitBar({ label, limit }: { label: string; limit: UsageLimit }) {
   const used = Number(limit?.used ?? 0);
   const max = Number(limit?.limit ?? 0);
@@ -120,42 +100,55 @@ function LimitBar({ label, limit }: { label: string; limit: UsageLimit }) {
   const over = rawPct >= 100;
   const fillPct = Math.max(0, Math.min(100, rawPct)); // clamp the visible fill
   // Keep the mascot inside the track so it never clips off the edge.
-  const ridePct = Math.max(4, Math.min(96, fillPct));
+  const ridePct = Math.max(6, Math.min(94, fillPct));
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-1.5">
-        <span className="text-xs font-medium" style={{ color: CLAUDE.primary }}>{label}</span>
-        <span className="text-[11px] font-mono" style={{ color: over ? CLAUDE.warn : 'var(--muted-foreground)' }}>
-          {fmtNum(used)} / {fmtNum(max)} tokens ({Math.round(rawPct)}%)
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-semibold" style={{ color: CLAUDE.primary }}>{label}</span>
+        <span className="text-xs font-mono font-medium" style={{ color: over ? CLAUDE.warn : 'var(--muted-foreground)' }}>
+          {fmtNum(used)} / {fmtNum(max)} <span className="opacity-70">tokens</span> · {Math.round(rawPct)}%
         </span>
       </div>
-      <div
-        className="relative h-3.5 rounded-full overflow-visible"
-        style={{ background: CLAUDE.fillSofter, border: `1px solid ${CLAUDE.border}` }}
-      >
-        {/* fill */}
+      {/* extra top padding leaves room for the mascot to sit above the track */}
+      <div className="relative pt-6">
         <div
-          className="absolute inset-y-0 left-0 rounded-full transition-all duration-700 ease-out"
+          className="relative h-7 rounded-full overflow-hidden"
           style={{
-            width: `${fillPct}%`,
-            background: over
-              ? `linear-gradient(90deg, ${CLAUDE.bright}, ${CLAUDE.warn})`
-              : `linear-gradient(90deg, ${CLAUDE.primary}, ${CLAUDE.accent})`,
-            boxShadow: `0 0 8px ${over ? 'rgba(220,38,38,0.5)' : 'rgba(217,119,87,0.45)'}`,
+            background: 'rgba(217,119,87,0.12)',
+            border: `1px solid ${CLAUDE.border}`,
+            boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.18)',
           }}
-        />
-        {/* riding mascot at the fill edge */}
+        >
+          {/* gradient fill */}
+          <div
+            className="absolute inset-y-0 left-0 rounded-full transition-all duration-700 ease-out"
+            style={{
+              width: `${Math.max(fillPct, 2)}%`,
+              background: over
+                ? 'linear-gradient(90deg, #EA580C 0%, #DC2626 60%, #B91C1C 100%)'
+                : 'linear-gradient(90deg, #EA580C 0%, #F59E0B 45%, #D97757 100%)',
+              boxShadow: `0 0 14px ${over ? 'rgba(220,38,38,0.6)' : 'rgba(234,88,12,0.55)'}`,
+            }}
+          >
+            {/* moving shimmer highlight across the fill */}
+            <div className="claude-bar-shimmer absolute inset-0 rounded-full" />
+          </div>
+        </div>
+
+        {/* dancing mascot, sitting ON TOP of the bar at the fill edge */}
         <div
-          className="absolute top-1/2 transition-all duration-700 ease-out"
-          style={{ left: `${ridePct}%`, transform: 'translate(-50%, -50%)', zIndex: 2 }}
+          className="absolute transition-all duration-700 ease-out"
+          style={{ left: `${ridePct}%`, top: 0, transform: 'translateX(-50%)', zIndex: 3 }}
           title={`${Math.round(rawPct)}% of ${label.toLowerCase()}`}
         >
-          <ClaudeMascot size={24} />
+          <div className="claude-mascot-bob">
+            <ClaudeMascot size={44} />
+          </div>
         </div>
       </div>
       {over && (
-        <p className="text-[10px] mt-1 font-medium" style={{ color: CLAUDE.warn }}>
+        <p className="text-[11px] mt-1.5 font-medium" style={{ color: CLAUDE.warn }}>
           Over limit — {fmtNum(used - max)} tokens past the cap
         </p>
       )}

@@ -487,3 +487,19 @@ textarea:focus {
 @media (min-width: 769px) {
   .mobile-nav { display: none !important; }
 }
+
+/* ─── Usage widget: Claude mascot + progress bar ─────────── */
+@keyframes claude-bob {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50%      { transform: translateY(-4px) rotate(2deg); }
+}
+@keyframes claude-bar-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.claude-mascot-bob { animation: claude-bob 0.9s ease-in-out infinite; transform-origin: 50% 90%; }
+.claude-bar-shimmer {
+  background-image: linear-gradient(100deg, transparent 20%, rgba(255,255,255,0.45) 50%, transparent 80%);
+  background-size: 200% 100%;
+  animation: claude-bar-shimmer 2.2s linear infinite;
+}
