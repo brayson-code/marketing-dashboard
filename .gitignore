@@ -60,3 +60,6 @@ hermes-seed-fix.bundle
 
 # Agent worktrees
 .claude/worktrees/
+
+# Raw mascot source videos (converted to frames/webp, not shipped)
+public/sprites/_raw/
