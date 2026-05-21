@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import {
   PenLine, MessageCircle, Mail, Users, AlertTriangle, Info, AlertCircle,
   Bell, ThumbsUp, ThumbsDown, Loader2, Zap,
-  CheckCircle, Search, Send,
+  CheckCircle, Search, Send, Network,
 } from 'lucide-react';
 import Link from 'next/link';
 import { StatCard } from '@/components/ui/stat-card';
@@ -17,6 +17,7 @@ import type { OverviewStats, Alert, ActivityEntry, DailyMetrics } from '@/types'
 import { PipelineFunnel } from '@/components/pipeline/pipeline-funnel';
 import { AgentSessions } from '@/components/sessions/agent-sessions';
 import { ContentCalendar } from '@/components/content/content-calendar';
+import KnowledgeGraph, { type KgGraphEntity, type KgGraphRelation } from '@/components/kg-graph';
 
 interface AgentBrief {
   id: string;
@@ -96,6 +97,13 @@ export default function OverviewPage() {
     () => fetch(`/api/benchmarks/cycle-time?days=30${realOnly ? '&real=true' : ''}`).then(r => r.json()),
     { interval: 300_000, key: `cycle-${realOnly}` },
   );
+
+  const { data: kg } = useSmartPoll<{ entities: KgGraphEntity[]; relations: KgGraphRelation[] }>(
+    () => fetch('/api/kg').then(r => r.json()).catch(() => ({ entities: [], relations: [] })),
+    { interval: 60_000 },
+  );
+  const kgEntities = Array.isArray(kg?.entities) ? kg.entities : [];
+  const kgRelations = Array.isArray(kg?.relations) ? kg.relations : [];
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -234,6 +242,27 @@ export default function OverviewPage() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Knowledge Graph compact widget */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="panel">
+          <div className="panel-header flex items-center justify-between">
+            <h3 className="section-title flex items-center gap-2">
+              <Network size={14} />
+              Knowledge Graph
+            </h3>
+            <Link href="/kg" className="text-[10px] text-primary hover:underline">
+              View full graph →
+            </Link>
+          </div>
+          <div className="panel-body space-y-2">
+            <KnowledgeGraph entities={kgEntities} relations={kgRelations} compact />
+            <p className="text-[10px] text-muted-foreground text-center">
+              {kgEntities.length} entities · {kgRelations.length} relations
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Stat Cards */}

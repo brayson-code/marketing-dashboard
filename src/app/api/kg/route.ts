@@ -30,7 +30,10 @@ export async function GET(request: Request) {
     SELECT COUNT(*) as n FROM kg_relations WHERE tenant_id = ${DEFAULT_TENANT_ID}
   `;
   const relationCount = Number(relRows[0].n);
-  return NextResponse.json({ entities, counts, relationCount });
+  const relations = await sql()`
+    SELECT from_id, to_id, label FROM kg_relations WHERE tenant_id = ${DEFAULT_TENANT_ID}
+  `;
+  return NextResponse.json({ entities, counts, relationCount, relations });
 }
 
 export async function POST(request: Request) {

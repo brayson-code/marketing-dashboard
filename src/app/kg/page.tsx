@@ -2,14 +2,17 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Network, Search, ArrowRight, ArrowLeft } from 'lucide-react';
+import KnowledgeGraph from '@/components/kg-graph';
 
 interface Entity { id: number; kind: string; name: string; attributes: Record<string, unknown>; created_at: number; updated_at: number }
 interface KgRelation { id: number; from_id: number; to_id: number; label: string; attributes: Record<string, unknown> }
 interface Neighbor { entity: Entity; relation: KgRelation; direction: 'in' | 'out' }
 interface KindCount { kind: string; n: number }
+interface GraphRelation { from_id: number; to_id: number; label: string }
 
 export default function KgPage() {
   const [entities, setEntities] = useState<Entity[]>([]);
+  const [relations, setRelations] = useState<GraphRelation[]>([]);
   const [counts, setCounts] = useState<KindCount[]>([]);
   const [relCount, setRelCount] = useState(0);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -23,8 +26,9 @@ export default function KgPage() {
     if (kindFilter) qs.set('kind', kindFilter);
     const res = await fetch(`/api/kg?${qs.toString()}`, { cache: 'no-store' });
     const json = await res.json();
-    setEntities(json.entities ?? []);
-    setCounts(json.counts ?? []);
+    setEntities(Array.isArray(json.entities) ? json.entities : []);
+    setRelations(Array.isArray(json.relations) ? json.relations : []);
+    setCounts(Array.isArray(json.counts) ? json.counts : []);
     setRelCount(json.relationCount ?? 0);
   }, [search, kindFilter]);
 
@@ -48,6 +52,15 @@ export default function KgPage() {
             Entities + relations KeyPlayer + sub-agents accumulate over time.
             <span className="ml-2 badge badge-neutral">{entities.length} entities · {relCount} relations</span>
           </p>
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="panel-header">
+          <h3 className="section-title">Graph</h3>
+        </div>
+        <div className="panel-body">
+          <KnowledgeGraph entities={entities} relations={relations} onSelect={loadNeighbors} />
         </div>
       </div>
 
