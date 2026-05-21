@@ -39,6 +39,7 @@ export default function MemoryPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [view, setView] = useState<'docs' | 'health'>('docs');
   const loadedFor = useRef<string | null>(null);
 
   const loadList = useCallback(async () => {
@@ -116,11 +117,18 @@ export default function MemoryPage() {
 
   return (
     <div className="space-y-4 animate-in">
-      <div className="space-y-1">
-        <h1 className="text-xl font-semibold flex items-center gap-2"><BrainCircuit size={18} className="text-primary" /> Memory</h1>
-        <p className="text-xs text-muted-foreground">Edit and improve KeyPlayer&apos;s knowledge — markdown documents stored in Supabase.</p>
+      <div className="flex items-end justify-between gap-3 flex-wrap">
+        <div className="space-y-1">
+          <h1 className="text-xl font-semibold flex items-center gap-2"><BrainCircuit size={18} className="text-primary" /> Memory</h1>
+          <p className="text-xs text-muted-foreground">Edit and improve KeyPlayer&apos;s knowledge — markdown documents stored in Supabase.</p>
+        </div>
+        <div className="flex items-center gap-1 border-b border-border">
+          <button onClick={() => setView('docs')} className={`tab ${view === 'docs' ? 'active' : ''}`}>Documents</button>
+          <button onClick={() => setView('health')} className={`tab ${view === 'health' ? 'active' : ''}`}>Health</button>
+        </div>
       </div>
 
+      {view === 'health' ? <HealthView /> : (
       <div className="panel flex" style={{ height: 'calc(100vh - 220px)', minHeight: 460 }}>
         {/* Document list */}
         <div className="w-60 border-r border-border/60 flex flex-col shrink-0">
@@ -193,6 +201,83 @@ export default function MemoryPage() {
               {error && <div className="px-4 pb-2 text-xs text-destructive">{error}</div>}
             </>
           )}
+        </div>
+      </div>
+      )}
+    </div>
+  );
+}
+
+interface HealthData {
+  documents: { total: number; raw: number; wiki: number; archived: number; duplicate_titles: number };
+  kg: { entities: number; relations: number; low_confidence: number; duplicate_names: number; by_source: Array<{ source: string; c: number }> };
+  memory: { rollups: number; last_rollup: string | null };
+}
+
+function Stat({ label, value, hint, warn }: { label: string; value: number | string; hint?: string; warn?: boolean }) {
+  return (
+    <div className="panel p-3">
+      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className={`text-2xl font-bold ${warn ? 'text-warning' : ''}`}>{value}</div>
+      {hint && <div className="text-[10px] text-muted-foreground mt-0.5">{hint}</div>}
+    </div>
+  );
+}
+
+function HealthView() {
+  const [data, setData] = useState<HealthData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let on = true;
+    fetch('/api/memory/health', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (on && j && !j.error) setData(j); })
+      .finally(() => on && setLoading(false));
+    return () => { on = false; };
+  }, []);
+
+  if (loading) return <div className="panel p-8 flex items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 size={14} className="animate-spin" /> Loading health…</div>;
+  if (!data) return <div className="panel p-8 text-sm text-muted-foreground">Couldn&apos;t load memory health.</div>;
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Documents</div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <Stat label="Total" value={data.documents.total} />
+          <Stat label="Wiki" value={data.documents.wiki} hint="compiled knowledge" />
+          <Stat label="Raw" value={data.documents.raw} hint="staging" />
+          <Stat label="Duplicate titles" value={data.documents.duplicate_titles} warn={data.documents.duplicate_titles > 0} hint="merge candidates" />
+        </div>
+      </div>
+      <div>
+        <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Knowledge graph</div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <Stat label="Entities" value={data.kg.entities} />
+          <Stat label="Relations" value={data.kg.relations} />
+          <Stat label="Low confidence" value={data.kg.low_confidence} warn={data.kg.low_confidence > 0} hint="< 0.6 — review" />
+          <Stat label="Duplicate names" value={data.kg.duplicate_names} warn={data.kg.duplicate_names > 0} hint="dedupe candidates" />
+        </div>
+        {data.kg.by_source.length > 0 && (
+          <div className="panel p-3 mt-3">
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2">Facts by source agent</div>
+            <div className="space-y-1.5">
+              {data.kg.by_source.map((s) => (
+                <div key={s.source} className="flex items-center justify-between text-xs">
+                  <span>{s.source}</span>
+                  <span className="font-mono text-muted-foreground">{s.c}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+      <div>
+        <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Compacted memory</div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <Stat label="Rollups" value={data.memory.rollups} />
+          <Stat label="Last rollup" value={data.memory.last_rollup ? new Date(data.memory.last_rollup).toLocaleDateString() : '—'} />
         </div>
       </div>
     </div>
