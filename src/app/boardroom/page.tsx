@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Send, Phone, AlertCircle, ArrowDownToLine, ArrowUpFromLine, MessageSquare, Network, Sparkles, Paperclip, X, Loader2, ImageIcon, Info } from 'lucide-react';
-import { AgentChat } from '@/components/chat/agent-chat';
+import { A2AHistory } from '@/components/chat/a2a-history';
 import { MissionControlChat } from '@/components/chat/mission-control-chat';
 import { createClient } from '@/lib/supabase/client';
 
@@ -382,7 +382,7 @@ function IMessageThread() {
 const TABS: { id: Tab; label: string; icon: typeof MessageSquare; description: string }[] = [
   { id: 'imessage', label: 'iMessage', icon: MessageSquare, description: 'You ↔ orchestrator over iMessage' },
   { id: 'mission', label: 'Mission Control', icon: Sparkles, description: 'Operator ↔ orchestrator (in-app)' },
-  { id: 'a2a', label: 'Agent ↔ Agent', icon: Network, description: 'Bridge threads between agents' },
+  { id: 'a2a', label: 'Agent ↔ Agent', icon: Network, description: 'Watch how your agents talk to each other' },
 ];
 
 export default function BoardroomPage() {
@@ -414,7 +414,7 @@ export default function BoardroomPage() {
 
       {tab === 'imessage' && <IMessageThread />}
       {tab === 'mission' && <MissionControlChat />}
-      {tab === 'a2a' && <AgentChat />}
+      {tab === 'a2a' && <A2AHistory />}
     </div>
   );
 }
