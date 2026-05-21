@@ -215,9 +215,12 @@ export function UsageWidget() {
     const size = 54;
     // Transparent gif mascots (verified) + the in-place SVG animations. Confetti
     // is excluded (its burst overflows a small bar); solid-bg gifs are excluded.
+    // All 480x480, character framed consistently. Excludes clawd-linuxdo-06
+    // (1936x1850 "jumping" animation — figure moves inside a big canvas, so it
+    // reads small/off-center on the small bar).
     const gifs = [
       'claude-jammin', 'clawd-headphones', 'clawd-linuxdo-01', 'clawd-linuxdo-02',
-      'clawd-linuxdo-04', 'clawd-linuxdo-05', 'clawd-linuxdo-06', 'clawd-linuxdo-07',
+      'clawd-linuxdo-04', 'clawd-linuxdo-05', 'clawd-linuxdo-07',
     ];
     const renderers: Array<(s: number) => React.ReactNode> = [
       ...gifs.map((name) => (s: number) => (
