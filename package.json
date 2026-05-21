@@ -24,6 +24,7 @@
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",
     "google-auth-library": "^10.5.0",
+    "gsap": "^3.15.0",
     "imapflow": "^1.2.9",
     "js-yaml": "^4.1.1",
     "lucide-react": "^0.563.0",
