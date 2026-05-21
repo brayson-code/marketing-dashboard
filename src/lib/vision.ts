@@ -29,9 +29,12 @@ const SUPPORTED_IMAGE_TYPES = new Set([
   'image/webp',
 ]);
 
-// Don't try to base64 a huge file into the prompt. 5 MB decoded is already a lot
-// of tokens; anything bigger is almost certainly not a screenshot.
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+// Anthropic rejects images over 5 MB; stay safely under it.
+const TARGET_BYTES = 4_700_000;
+// A supported-format image this small is sent as-is (skip re-encoding).
+const COMFORTABLE_BYTES = 3_800_000;
+// Refuse to even decode absurdly large downloads (memory guard).
+const HARD_INPUT_CAP = 30 * 1024 * 1024;
 
 // Cap how many images we attach to a single turn to bound token cost.
 export const MAX_IMAGES_PER_MESSAGE = 4;
@@ -94,6 +97,27 @@ export function parseAttachments(raw: unknown): Attachment[] {
  * if it isn't a usable image (wrong type, too big, fetch failed). Never throws —
  * a bad attachment should degrade to text-only, not break the whole turn.
  */
+// Normalize anything sharp can decode (incl. HEIC, oversized photos, mislabeled
+// formats) into a Claude-safe JPEG: auto-orient, cap the longest side at 1568px
+// (Anthropic's recommended max), and step quality down until it's under the cap.
+async function shrinkToJpeg(buf: Buffer): Promise<Buffer | null> {
+  try {
+    const sharp = (await import('sharp')).default;
+    for (const quality of [82, 68, 55, 42]) {
+      const out = await sharp(buf, { failOn: 'none' })
+        .rotate() // honor EXIF orientation
+        .resize(1568, 1568, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality, mozjpeg: true })
+        .toBuffer();
+      if (out.length <= TARGET_BYTES) return out;
+    }
+    return null;
+  } catch (err) {
+    console.error('[vision] sharp normalize failed:', (err as Error).message);
+    return null;
+  }
+}
+
 export async function toImageBlock(att: Attachment): Promise<Anthropic.ImageBlockParam | null> {
   if (!isImageAttachment(att) || !att.url) return null;
   try {
@@ -103,20 +127,31 @@ export async function toImageBlock(att: Attachment): Promise<Anthropic.ImageBloc
       return null;
     }
     const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length === 0 || buf.length > MAX_IMAGE_BYTES) {
+    if (buf.length === 0 || buf.length > HARD_INPUT_CAP) {
       console.error(`[vision] image size ${buf.length} out of range`);
       return null;
     }
-    // Trust the actual bytes, not the URL/Content-Type — this is the fix for
-    // "specified as image/jpeg but the image is …" 400s from mislabeled MMS media.
-    const mediaType = sniffImageMediaType(buf);
-    if (!mediaType || !SUPPORTED_IMAGE_TYPES.has(mediaType)) {
-      console.error(`[vision] unreadable image (declared=${att.type ?? '?'}, sniffed=${mediaType ?? 'unknown'}) for ${att.url.slice(0, 80)}`);
+
+    // Trust the actual bytes, not the URL/Content-Type (MMS media is often
+    // mislabeled). Fast path: already a Claude-supported format and small enough.
+    const sniffed = sniffImageMediaType(buf);
+    if (sniffed && SUPPORTED_IMAGE_TYPES.has(sniffed) && buf.length <= COMFORTABLE_BYTES) {
+      return {
+        type: 'image',
+        source: { type: 'base64', media_type: sniffed as Anthropic.Base64ImageSource['media_type'], data: buf.toString('base64') },
+      };
+    }
+
+    // Otherwise re-encode: too big, HEIC, or an unsupported/odd format. sharp
+    // decodes HEIC + most formats and shrinks under the 5 MB limit.
+    const jpeg = await shrinkToJpeg(buf);
+    if (!jpeg) {
+      console.error(`[vision] could not normalize image (declared=${att.type ?? '?'}, sniffed=${sniffed ?? 'unknown'}, bytes=${buf.length})`);
       return null;
     }
     return {
       type: 'image',
-      source: { type: 'base64', media_type: mediaType as Anthropic.Base64ImageSource['media_type'], data: buf.toString('base64') },
+      source: { type: 'base64', media_type: 'image/jpeg', data: jpeg.toString('base64') },
     };
   } catch (err) {
     console.error(`[vision] toImageBlock failed:`, (err as Error).message);

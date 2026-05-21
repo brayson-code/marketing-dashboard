@@ -15,14 +15,17 @@ import { useSmartPoll } from '@/hooks/use-smart-poll';
 
 // ── Claude theming ──────────────────────────────────────────────
 const CLAUDE = {
-  primary: '#D97757', // signature coral-orange
+  primary: '#E8835A', // signature coral-orange (brightened for the dark card)
   accent: '#E8835A',
-  bright: '#EA580C',
-  warn: '#DC2626', // over-limit warning shade
-  fillSoft: 'rgba(217, 119, 87, 0.16)',
-  fillSofter: 'rgba(217, 119, 87, 0.08)',
-  tint: 'rgba(217, 119, 87, 0.10)',
-  border: 'rgba(217, 119, 87, 0.30)',
+  bright: '#FB923C', // vivid orange for headings on dark
+  warn: '#F87171', // over-limit warning shade (lightened for dark bg)
+  fillSoft: 'rgba(255, 255, 255, 0.08)',
+  fillSofter: 'rgba(255, 255, 255, 0.05)',
+  tint: 'rgba(234, 88, 12, 0.10)',
+  border: 'rgba(255, 255, 255, 0.12)',
+  dark: '#1A1512', // warm charcoal card fill
+  ink: '#F5F3F0', // light text on the dark card
+  inkMuted: 'rgba(245, 243, 240, 0.60)',
 };
 
 // ── Types (mirror src/lib/usage.ts) ─────────────────────────────
@@ -107,7 +110,7 @@ function LimitBar({ label, limit }: { label: string; limit: UsageLimit }) {
     <div>
       <div className="flex items-end justify-between mb-2 gap-2 flex-wrap">
         <span className="text-lg font-extrabold tracking-tight uppercase" style={{ color: CLAUDE.bright, letterSpacing: '0.02em' }}>{label}</span>
-        <span className="font-mono font-bold" style={{ color: over ? CLAUDE.warn : 'var(--foreground)', fontSize: '1.05rem' }}>
+        <span className="font-mono font-bold" style={{ color: over ? CLAUDE.warn : CLAUDE.ink, fontSize: '1.05rem' }}>
           {fmtNum(used)} / {fmtNum(max)} <span className="text-xs opacity-60">tokens</span> · {Math.round(rawPct)}%
         </span>
       </div>
@@ -116,9 +119,9 @@ function LimitBar({ label, limit }: { label: string; limit: UsageLimit }) {
         <div
           className="relative h-9 rounded-full overflow-hidden"
           style={{
-            background: 'rgba(217,119,87,0.12)',
+            background: 'rgba(255,255,255,0.08)',
             border: `1px solid ${CLAUDE.border}`,
-            boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.18)',
+            boxShadow: 'inset 0 1px 4px rgba(0,0,0,0.45)',
           }}
         >
           {/* gradient fill */}
@@ -166,11 +169,11 @@ function ChartTip({ active, payload }: { active?: boolean; payload?: TipPayload[
   return (
     <div
       className="rounded-lg px-2.5 py-1.5 text-[11px]"
-      style={{ background: 'var(--card)', border: `1px solid ${CLAUDE.border}`, color: 'var(--foreground)' }}
+      style={{ background: CLAUDE.dark, border: `1px solid ${CLAUDE.border}`, color: CLAUDE.ink }}
     >
-      <div className="font-mono text-[10px]" style={{ color: 'var(--muted-foreground)' }}>{p.fullDay}</div>
-      <div style={{ color: CLAUDE.primary }} className="font-semibold">{fmtNum(Number(p.tokens ?? 0))} tokens</div>
-      <div style={{ color: 'var(--muted-foreground)' }}>{fmtUsd(Number(p.cost_usd ?? 0))}</div>
+      <div className="font-mono text-[10px]" style={{ color: CLAUDE.inkMuted }}>{p.fullDay}</div>
+      <div style={{ color: CLAUDE.bright }} className="font-semibold">{fmtNum(Number(p.tokens ?? 0))} tokens</div>
+      <div style={{ color: CLAUDE.inkMuted }}>{fmtUsd(Number(p.cost_usd ?? 0))}</div>
     </div>
   );
 }
@@ -228,8 +231,8 @@ export function UsageWidget() {
       style={{
         border: `2px solid ${CLAUDE.primary}`,
         borderRadius: 22,
-        background: '#F5F6F8',
-        boxShadow: '0 16px 38px -12px rgba(234,88,12,0.28), 0 8px 18px -8px rgba(0,0,0,0.10)',
+        background: CLAUDE.dark,
+        boxShadow: '0 18px 40px -12px rgba(234,88,12,0.35), 0 10px 22px -8px rgba(0,0,0,0.30)',
       }}
     >
       <div className="panel-header flex items-center justify-between" style={{ borderColor: 'rgba(234,88,12,0.22)' }}>
@@ -273,7 +276,7 @@ export function UsageWidget() {
               >
                 <ClaudeMascot size={40} />
                 <p className="text-sm font-medium" style={{ color: CLAUDE.primary }}>No usage yet</p>
-                <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                <p className="text-xs" style={{ color: CLAUDE.inkMuted }}>
                   Token usage will show up here once your agents start running.
                 </p>
               </div>
@@ -290,9 +293,9 @@ export function UsageWidget() {
                           <stop offset="100%" stopColor={CLAUDE.primary} stopOpacity={0} />
                         </linearGradient>
                       </defs>
-                      <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
-                      <XAxis dataKey="day" stroke="var(--muted-foreground)" fontSize={10} tickLine={false} axisLine={false} />
-                      <YAxis stroke="var(--muted-foreground)" fontSize={10} tickFormatter={fmtNum} tickLine={false} axisLine={false} width={40} />
+                      <CartesianGrid stroke="rgba(255,255,255,0.08)" strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="day" stroke={CLAUDE.inkMuted} fontSize={10} tickLine={false} axisLine={false} />
+                      <YAxis stroke={CLAUDE.inkMuted} fontSize={10} tickFormatter={fmtNum} tickLine={false} axisLine={false} width={40} />
                       <Tooltip content={<ChartTip />} cursor={{ stroke: CLAUDE.border }} />
                       <Area type="monotone" dataKey="tokens" stroke={CLAUDE.primary} fill="url(#usageArea)" strokeWidth={2} />
                     </AreaChart>
@@ -304,7 +307,7 @@ export function UsageWidget() {
                   <div className="text-sm font-bold mb-2 tracking-tight" style={{ color: CLAUDE.bright }}>By agent</div>
                   <div className="space-y-2">
                     {byAgentDaily.length === 0 ? (
-                      <p className="text-xs" style={{ color: 'var(--muted-foreground)' }}>No agent activity yet.</p>
+                      <p className="text-xs" style={{ color: CLAUDE.inkMuted }}>No agent activity yet.</p>
                     ) : (
                       byAgentDaily.map((a) => (
                         <div
@@ -313,10 +316,10 @@ export function UsageWidget() {
                           style={{ background: CLAUDE.fillSofter, border: `1px solid ${CLAUDE.border}` }}
                         >
                           <div className="min-w-0 flex-1">
-                            <div className="text-xs font-bold truncate" style={{ color: 'var(--foreground)' }}>
+                            <div className="text-xs font-bold truncate" style={{ color: CLAUDE.ink }}>
                               {agentLabel(a.agent_id)}
                             </div>
-                            <div className="text-[10px] font-mono font-semibold" style={{ color: 'var(--muted-foreground)' }}>
+                            <div className="text-[10px] font-mono font-semibold" style={{ color: CLAUDE.inkMuted }}>
                               {fmtNum(Number(a.total_tokens ?? 0))} tokens · {fmtUsd(Number(a.total_cost_usd ?? 0))}
                             </div>
                           </div>
