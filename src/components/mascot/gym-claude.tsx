@@ -29,9 +29,9 @@ export interface GymClaudeProps {
  * a 1.5s rest on the final frame before the loop repeats.
  */
 
-const DEFAULT_DELAY = 0.085;
-const APEX_HOLD = 0.27; // strain at the top of the lift
-const REST_HOLD = 1.5; // pause before looping
+const DEFAULT_DELAY = 0.14;
+const APEX_HOLD = 0.42; // strain at the top of the lift
+const REST_HOLD = 1.8; // pause before looping
 
 function gymDelay(playIndex: number, frameIndex: number, frameCount: number) {
   if (playIndex === frameCount - 1) return REST_HOLD;

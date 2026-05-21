@@ -25,7 +25,7 @@ export interface ConfettiClaudeProps {
  * frame-cycling at a steady ~0.085s beat — no synthesised particle overlay.
  */
 
-const FRAME_DURATION = 0.085;
+const FRAME_DURATION = 0.16;
 
 export function ConfettiClaude({
   size = 220,

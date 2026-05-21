@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
-import { GymClaude, FlagWaver, ConfettiClaude } from '@/components/mascot';
+import { GymClaude, FlagWaver } from '@/components/mascot';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -212,13 +212,12 @@ export function UsageWidget() {
   // Pick two DISTINCT mascots for the daily vs weekly bars. Reshuffled each load
   // (useMemo on mount), so it varies over time but the two are never the same.
   const [dailyMascot, weeklyMascot] = useMemo(() => {
-    const pool = [GymClaude, FlagWaver, ConfettiClaude];
-    for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-    const A = pool[0];
-    const B = pool[1];
+    // Confetti is excluded from the bars for now (its upward burst overflows the
+    // small bar and reads as broken); it still lives on the /mascot showcase.
+    const pool = [GymClaude, FlagWaver];
+    const flip = Math.random() < 0.5;
+    const A = flip ? pool[0] : pool[1];
+    const B = flip ? pool[1] : pool[0];
     const size = 54;
     return [<A key="daily" size={size} />, <B key="weekly" size={size} />];
   }, []);

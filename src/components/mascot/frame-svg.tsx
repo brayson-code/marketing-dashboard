@@ -62,7 +62,7 @@ export interface FrameSvgProps {
   "aria-label"?: string;
 }
 
-const DEFAULT_DELAY = 0.085;
+const DEFAULT_DELAY = 0.14;
 
 export function FrameSvg({
   src,

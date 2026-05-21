@@ -26,7 +26,7 @@ export interface FlagWaverProps {
  * loose flag-wave cadence from the article.
  */
 
-const FRAME_DURATION = 0.09;
+const FRAME_DURATION = 0.16;
 
 export function FlagWaver({ size = 220, className, playing = true, onTimeline }: FlagWaverProps) {
   return (
