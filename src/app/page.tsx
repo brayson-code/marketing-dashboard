@@ -18,6 +18,7 @@ import { PipelineFunnel } from '@/components/pipeline/pipeline-funnel';
 import { AgentSessions } from '@/components/sessions/agent-sessions';
 import { ContentCalendar } from '@/components/content/content-calendar';
 import KnowledgeGraph, { type KgGraphEntity, type KgGraphRelation } from '@/components/kg-graph';
+import { UsageWidget } from '@/components/usage-widget';
 
 interface AgentBrief {
   id: string;
@@ -262,6 +263,11 @@ export default function OverviewPage() {
               {kgEntities.length} entities · {kgRelations.length} relations
             </p>
           </div>
+        </div>
+
+        {/* Claude API Usage widget */}
+        <div className="lg:col-span-2">
+          <UsageWidget />
         </div>
       </div>
 

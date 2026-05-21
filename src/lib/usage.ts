@@ -48,10 +48,50 @@ export interface AgentUsage {
   avg_duration_sec: number;
 }
 
+/** Per-agent daily token series — one entry per (agent, day) over the window. */
+export interface AgentDailyPoint {
+  day: string; // YYYY-MM-DD
+  input_tokens: number;
+  output_tokens: number;
+  tokens: number; // input + output
+  cost_usd: number;
+}
+
+export interface AgentDailyUsage {
+  agent_id: string;
+  model: string;
+  total_tokens: number;
+  total_cost_usd: number;
+  days: AgentDailyPoint[];
+}
+
+export interface UsageLimit {
+  used: number;
+  limit: number;
+  pct: number; // 0..(>100), used/limit * 100
+}
+
+export interface UsageLimits {
+  daily: UsageLimit;
+  weekly: UsageLimit;
+}
+
 export interface UsageSummary {
   total: { input_tokens: number; output_tokens: number; cost_usd: number; calls: number };
   by_day: DailyUsage[];
   by_agent: AgentUsage[];
+  by_agent_daily: AgentDailyUsage[];
+  limits: UsageLimits;
+}
+
+const DEFAULT_DAILY_LIMIT = 2_000_000;
+const DEFAULT_WEEKLY_LIMIT = 10_000_000;
+
+function envLimit(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
 export async function getUsageSummary(days = 14): Promise<UsageSummary> {
@@ -73,16 +113,28 @@ export async function getUsageSummary(days = 14): Promise<UsageSummary> {
 
   const byDay = new Map<string, DailyUsage>();
   const byAgent = new Map<string, AgentUsage>();
+  // agent_id -> (day -> AgentDailyPoint)
+  const byAgentDay = new Map<string, Map<string, AgentDailyPoint>>();
   let totalIn = 0, totalOut = 0, totalCost = 0, totalCalls = 0;
 
+  // Limit windows (UTC, aligned to by_day's UTC day boundaries).
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const weekCutoffMs = Date.now() - 7 * 86_400 * 1000;
+  let todayTokens = 0;
+  let weekTokens = 0;
+
   for (const r of rows) {
-    const inTok = r.input_tokens ?? 0;
-    const outTok = r.output_tokens ?? 0;
+    const inTok = Number(r.input_tokens ?? 0);
+    const outTok = Number(r.output_tokens ?? 0);
     const cost = costFor(r.agent_id, inTok, outTok);
     const startedMs = new Date(r.started_at).getTime();
     const completedMs = r.completed_at ? new Date(r.completed_at).getTime() : startedMs;
     const day = new Date(startedMs).toISOString().slice(0, 10);
     const dur = (completedMs - startedMs) / 1000; // seconds
+    const tok = inTok + outTok;
+
+    if (day === todayKey) todayTokens += tok;
+    if (startedMs >= weekCutoffMs) weekTokens += tok;
 
     const d = byDay.get(day) ?? { day, input_tokens: 0, output_tokens: 0, cost_usd: 0, calls: 0 };
     d.input_tokens += inTok;
@@ -90,6 +142,15 @@ export async function getUsageSummary(days = 14): Promise<UsageSummary> {
     d.cost_usd += cost;
     d.calls += 1;
     byDay.set(day, d);
+
+    let agentDays = byAgentDay.get(r.agent_id);
+    if (!agentDays) { agentDays = new Map(); byAgentDay.set(r.agent_id, agentDays); }
+    const adp = agentDays.get(day) ?? { day, input_tokens: 0, output_tokens: 0, tokens: 0, cost_usd: 0 };
+    adp.input_tokens += inTok;
+    adp.output_tokens += outTok;
+    adp.tokens += tok;
+    adp.cost_usd += cost;
+    agentDays.set(day, adp);
 
     const a = byAgent.get(r.agent_id) ?? {
       agent_id: r.agent_id,
@@ -114,18 +175,64 @@ export async function getUsageSummary(days = 14): Promise<UsageSummary> {
     totalCalls += 1;
   }
 
-  // Backfill missing days for chart continuity
+  // Backfill missing days for chart continuity. Build the ordered window of day keys.
   const today = new Date();
+  const windowDays: string[] = [];
   for (let i = 0; i < days; i++) {
     const d = new Date(today);
     d.setUTCDate(d.getUTCDate() - i);
     const day = d.toISOString().slice(0, 10);
+    windowDays.push(day);
     if (!byDay.has(day)) byDay.set(day, { day, input_tokens: 0, output_tokens: 0, cost_usd: 0, calls: 0 });
   }
+  windowDays.sort((a, b) => a.localeCompare(b)); // ascending
+
+  // Per-agent daily series, backfilled across the full window so each agent
+  // sparkline has one point per day (continuous chart).
+  const byAgentDaily: AgentDailyUsage[] = [...byAgentDay.entries()].map(([agentId, agentDays]) => {
+    let totalTokens = 0;
+    let totalCostUsd = 0;
+    const series: AgentDailyPoint[] = windowDays.map((day) => {
+      const adp = agentDays.get(day);
+      if (adp) {
+        totalTokens += adp.tokens;
+        totalCostUsd += adp.cost_usd;
+        return adp;
+      }
+      return { day, input_tokens: 0, output_tokens: 0, tokens: 0, cost_usd: 0 };
+    });
+    return {
+      agent_id: agentId,
+      model: modelFor(agentId),
+      total_tokens: totalTokens,
+      total_cost_usd: totalCostUsd,
+      days: series,
+    };
+  }).sort((a, b) => b.total_tokens - a.total_tokens);
+
+  // Limits + current usage.
+  const dailyLimit = envLimit('USAGE_DAILY_TOKEN_LIMIT', DEFAULT_DAILY_LIMIT);
+  const weeklyLimit = envLimit('USAGE_WEEKLY_TOKEN_LIMIT', DEFAULT_WEEKLY_LIMIT);
+  const dailyUsed = Number(todayTokens);
+  const weeklyUsed = Number(weekTokens);
+  const limits: UsageLimits = {
+    daily: {
+      used: dailyUsed,
+      limit: dailyLimit,
+      pct: dailyLimit > 0 ? (dailyUsed / dailyLimit) * 100 : 0,
+    },
+    weekly: {
+      used: weeklyUsed,
+      limit: weeklyLimit,
+      pct: weeklyLimit > 0 ? (weeklyUsed / weeklyLimit) * 100 : 0,
+    },
+  };
 
   return {
     total: { input_tokens: totalIn, output_tokens: totalOut, cost_usd: totalCost, calls: totalCalls },
     by_day: [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day)),
     by_agent: [...byAgent.values()].sort((a, b) => b.cost_usd - a.cost_usd),
+    by_agent_daily: byAgentDaily,
+    limits,
   };
 }
