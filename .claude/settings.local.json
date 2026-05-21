@@ -13,7 +13,8 @@
       "mcp__claude_ai_Supabase__list_tables",
       "mcp__claude_ai_Supabase__execute_sql",
       "mcp__claude_ai_Supabase__get_publishable_keys",
-      "mcp__claude_ai_Supabase__get_project_url"
+      "mcp__claude_ai_Supabase__get_project_url",
+      "WebFetch(domain:tympanus.net)"
     ]
   }
 }

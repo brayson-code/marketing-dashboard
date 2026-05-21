@@ -57,3 +57,6 @@ hermes-seed-fix.bundle
 /.tmp/
 /test-results/
 /playwright-report/
+
+# Agent worktrees
+.claude/worktrees/

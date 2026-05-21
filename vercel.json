@@ -1,4 +1,9 @@
 {
   "installCommand": "pnpm install --no-frozen-lockfile",
-  "buildCommand": "next build --webpack"
+  "buildCommand": "next build --webpack",
+  "crons": [
+    { "path": "/api/cron/proactive", "schedule": "0 */6 * * *" },
+    { "path": "/api/cron/improve", "schedule": "0 13 * * *" },
+    { "path": "/api/cron/compact", "schedule": "0 7 * * *" }
+  ]
 }

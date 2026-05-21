@@ -28,6 +28,7 @@ function isPublicPath(pathname: string): boolean {
   if (pathname === '/login') return true;
   if (pathname.startsWith('/auth/')) return true; // Supabase OAuth/callback routes
   if (pathname.startsWith('/api/webhook/')) return true; // auth enforced in-handler
+  if (pathname.startsWith('/api/cron/')) return true; // CRON_SECRET enforced in-handler
   if (pathname === '/api/errors') return true; // client error reporting (may fire pre-login)
   return false;
 }
