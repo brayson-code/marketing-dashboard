@@ -1,15 +1,13 @@
 import { NextResponse } from 'next/server';
-import { requireApiUser } from '@/lib/api-auth';
-import { getDefaultInstanceId, getInstances } from '@/lib/instances';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: Request) {
-  const auth = requireApiUser(request);
-  if (auth) return auth;
+// Cloud deployment is single-tenant: one logical instance. (The legacy
+// multi-instance OpenClaw filesystem model doesn't apply here.) Auth is enforced
+// by the Supabase middleware.
+export async function GET() {
   return NextResponse.json({
-    default_instance: getDefaultInstanceId(),
-    // Do not leak server filesystem paths (openclawHome) to the client.
-    instances: getInstances().map((it) => ({ id: it.id, label: it.label })),
+    default_instance: 'default',
+    instances: [{ id: 'default', label: 'KeyPlayers' }],
   });
 }
