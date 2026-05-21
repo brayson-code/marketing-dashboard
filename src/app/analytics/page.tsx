@@ -828,7 +828,7 @@ function SocialPanel({
               <span className="font-mono text-foreground">{social.summary.linkedinComments}</span>.
             </div>
             <div className="text-[11px] text-muted-foreground mt-2">
-              (Internal rollups come from Hermes activity, not platform analytics APIs.)
+              (Internal rollups come from KeyPlayers activity, not platform analytics APIs.)
             </div>
           </div>
         </div>

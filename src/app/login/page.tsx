@@ -114,9 +114,9 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-[var(--background)]">
       <div className="w-full max-w-sm p-8 rounded-xl border border-[var(--border)] bg-[var(--card)]">
         <div className="text-center mb-8">
-          <div className="text-3xl mb-2">&#127963;&#65039;</div>
-          <h1 className="text-xl font-semibold text-[var(--foreground)]">Hermes Dashboard</h1>
-          <p className="text-sm text-[var(--muted-foreground)] mt-1">Marketing Engine Control Center</p>
+          <div className="mx-auto mb-3 w-12 h-12 rounded-xl bg-primary text-primary-foreground flex items-center justify-center text-lg font-semibold">K</div>
+          <h1 className="text-xl font-semibold text-[var(--foreground)]">KeyPlayers Dashboard</h1>
+          <p className="text-sm text-[var(--muted-foreground)] mt-1">Agency Command Center</p>
         </div>
 
         <Suspense fallback={<div className="h-48" />}>

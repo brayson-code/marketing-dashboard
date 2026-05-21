@@ -28,12 +28,12 @@ export function HeaderBar() {
   );
 
   return (
-    <header className="fixed top-0 left-0 right-0 h-[var(--header-height)] bg-card/90 backdrop-blur-sm border-b border-border/70 flex items-center justify-between px-3 sm:px-4 z-50">
+    <header className="fixed top-0 left-0 right-0 h-[var(--header-height)] bg-card border-b border-border flex items-center justify-between px-3 sm:px-4 z-50">
       <div className="flex items-center gap-2.5">
         <div className="w-7 h-7 rounded-md bg-primary/20 flex items-center justify-center">
-          <span className="text-primary font-bold text-xs">H</span>
+          <span className="text-primary font-bold text-xs">K</span>
         </div>
-        <span className="font-semibold text-sm tracking-tight">Hermes</span>
+        <span className="font-semibold text-sm tracking-tight">KeyPlayers</span>
 
         {/* Quick stats — hidden on small screens */}
         {stats && (

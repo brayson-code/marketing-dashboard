@@ -5,6 +5,11 @@ import type Database from 'better-sqlite3';
  * Called from db.ts after migration — safe to re-run (checks for existing messages).
  */
 export function seedChatMessages(db: Database.Database) {
+  // Disabled — legacy demo seeds (Hermes/Apollo/Maya) belonged to the old OpenClaw branding.
+  // KeyPlayer/sub-agent chats are now generated from real activity and don't need fixtures.
+  // Set KEYPLAYERS_SEED_DEMO_CHATS=true if you ever want the old fixtures back.
+  if (process.env.KEYPLAYERS_SEED_DEMO_CHATS !== 'true') return;
+
   const count = (db.prepare('SELECT COUNT(*) as c FROM messages').get() as { c: number })?.c ?? 0;
   if (count > 0) return; // Already seeded
 

@@ -228,6 +228,92 @@ function migrate(db: Database.Database) {
       last_synced_at INTEGER
     );
 
+    CREATE TABLE IF NOT EXISTS boardroom_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      direction TEXT NOT NULL CHECK (direction IN ('in', 'out')),
+      sender TEXT NOT NULL,
+      recipient TEXT,
+      text TEXT NOT NULL,
+      loop_message_id TEXT,
+      status TEXT,
+      metadata TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+    CREATE INDEX IF NOT EXISTS idx_boardroom_created ON boardroom_messages(created_at);
+    CREATE INDEX IF NOT EXISTS idx_boardroom_loop_id ON boardroom_messages(loop_message_id);
+
+    CREATE TABLE IF NOT EXISTS agent_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      agent_id TEXT NOT NULL,
+      parent_id INTEGER REFERENCES agent_tasks(id),
+      status TEXT NOT NULL CHECK (status IN ('running','done','error','cancelled')),
+      task TEXT NOT NULL,
+      result TEXT,
+      error TEXT,
+      input_tokens INTEGER,
+      output_tokens INTEGER,
+      started_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      completed_at INTEGER,
+      metadata TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_tasks_status ON agent_tasks(status, started_at);
+    CREATE INDEX IF NOT EXISTS idx_agent_tasks_agent ON agent_tasks(agent_id, started_at);
+    CREATE INDEX IF NOT EXISTS idx_agent_tasks_parent ON agent_tasks(parent_id);
+
+    CREATE TABLE IF NOT EXISTS kg_entities (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind TEXT NOT NULL,
+      name TEXT NOT NULL,
+      attributes TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      UNIQUE(kind, name)
+    );
+    CREATE INDEX IF NOT EXISTS idx_kg_entities_kind ON kg_entities(kind);
+    CREATE INDEX IF NOT EXISTS idx_kg_entities_name ON kg_entities(name);
+
+    CREATE TABLE IF NOT EXISTS kg_relations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      from_id INTEGER NOT NULL REFERENCES kg_entities(id) ON DELETE CASCADE,
+      to_id INTEGER NOT NULL REFERENCES kg_entities(id) ON DELETE CASCADE,
+      label TEXT NOT NULL,
+      attributes TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      UNIQUE(from_id, to_id, label)
+    );
+    CREATE INDEX IF NOT EXISTS idx_kg_relations_from ON kg_relations(from_id, label);
+    CREATE INDEX IF NOT EXISTS idx_kg_relations_to ON kg_relations(to_id, label);
+
+    CREATE TABLE IF NOT EXISTS client_integrations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      provider TEXT NOT NULL UNIQUE,
+      label TEXT,
+      status TEXT NOT NULL CHECK (status IN ('not_configured','configured','expired','error')) DEFAULT 'not_configured',
+      config TEXT,
+      secret_encrypted TEXT,
+      scopes TEXT,
+      expires_at INTEGER,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      last_error TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS agent_drafts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('pending','approved','rejected','published','sent','confirmed','expired')) DEFAULT 'pending',
+      created_by TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      reviewed_at INTEGER,
+      executed_at INTEGER,
+      execution_note TEXT,
+      metadata TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_drafts_status ON agent_drafts(status, created_at);
+    CREATE INDEX IF NOT EXISTS idx_drafts_type ON agent_drafts(type);
+
   `);
 
   // Column migrations (safe to re-run)

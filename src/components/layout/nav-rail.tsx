@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   Gauge, Bot, PenLine, MessageCircle, Mail, Contact, Zap,
   Search, BarChart3, LineChart, BrainCircuit, Rocket, Clock, List, Settings,
-  FolderOpen,
+  FolderOpen, MessagesSquare, Activity, Target, Inbox, Network, DollarSign, Plug,
 } from 'lucide-react';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { useDashboard } from '@/store';
@@ -39,6 +39,10 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/', label: 'Overview', icon: Gauge },
       { href: '/agents/squads', label: 'Squads', icon: Bot },
       { href: '/agents/comms', label: 'Comms', icon: MessageCircle },
+      { href: '/boardroom', label: 'Boardroom', icon: MessagesSquare },
+      { href: '/tasks', label: 'Tasks', icon: Activity },
+      { href: '/drafts', label: 'Drafts', icon: Inbox },
+      { href: '/goals', label: 'Goals', icon: Target },
       { href: '/agents/workspace', label: 'Workspace', icon: FolderOpen },
     ],
   },
@@ -58,10 +62,13 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/research', label: 'Research', icon: Search, countKey: 'signals_today' },
       { href: '/kpis', label: 'KPIs', icon: BarChart3 },
       { href: '/analytics', label: 'Analytics', icon: LineChart },
+      { href: '/usage', label: 'Usage', icon: DollarSign },
+      { href: '/kg', label: 'Knowledge', icon: Network },
       { href: '/memory', label: 'Memory', icon: BrainCircuit },
       { href: '/deploy', label: 'Deploy', icon: Rocket },
       { href: '/cron', label: 'Cron', icon: Clock },
       { href: '/activity', label: 'Activity', icon: List },
+      { href: '/integrations-setup', label: 'Connect', icon: Plug },
     ],
   },
 ];
@@ -76,14 +83,14 @@ export function NavRail() {
   );
 
   return (
-    <nav className="nav-rail fixed left-0 top-[var(--header-height)] bottom-0 w-[var(--nav-width)] bg-card/92 backdrop-blur-lg border-r border-border/70 z-40 hidden md:flex flex-col">
+    <nav className="nav-rail fixed left-0 top-[var(--header-height)] bottom-0 w-[var(--nav-width)] bg-card border-r border-border z-40 hidden md:flex flex-col">
       <div className="px-3 py-3 border-b border-border/60 flex items-center gap-2.5">
         <div className="w-8 h-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center text-xs font-semibold">
-          H
+          K
         </div>
         <div className="min-w-0">
-          <div className="text-sm font-semibold leading-none">Hermes</div>
-          <div className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wide">Mission View</div>
+          <div className="text-sm font-semibold leading-none">KeyPlayers</div>
+          <div className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wide">Command Center</div>
         </div>
       </div>
 

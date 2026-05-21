@@ -37,6 +37,12 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Public webhook endpoints — auth is enforced inside the route handler
+  // (x-api-key for telegram, HMAC signature for loopmessage when configured).
+  if (pathname.startsWith('/api/webhook/')) {
+    return NextResponse.next();
+  }
+
   const sessionToken = request.cookies.get(SESSION_COOKIE)?.value;
   const apiKey = request.headers.get('x-api-key');
 

@@ -1,0 +1,127 @@
+import { NextResponse } from 'next/server';
+import { sql, jsonb, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { createNotification } from '@/lib/notifications';
+import { runOrchestrator } from '@/lib/orchestrator';
+import { sendIMessage } from '@/lib/loopmessage';
+import { parseIntent, executeIntent } from '@/lib/intents';
+
+// LoopMessage inbound webhook.
+// Payload reference: https://docs.loopmessage.com/imessage-conversation-api/webhook
+// Common alert_types: message_inbound, message_sent, message_failed, message_reaction,
+// message_timeout, conversation_inited, group_created, group_changed.
+//
+// Auth: LoopMessage's webhook config lets you define a custom header value that
+// it sends on every hit. We compare it constant-time against LOOPMESSAGE_WEBHOOK_SECRET.
+// If the secret is unset, the check is skipped (dev convenience — set it before client launch).
+function isAuthorized(request: Request): boolean {
+  const expected = process.env.LOOPMESSAGE_WEBHOOK_SECRET?.trim();
+  if (!expected) return true;
+  const candidates = [
+    request.headers.get('authorization'),
+    request.headers.get('x-loop-secret'),
+    request.headers.get('x-webhook-secret'),
+  ].filter(Boolean) as string[];
+  for (const raw of candidates) {
+    const value = raw.startsWith('Bearer ') ? raw.slice(7) : raw;
+    if (value.length === expected.length) {
+      let diff = 0;
+      for (let i = 0; i < value.length; i++) diff |= value.charCodeAt(i) ^ expected.charCodeAt(i);
+      if (diff === 0) return true;
+    }
+  }
+  return false;
+}
+
+export async function POST(request: Request) {
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ error: 'Unauthorized webhook' }, { status: 401 });
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
+
+  // LoopMessage uses `event` (not `alert_type`) and `contact` for the user's phone.
+  const eventType = typeof body.event === 'string' ? body.event : (typeof body.alert_type === 'string' ? body.alert_type : 'unknown');
+  const contact = (body.contact ?? body.recipient ?? body.from) as string | undefined;
+  const text = (body.text ?? body.message_text) as string | undefined;
+  const messageId = (body.message_id ?? body.id) as string | undefined;
+
+  if (eventType === 'message_inbound' && text) {
+    await sql()`
+      INSERT INTO boardroom_messages (tenant_id, direction, sender, recipient, text, loop_message_id, status, metadata)
+      VALUES (
+        ${DEFAULT_TENANT_ID}, 'in', ${contact ?? 'owner'},
+        ${process.env.LOOPMESSAGE_SENDER_NAME ?? 'keyplayers'}, ${String(text)},
+        ${messageId ?? null}, 'received', ${jsonb(body)}
+      )
+    `;
+
+    await createNotification({
+      type: 'custom',
+      severity: 'info',
+      title: 'Owner iMessage',
+      message: String(text).slice(0, 200),
+      data: { source: 'loopmessage', event: eventType, message_id: messageId },
+    });
+
+    // Try fast-path intent first (approve / reject / publish / send / list / help).
+    // If matched, execute deterministically and reply in < 1s without burning a Claude call.
+    const intent = parseIntent(String(text));
+    if (intent) {
+      void (async () => {
+        try {
+          const result = await executeIntent(intent);
+          await sendIMessage(result.reply, { agent: 'keyplayer' });
+        } catch (err) {
+          console.error('[intent] failed:', (err as Error).message);
+          await sendIMessage(`Something went wrong handling that: ${(err as Error).message}`, { agent: 'keyplayer' });
+        }
+      })().catch((err) => console.error('[intent] unexpected:', err));
+      return NextResponse.json({ ok: true, captured: true, mode: 'intent', intent: intent.type });
+    }
+
+    // Fall through: full orchestrator dispatch for free-form conversation.
+    // Fire-and-forget so LoopMessage gets a fast ack and doesn't retry.
+    // TODO: replace with a real queue (Vercel Queues / BullMQ) before client launch.
+    void (async () => {
+      const result = await runOrchestrator();
+      if (!result.ok) {
+        console.error('[orchestrator] failed:', result.error);
+        await sendIMessage(
+          `I hit a snag and couldn't respond automatically: ${result.error.slice(0, 200)}. Try again, or check the dashboard logs.`,
+          { agent: 'keyplayer' },
+        );
+        return;
+      }
+      const sendResult = await sendIMessage(result.text, { agent: 'keyplayer' });
+      if (!sendResult.ok) {
+        console.error('[orchestrator] reply send failed:', sendResult.error);
+      }
+    })().catch((err) => console.error('[orchestrator] unexpected:', err));
+
+    return NextResponse.json({ ok: true, captured: true, mode: 'orchestrator' });
+  }
+
+  if (eventType === 'message_sent' || eventType === 'message_failed') {
+    if (messageId) {
+      await sql()`
+        UPDATE boardroom_messages
+        SET status = ${eventType === 'message_sent' ? 'delivered' : 'failed'}
+        WHERE loop_message_id = ${messageId} AND tenant_id = ${DEFAULT_TENANT_ID}
+      `;
+    }
+    return NextResponse.json({ ok: true, status_updated: true });
+  }
+
+  // Anything else: log raw payload so we can see field shape.
+  await sql()`
+    INSERT INTO activity_log (tenant_id, ts, action, detail, result)
+    VALUES (${DEFAULT_TENANT_ID}, now(), 'loopmessage_event', ${JSON.stringify(body).slice(0, 1900)}, 'info')
+  `;
+
+  return NextResponse.json({ ok: true, ignored: eventType });
+}

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createNotification } from '@/lib/queries';
-import { getDb } from '@/lib/db';
+import { createNotification } from '@/lib/notifications';
+import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
 import { getConfiguredApiKey } from '@/lib/auth';
 
 const VALID_TYPES = ['daily_report', 'alert', 'lead_reply', 'bounce_spike', 'experiment_result', 'custom'];
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
   const notifType = VALID_TYPES.includes(type || '') ? type! : 'custom';
   const notifSeverity = VALID_SEVERITIES.includes(severity || '') ? severity! : 'info';
 
-  const id = createNotification({
+  const id = await createNotification({
     type: notifType,
     severity: notifSeverity,
     title: typeof title === 'string' ? title : undefined,
@@ -48,14 +48,14 @@ export async function POST(request: Request) {
   });
 
   // Also log to activity_log for live feed visibility
-  const db = getDb();
-  db.prepare(
-    `INSERT INTO activity_log (ts, action, detail, result) VALUES (datetime('now'), ?, ?, ?)`
-  ).run(
-    'alert',
-    title ? `${title}: ${String(message).slice(0, 200)}` : String(message).slice(0, 200),
-    notifSeverity,
-  );
+  await sql()`
+    INSERT INTO activity_log (tenant_id, ts, action, detail, result)
+    VALUES (
+      ${DEFAULT_TENANT_ID}, now(), 'alert',
+      ${title ? `${title}: ${String(message).slice(0, 200)}` : String(message).slice(0, 200)},
+      ${notifSeverity}
+    )
+  `;
 
   return NextResponse.json({ ok: true, id });
 }

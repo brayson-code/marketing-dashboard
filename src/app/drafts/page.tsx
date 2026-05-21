@@ -1,0 +1,157 @@
+'use client';
+
+import { useCallback, useEffect, useState } from 'react';
+import { Inbox, FileText, Mail, Calendar, Megaphone, Check, X, AlertCircle, Send, CheckCircle2 } from 'lucide-react';
+
+type DraftType = 'content_post' | 'email' | 'meeting' | 'campaign' | 'other';
+type DraftStatus = 'pending' | 'approved' | 'rejected' | 'published' | 'sent' | 'confirmed' | 'expired';
+
+interface Draft {
+  id: number;
+  type: DraftType;
+  title: string;
+  payload: string;
+  status: DraftStatus;
+  created_by: string | null;
+  // Supabase returns timestamptz as ISO strings; tolerate legacy unix numbers too.
+  created_at: string | number;
+  reviewed_at: string | number | null;
+  executed_at: string | number | null;
+  execution_note: string | null;
+}
+
+const TYPE_META: Record<DraftType, { icon: typeof FileText; label: string; executeAction: 'publish' | 'send' | 'confirm' | null; executeLabel: string }> = {
+  content_post: { icon: FileText, label: 'Content Post', executeAction: 'publish', executeLabel: 'Publish' },
+  email: { icon: Mail, label: 'Email', executeAction: 'send', executeLabel: 'Send' },
+  meeting: { icon: Calendar, label: 'Meeting', executeAction: 'confirm', executeLabel: 'Confirm to calendar' },
+  campaign: { icon: Megaphone, label: 'Campaign', executeAction: null, executeLabel: '—' },
+  other: { icon: Inbox, label: 'Other', executeAction: null, executeLabel: '—' },
+};
+
+const STATUS_META: Record<DraftStatus, string> = {
+  pending: 'badge-warning',
+  approved: 'badge-info',
+  rejected: 'badge-neutral',
+  published: 'badge-success',
+  sent: 'badge-success',
+  confirmed: 'badge-success',
+  expired: 'badge-neutral',
+};
+
+function formatTs(ts: string | number): string {
+  const ms = typeof ts === 'number' ? ts * 1000 : Date.parse(ts);
+  return new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+export default function DraftsPage() {
+  const [drafts, setDrafts] = useState<Draft[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<DraftStatus | 'all'>('pending');
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/drafts?status=${filter}`, { cache: 'no-store' });
+      const json = await res.json();
+      setDrafts(json.drafts ?? []);
+    } catch (err) { setError((err as Error).message); }
+  }, [filter]);
+
+  useEffect(() => { load(); const id = setInterval(load, 3000); return () => clearInterval(id); }, [load]);
+
+  async function act(id: number, action: 'approve' | 'reject' | 'publish' | 'send' | 'confirm') {
+    try {
+      const res = await fetch('/api/drafts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, draft_id: id }) });
+      const json = await res.json();
+      if (!res.ok) setError(json.error || 'Failed');
+      else { setError(null); await load(); }
+    } catch (err) { setError((err as Error).message); }
+  }
+
+  function toggle(id: number) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  const pendingCount = drafts.filter((d) => d.status === 'pending').length;
+
+  return (
+    <div className="space-y-4 animate-in">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="space-y-1">
+          <h1 className="text-xl font-semibold">Drafts</h1>
+          <p className="text-xs text-muted-foreground">
+            KeyPlayer + sub-agents save drafts here. Nothing executes without your explicit approval.
+            {pendingCount > 0 && ` · ${pendingCount} awaiting you`}
+          </p>
+        </div>
+        <div className="flex gap-1">
+          {(['pending', 'approved', 'all'] as const).map((f) => (
+            <button key={f} onClick={() => setFilter(f)} className={`tab ${filter === f ? 'active' : ''}`}>
+              {f}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {error && (
+        <div className="panel p-3 text-xs text-destructive flex items-center gap-1.5">
+          <AlertCircle size={12} /> {error}
+        </div>
+      )}
+
+      {drafts.length === 0 ? (
+        <div className="panel p-4 text-xs text-muted-foreground text-center">
+          No drafts {filter !== 'all' ? `with status "${filter}"` : 'yet'}. Ask KeyPlayer to draft something — content, email, meeting — and it&apos;ll appear here.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {drafts.map((d) => {
+            const meta = TYPE_META[d.type];
+            const Icon = meta.icon;
+            const isExpanded = expanded.has(d.id);
+            return (
+              <div key={d.id} className="panel">
+                <div className="p-3 space-y-2">
+                  <div className="flex items-center gap-2 flex-wrap text-xs">
+                    <Icon size={13} className="text-muted-foreground shrink-0" />
+                    <span className="font-mono text-[10px] text-muted-foreground">#{d.id}</span>
+                    <span className="font-medium">{meta.label}</span>
+                    <span className={`badge ${STATUS_META[d.status]}`}>{d.status}</span>
+                    <span className="text-muted-foreground">· {formatTs(d.created_at)}</span>
+                    <span className="ml-auto flex gap-1">
+                      {d.status === 'pending' && (
+                        <>
+                          <button className="btn btn-success btn-sm" onClick={() => act(d.id, 'approve')}><Check size={11} /> Approve</button>
+                          <button className="btn btn-destructive btn-sm" onClick={() => act(d.id, 'reject')}><X size={11} /> Reject</button>
+                        </>
+                      )}
+                      {d.status === 'approved' && meta.executeAction && (
+                        <button className="btn btn-primary btn-sm" onClick={() => act(d.id, meta.executeAction!)}>
+                          {meta.executeAction === 'send' ? <Send size={11} /> : <CheckCircle2 size={11} />} {meta.executeLabel}
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                  <div className="font-medium text-sm cursor-pointer" onClick={() => toggle(d.id)}>{d.title}</div>
+                  {!isExpanded && (
+                    <div className="text-xs text-muted-foreground line-clamp-2 cursor-pointer" onClick={() => toggle(d.id)}>{d.payload}</div>
+                  )}
+                  {isExpanded && (
+                    <div className="text-xs whitespace-pre-wrap bg-[var(--surface-2)] p-3 rounded border border-border/60">{d.payload}</div>
+                  )}
+                  {d.execution_note && (
+                    <div className="text-[11px] text-muted-foreground italic">Note: {d.execution_note}</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}

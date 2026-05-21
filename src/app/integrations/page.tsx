@@ -55,7 +55,7 @@ export default function IntegrationsPage() {
       <div className="panel">
         <div className="panel-header">
           <h1 className="text-xl font-semibold">Integrations</h1>
-          <p className="text-sm text-muted-foreground">Live status for Hermes data sources</p>
+          <p className="text-sm text-muted-foreground">Live status for KeyPlayers data sources</p>
         </div>
       </div>
 

@@ -1,4 +1,7 @@
 import { getDb } from './db';
+// createNotification lives in ./notifications (Supabase-backed, no better-sqlite3)
+// and is re-exported here for existing callers.
+export { createNotification } from './notifications';
 import type {
   ContentPost, Lead, Sequence, Suppression, Engagement,
   Signal, Experiment, Learning, DailyMetrics, ActivityEntry,
@@ -339,26 +342,12 @@ export function getActivityLog(filters?: {
 }
 
 // ─── Notifications ────────────────────────────────────
-export function createNotification(data: {
-  type: string;
-  severity?: string;
-  title?: string;
-  message: string;
-  data?: Record<string, unknown>;
-}): number {
-  const db = getDb();
-  const result = db.prepare(
-    `INSERT INTO notifications (type, severity, title, message, data)
-     VALUES (?, ?, ?, ?, ?)`
-  ).run(
-    data.type,
-    data.severity || 'info',
-    data.title || null,
-    data.message,
-    data.data ? JSON.stringify(data.data) : null,
-  );
-  return result.lastInsertRowid as number;
-}
+// MIGRATED to Supabase. NOTE(supabase-migration): the read helpers below
+// (getNotifications, getAlerts) still read from the old SQLite db.ts, so
+// notifications written here will not appear in those reads until those are
+// ported too. See report.
+// createNotification was moved to ./notifications and is re-exported at the top
+// of this file, so it can be imported without pulling in better-sqlite3.
 
 export function getNotifications(filters?: {
   unread_only?: boolean;
