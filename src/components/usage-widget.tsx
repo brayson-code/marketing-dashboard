@@ -212,14 +212,27 @@ export function UsageWidget() {
   // Pick two DISTINCT mascots for the daily vs weekly bars. Reshuffled each load
   // (useMemo on mount), so it varies over time but the two are never the same.
   const [dailyMascot, weeklyMascot] = useMemo(() => {
-    // Confetti is excluded from the bars for now (its upward burst overflows the
-    // small bar and reads as broken); it still lives on the /mascot showcase.
-    const pool = [GymClaude, FlagWaver];
-    const flip = Math.random() < 0.5;
-    const A = flip ? pool[0] : pool[1];
-    const B = flip ? pool[1] : pool[0];
     const size = 54;
-    return [<A key="daily" size={size} />, <B key="weekly" size={size} />];
+    // Transparent gif mascots (verified) + the in-place SVG animations. Confetti
+    // is excluded (its burst overflows a small bar); solid-bg gifs are excluded.
+    const gifs = [
+      'claude-jammin', 'clawd-headphones', 'clawd-linuxdo-01', 'clawd-linuxdo-02',
+      'clawd-linuxdo-04', 'clawd-linuxdo-05', 'clawd-linuxdo-06', 'clawd-linuxdo-07',
+    ];
+    const renderers: Array<(s: number) => React.ReactNode> = [
+      ...gifs.map((name) => (s: number) => (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={`/sprites/${name}.gif`} alt="" style={{ width: s, height: s, imageRendering: 'pixelated', display: 'block', filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.3))' }} />
+      )),
+      (s: number) => <GymClaude size={s} />,
+      (s: number) => <FlagWaver size={s} />,
+    ];
+    // Shuffle, then take two distinct — varies each load, never the same pair.
+    for (let i = renderers.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [renderers[i], renderers[j]] = [renderers[j], renderers[i]];
+    }
+    return [<span key="daily">{renderers[0](size)}</span>, <span key="weekly">{renderers[1](size)}</span>];
   }, []);
 
   const { data } = useSmartPoll<UsageSummary>(
