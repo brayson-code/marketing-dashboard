@@ -14,7 +14,7 @@ import { sendSlack, isSlackConfigured } from './alerts';
 import { sendIMessage, isLoopMessageConfigured } from './loopmessage';
 import { createNotification } from './notifications';
 import {
-  isGitHubConfigured, getFileContent, createBranch, putFile, openPullRequest, defaultBranch,
+  isGitHubConfigured, getFileContent, createBranch, putFile, openPullRequest, defaultBranch, writeRepo,
 } from './github';
 
 const MODEL = 'claude-sonnet-4-6';
@@ -284,7 +284,8 @@ export async function openFixPr(input: {
   await createBranch(branch);
   for (const f of files) {
     if (!safePath(f.path) || typeof f.new_content !== 'string') continue;
-    const existing = await getFileContent(f.path, defaultBranch());
+    // sha must be the file's blob on the WRITE repo (the fork) we're committing to.
+    const existing = await getFileContent(f.path, defaultBranch(), writeRepo());
     await putFile(f.path, f.new_content, branch, `fix: ${summary.slice(0, 60)} (issue ${issueId.slice(0, 8)})`, existing?.sha);
   }
   const pr = await openPullRequest({
