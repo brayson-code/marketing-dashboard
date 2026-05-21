@@ -6,5 +6,5 @@ export async function GET(req: NextRequest) {
   const auth = requireApiUser(req as Request);
   if (auth) return auth;
   const real = req.nextUrl.searchParams.get('real') === 'true';
-  return NextResponse.json(getSuppression({ excludeSeed: real }));
+  return NextResponse.json(await getSuppression({ excludeSeed: real }));
 }

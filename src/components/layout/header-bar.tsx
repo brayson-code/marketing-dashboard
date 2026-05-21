@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation';
 import { useDashboard } from '@/store';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { timeAgo } from '@/lib/utils';
+import { createClient } from '@/lib/supabase/client';
 import type { Notification } from '@/types';
 
 interface HeaderStats {
@@ -277,9 +278,13 @@ function LogoutButton() {
 
   async function handleLogout() {
     setLoading(true);
-    await fetch('/api/auth/logout', { method: 'POST' });
-    router.push('/login');
-    router.refresh();
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+    } finally {
+      router.push('/login');
+      router.refresh();
+    }
   }
 
   return (

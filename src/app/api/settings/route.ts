@@ -42,7 +42,7 @@ export async function GET(request: Request) {
       }
     });
 
-    const seed_count = getSeedCount();
+    const seed_count = await getSeedCount();
 
     return NextResponse.json({
       db_size_mb,

@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
     const next = upsertCronJob(jobsFile, { ...(job || {}), id, jobId: id });
     await writeCronJobsFile(cronDir, next);
 
-    logAudit({
+    await logAudit({
       actor,
       action: 'cron.create',
       target: `cron:${instance.id}:${id}`,
@@ -105,7 +105,7 @@ export async function PATCH(req: NextRequest) {
     const next = upsertCronJob(jobsFile, { ...(job || {}), id, jobId: id });
     await writeCronJobsFile(cronDir, next);
 
-    logAudit({
+    await logAudit({
       actor,
       action: 'cron.update',
       target: `cron:${instance.id}:${id}`,
@@ -139,7 +139,7 @@ export async function DELETE(req: NextRequest) {
     const next = deleteCronJob(jobsFile, id);
     await writeCronJobsFile(cronDir, next);
 
-    logAudit({
+    await logAudit({
       actor,
       action: 'cron.delete',
       target: `cron:${instance.id}:${id}`,

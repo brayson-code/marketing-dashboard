@@ -167,7 +167,7 @@ export async function PUT(request: Request) {
     if (!next) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     await writeCronJobsFile(cronDir, next);
 
-    logAudit({
+    await logAudit({
       actor,
       action: action === 'toggle' ? 'cron.toggle' : 'cron.trigger',
       target: `cron:${instance.id}:${id}`,

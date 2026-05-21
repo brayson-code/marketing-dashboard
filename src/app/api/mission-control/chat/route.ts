@@ -202,7 +202,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    logAudit({
+    await logAudit({
       actor,
       action: mode === 'orchestrator' ? 'mission_control.orchestrator_message' : 'mission_control.agent_bridge_message',
       target: conversationId,

@@ -1,4 +1,4 @@
-import { getDb } from './db';
+import { sql, DEFAULT_TENANT_ID } from './db/client';
 
 // Anthropic pricing per 1M tokens (cached 2026-04-15 — refresh from platform.claude.com)
 const PRICING: Record<string, { input: number; output: number }> = {
@@ -54,22 +54,22 @@ export interface UsageSummary {
   by_agent: AgentUsage[];
 }
 
-export function getUsageSummary(days = 14): UsageSummary {
-  const cutoff = Math.floor(Date.now() / 1000) - days * 86_400;
-  const rows = getDb()
-    .prepare(
-      `SELECT agent_id, input_tokens, output_tokens, started_at, completed_at, status
-       FROM agent_tasks
-       WHERE started_at >= ? AND status IN ('done','error')`,
-    )
-    .all(cutoff) as Array<{
-      agent_id: string;
-      input_tokens: number | null;
-      output_tokens: number | null;
-      started_at: number;
-      completed_at: number | null;
-      status: string;
-    }>;
+export async function getUsageSummary(days = 14): Promise<UsageSummary> {
+  const cutoff = new Date(Date.now() - days * 86_400 * 1000).toISOString();
+  const rows = await sql()`
+    SELECT agent_id, input_tokens, output_tokens, started_at, completed_at, status
+    FROM agent_tasks
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+      AND started_at >= ${cutoff}
+      AND status IN ('done', 'error')
+  ` as unknown as Array<{
+    agent_id: string;
+    input_tokens: number | null;
+    output_tokens: number | null;
+    started_at: Date | string;
+    completed_at: Date | string | null;
+    status: string;
+  }>;
 
   const byDay = new Map<string, DailyUsage>();
   const byAgent = new Map<string, AgentUsage>();
@@ -79,8 +79,10 @@ export function getUsageSummary(days = 14): UsageSummary {
     const inTok = r.input_tokens ?? 0;
     const outTok = r.output_tokens ?? 0;
     const cost = costFor(r.agent_id, inTok, outTok);
-    const day = new Date(r.started_at * 1000).toISOString().slice(0, 10);
-    const dur = (r.completed_at ?? r.started_at) - r.started_at;
+    const startedMs = new Date(r.started_at).getTime();
+    const completedMs = r.completed_at ? new Date(r.completed_at).getTime() : startedMs;
+    const day = new Date(startedMs).toISOString().slice(0, 10);
+    const dur = (completedMs - startedMs) / 1000; // seconds
 
     const d = byDay.get(day) ?? { day, input_tokens: 0, output_tokens: 0, cost_usd: 0, calls: 0 };
     d.input_tokens += inTok;

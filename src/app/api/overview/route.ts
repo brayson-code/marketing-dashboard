@@ -173,10 +173,10 @@ export async function GET(req: NextRequest) {
   const auth = requireApiUser(req as Request);
   if (auth) return auth;
   const real = req.nextUrl.searchParams.get('real') === 'true';
-  const stats = getOverviewStats({ excludeSeed: real });
-  const alerts = getAlerts({ excludeSeed: real });
-  const recentActivity = getActivityLog({ limit: 20, excludeSeed: real });
-  const metrics = getDailyMetrics(84, { excludeSeed: real }); // 12 weeks
+  const stats = await getOverviewStats({ excludeSeed: real });
+  const alerts = await getAlerts({ excludeSeed: real });
+  const recentActivity = await getActivityLog({ limit: 20, excludeSeed: real });
+  const metrics = await getDailyMetrics(84, { excludeSeed: real }); // 12 weeks
   const agents = getAgentBriefs(real);
   const action_items = getActionItems(real);
 

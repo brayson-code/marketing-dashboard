@@ -10,14 +10,14 @@ export async function GET(req: NextRequest) {
   const view = searchParams.get('view');
 
   if (view === 'learnings') {
-    return NextResponse.json(getLearnings({ excludeSeed: real }));
+    return NextResponse.json(await getLearnings({ excludeSeed: real }));
   }
 
-  const experiments = getExperiments({
+  const experiments = await getExperiments({
     status: searchParams.get('status') || undefined,
     excludeSeed: real,
   });
-  const learnings = getLearnings({ excludeSeed: real });
+  const learnings = await getLearnings({ excludeSeed: real });
 
   return NextResponse.json({ experiments, learnings });
 }

@@ -54,7 +54,7 @@ export async function PATCH(req: NextRequest) {
 
   if (body.mark_all_read) {
     db.prepare('UPDATE notifications SET read = 1 WHERE read = 0').run();
-    logAudit({
+    await logAudit({
       actor,
       action: 'notifications.mark_all_read',
       target: 'notifications',
@@ -65,7 +65,7 @@ export async function PATCH(req: NextRequest) {
 
   if (body.id) {
     db.prepare('UPDATE notifications SET read = 1 WHERE id = ?').run(body.id);
-    logAudit({
+    await logAudit({
       actor,
       action: 'notifications.mark_read',
       target: `notification:${body.id}`,

@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-
-const SESSION_COOKIE = 'hermes-session';
+import { updateSession } from '@/lib/supabase/middleware';
 
 function isHostAllowedByLock(hostName: string): boolean {
   const mode = (process.env.HERMES_HOST_LOCK || 'local').trim().toLowerCase();
@@ -24,57 +23,51 @@ function isHostAllowedByLock(hostName: string): boolean {
   return allowed.includes(hostName.toLowerCase());
 }
 
-export function proxy(request: NextRequest) {
+// Paths that never require an authenticated Supabase user.
+function isPublicPath(pathname: string): boolean {
+  if (pathname === '/login') return true;
+  if (pathname.startsWith('/auth/')) return true; // Supabase OAuth/callback routes
+  if (pathname.startsWith('/api/webhook/')) return true; // auth enforced in-handler
+  return false;
+}
+
+export async function proxy(request: NextRequest) {
   const host = request.headers.get('host') || '';
   const hostName = host.split(':')[0];
   if (!isHostAllowedByLock(hostName)) {
     return new NextResponse('Forbidden', { status: 403 });
   }
 
+  // Refresh the Supabase session and read the current user. `supabaseResponse`
+  // carries any refreshed auth cookies and must be the response we return on
+  // the happy path.
+  const { supabaseResponse, user } = await updateSession(request);
+
   const { pathname } = request.nextUrl;
 
-  if (pathname === '/login' || pathname.startsWith('/api/auth/')) {
-    return NextResponse.next();
+  if (isPublicPath(pathname)) {
+    return supabaseResponse;
   }
 
-  // Public webhook endpoints — auth is enforced inside the route handler
-  // (x-api-key for telegram, HMAC signature for loopmessage when configured).
-  if (pathname.startsWith('/api/webhook/')) {
-    return NextResponse.next();
+  if (user) {
+    return supabaseResponse;
   }
 
-  const sessionToken = request.cookies.get(SESSION_COOKIE)?.value;
-  const apiKey = request.headers.get('x-api-key');
-
-  if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method) && sessionToken && !(apiKey && apiKey === process.env.API_KEY)) {
-    const allowedOrigin = process.env.PUBLIC_BASE_URL
-      ? new URL(process.env.PUBLIC_BASE_URL).origin
-      : request.nextUrl.origin;
-    const origin = request.headers.get('origin');
-    const referer = request.headers.get('referer');
-    const originOk = origin ? origin === allowedOrigin : true;
-    const refererOk = referer ? referer.startsWith(allowedOrigin) : true;
-    if (!originOk || !refererOk || (!origin && !referer)) {
-      return new NextResponse('Forbidden', { status: 403 });
-    }
-  }
-
+  // No authenticated user. API routes get a 401; everything else redirects to
+  // the login page (preserving the original path so we can return after login).
   if (pathname.startsWith('/api/')) {
-    if (sessionToken || (apiKey && apiKey === process.env.API_KEY)) {
-      return NextResponse.next();
-    }
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  if (sessionToken) {
-    return NextResponse.next();
   }
 
   const loginUrl = request.nextUrl.clone();
   loginUrl.pathname = '/login';
+  loginUrl.searchParams.set('from', pathname);
   return NextResponse.redirect(loginUrl);
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  matcher: [
+    // Match everything except static assets and image optimizer files.
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+  ],
 };

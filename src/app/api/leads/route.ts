@@ -94,10 +94,10 @@ export async function GET(req: NextRequest) {
   const real = searchParams.get("real") === "true";
 
   if (searchParams.get("funnel") === "true") {
-    return NextResponse.json(getLeadFunnel({ excludeSeed: real }));
+    return NextResponse.json(await getLeadFunnel({ excludeSeed: real }));
   }
 
-  const leads = getLeads({
+  const leads = await getLeads({
     status: searchParams.get("status") || undefined,
     tier: searchParams.get("tier") || undefined,
     segment: searchParams.get("segment") || undefined,
@@ -201,7 +201,7 @@ export async function POST(req: NextRequest) {
   );
 
   writebackLeadCreate(lead);
-  logAudit({
+  await logAudit({
     actor,
     action: 'lead.create',
     target: `lead:${lead.id}`,
@@ -339,12 +339,12 @@ export async function PATCH(req: NextRequest) {
   db.prepare(`UPDATE leads SET ${cols.join(', ')} WHERE id = ?`).run(...params);
 
   if (status) {
-    updateLeadStatus(id, status);
+    await updateLeadStatus(id, status);
     writebackLeadStatus(id, status);
   }
 
   writebackLeadUpdate(id, updates);
-  logAudit({
+  await logAudit({
     actor,
     action: 'lead.update',
     target: `lead:${id}`,
@@ -381,7 +381,7 @@ export async function DELETE(req: NextRequest) {
   tx();
 
   writebackLeadDelete(id);
-  logAudit({
+  await logAudit({
     actor,
     action: 'lead.delete',
     target: `lead:${id}`,

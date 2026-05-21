@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
     }
     const parsedMessage = { ...created, metadata: null };
 
-    logAudit({
+    await logAudit({
       actor,
       action: 'chat.message.send',
       target: `conversation:${conversation_id}`,

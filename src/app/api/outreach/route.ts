@@ -10,13 +10,13 @@ export async function GET(req: NextRequest) {
   const real = searchParams.get('real') === 'true';
 
   if (view === 'funnel') {
-    return NextResponse.json(getLeadFunnel({ excludeSeed: real }));
+    return NextResponse.json(await getLeadFunnel({ excludeSeed: real }));
   }
   if (view === 'suppression') {
-    return NextResponse.json(getSuppression({ excludeSeed: real }));
+    return NextResponse.json(await getSuppression({ excludeSeed: real }));
   }
   if (view === 'sequences') {
-    return NextResponse.json(getSequences({
+    return NextResponse.json(await getSequences({
       status: searchParams.get('status') || undefined,
       lead_id: searchParams.get('lead_id') || undefined,
       excludeSeed: real,
@@ -24,13 +24,13 @@ export async function GET(req: NextRequest) {
   }
 
   // Default: leads + sequences overview
-  const leads = getLeads({
+  const leads = await getLeads({
     status: searchParams.get('status') || undefined,
     tier: searchParams.get('tier') || undefined,
     excludeSeed: real,
   });
-  const funnel = getLeadFunnel({ excludeSeed: real });
-  const pendingApprovals = getSequences({ status: 'pending_approval', excludeSeed: real });
+  const funnel = await getLeadFunnel({ excludeSeed: real });
+  const pendingApprovals = await getSequences({ status: 'pending_approval', excludeSeed: real });
 
   return NextResponse.json({ leads, funnel, pendingApprovals });
 }

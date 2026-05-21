@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   if (auth) return auth;
   const { searchParams } = req.nextUrl;
   const real = searchParams.get('real') === 'true';
-  const posts = getContentPosts({
+  const posts = await getContentPosts({
     status: searchParams.get('status') || undefined,
     platform: searchParams.get('platform') || undefined,
     pillar: searchParams.get('pillar') ? Number(searchParams.get('pillar')) : undefined,
@@ -28,9 +28,9 @@ export async function PATCH(req: NextRequest) {
   if (!id || !status) {
     return NextResponse.json({ error: 'id and status required' }, { status: 400 });
   }
-  updateContentStatus(id, status);
+  await updateContentStatus(id, status);
   writebackContentStatus(id, status);
-  logAudit({
+  await logAudit({
     actor,
     action: 'content.update_status',
     target: `content:${id}`,

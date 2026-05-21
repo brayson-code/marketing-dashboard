@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
       action === "approve" ? "Moved to ready/approved" : "Rejected/cancelled",
     );
 
-  logAudit({
+  await logAudit({
     actor,
     action: "automation.approval",
     target: `${type}:${id}`,

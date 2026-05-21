@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
-import { getDb } from './db';
+import { sql, jsonb, DEFAULT_TENANT_ID } from './db/client';
 
 /**
  * Per-client integration credentials. Secrets are encrypted at rest with
@@ -107,10 +107,18 @@ function decrypt(blob: string): string {
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
+// Raw shape as returned by postgres.js. `config` jsonb comes back parsed;
+// timestamptz columns come back as Date objects.
 interface RawRow {
   id: number; provider: string; label: string | null; status: IntegrationStatus;
-  config: string | null; secret_encrypted: string | null; scopes: string | null;
-  expires_at: number | null; created_at: number; updated_at: number; last_error: string | null;
+  config: Record<string, unknown> | null; secret_encrypted: string | null; scopes: string | null;
+  expires_at: Date | string | null; created_at: Date | string; updated_at: Date | string; last_error: string | null;
+}
+
+/** timestamptz → epoch seconds (preserves the legacy numeric contract for callers). */
+function toEpochSeconds(v: Date | string | null): number | null {
+  if (v == null) return null;
+  return Math.floor(new Date(v).getTime() / 1000);
 }
 
 function hydrate(row: RawRow): IntegrationRow {
@@ -119,48 +127,63 @@ function hydrate(row: RawRow): IntegrationRow {
     provider: row.provider,
     label: row.label,
     status: row.status,
-    config: row.config ? JSON.parse(row.config) : {},
+    config: row.config ?? {},
     has_secret: !!row.secret_encrypted,
     scopes: row.scopes,
-    expires_at: row.expires_at,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
+    expires_at: toEpochSeconds(row.expires_at),
+    created_at: toEpochSeconds(row.created_at) ?? 0,
+    updated_at: toEpochSeconds(row.updated_at) ?? 0,
     last_error: row.last_error,
   };
 }
 
-export function listIntegrations(): IntegrationRow[] {
-  const rows = getDb().prepare(`SELECT * FROM client_integrations ORDER BY provider`).all() as RawRow[];
+export async function listIntegrations(): Promise<IntegrationRow[]> {
+  const rows = await sql()`
+    SELECT * FROM client_integrations
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    ORDER BY provider
+  ` as unknown as RawRow[];
   return rows.map(hydrate);
 }
 
-export function getIntegration(provider: string): IntegrationRow | undefined {
-  const row = getDb().prepare(`SELECT * FROM client_integrations WHERE provider = ?`).get(provider) as RawRow | undefined;
-  return row ? hydrate(row) : undefined;
+export async function getIntegration(provider: string): Promise<IntegrationRow | undefined> {
+  const rows = await sql()`
+    SELECT * FROM client_integrations
+    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND provider = ${provider}
+  ` as unknown as RawRow[];
+  return rows[0] ? hydrate(rows[0]) : undefined;
 }
 
-export function getDecryptedSecret(provider: string): Record<string, string> | null {
-  const row = getDb().prepare(`SELECT secret_encrypted FROM client_integrations WHERE provider = ?`).get(provider) as { secret_encrypted: string | null } | undefined;
-  if (!row?.secret_encrypted) return null;
+export async function getDecryptedSecret(provider: string): Promise<Record<string, string> | null> {
+  const rows = await sql()`
+    SELECT secret_encrypted FROM client_integrations
+    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND provider = ${provider}
+  ` as unknown as { secret_encrypted: string | null }[];
+  const secret = rows[0]?.secret_encrypted;
+  if (!secret) return null;
   try {
-    return JSON.parse(decrypt(row.secret_encrypted));
+    return JSON.parse(decrypt(secret));
   } catch {
     return null;
   }
 }
 
-export function upsertIntegration(input: {
+export async function upsertIntegration(input: {
   provider: string;
   label?: string;
   config?: Record<string, unknown>;
   secret?: Record<string, string>; // fields like { api_key: '...', refresh_token: '...' }
   scopes?: string;
   expires_at?: number | null;
-}): IntegrationRow {
-  const db = getDb();
-  const existing = db.prepare(`SELECT * FROM client_integrations WHERE provider = ?`).get(input.provider) as RawRow | undefined;
+}): Promise<IntegrationRow> {
+  const s = sql();
+  const existingRows = await s`
+    SELECT * FROM client_integrations
+    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND provider = ${input.provider}
+  ` as unknown as RawRow[];
+  const existing = existingRows[0];
 
-  const mergedConfig = { ...(existing?.config ? JSON.parse(existing.config) : {}), ...(input.config ?? {}) };
+  const mergedConfig = { ...(existing?.config ?? {}), ...(input.config ?? {}) };
   let mergedSecret: Record<string, string> | null = null;
   if (existing?.secret_encrypted) {
     try { mergedSecret = JSON.parse(decrypt(existing.secret_encrypted)); } catch { mergedSecret = null; }
@@ -171,37 +194,37 @@ export function upsertIntegration(input: {
 
   const status: IntegrationStatus = mergedSecret && Object.keys(mergedSecret).length > 0 ? 'configured' : 'not_configured';
   const encryptedBlob = mergedSecret ? encrypt(JSON.stringify(mergedSecret)) : null;
+  // input.expires_at is epoch seconds; store as timestamptz.
+  const expiresAt = input.expires_at != null ? new Date(input.expires_at * 1000).toISOString() : null;
 
   if (existing) {
-    db.prepare(`
+    await s`
       UPDATE client_integrations
-         SET label = COALESCE(?, label),
-             status = ?,
-             config = ?,
-             secret_encrypted = ?,
-             scopes = COALESCE(?, scopes),
-             expires_at = COALESCE(?, expires_at),
-             updated_at = unixepoch(),
+         SET label = COALESCE(${input.label ?? null}, label),
+             status = ${status},
+             config = ${jsonb(mergedConfig)},
+             secret_encrypted = ${encryptedBlob},
+             scopes = COALESCE(${input.scopes ?? null}, scopes),
+             expires_at = COALESCE(${expiresAt}, expires_at),
+             updated_at = now(),
              last_error = NULL
-       WHERE id = ?
-    `).run(input.label ?? null, status, JSON.stringify(mergedConfig), encryptedBlob, input.scopes ?? null, input.expires_at ?? null, existing.id);
-    return getIntegration(input.provider)!;
+       WHERE id = ${existing.id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    `;
+    return (await getIntegration(input.provider))!;
   }
-  db.prepare(`
-    INSERT INTO client_integrations (provider, label, status, config, secret_encrypted, scopes, expires_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    input.provider,
-    input.label ?? null,
-    status,
-    JSON.stringify(mergedConfig),
-    encryptedBlob,
-    input.scopes ?? null,
-    input.expires_at ?? null,
-  );
-  return getIntegration(input.provider)!;
+  await s`
+    INSERT INTO client_integrations (tenant_id, provider, label, status, config, secret_encrypted, scopes, expires_at)
+    VALUES (
+      ${DEFAULT_TENANT_ID}, ${input.provider}, ${input.label ?? null}, ${status},
+      ${jsonb(mergedConfig)}, ${encryptedBlob}, ${input.scopes ?? null}, ${expiresAt}
+    )
+  `;
+  return (await getIntegration(input.provider))!;
 }
 
-export function clearIntegration(provider: string): void {
-  getDb().prepare(`DELETE FROM client_integrations WHERE provider = ?`).run(provider);
+export async function clearIntegration(provider: string): Promise<void> {
+  await sql()`
+    DELETE FROM client_integrations
+    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND provider = ${provider}
+  `;
 }

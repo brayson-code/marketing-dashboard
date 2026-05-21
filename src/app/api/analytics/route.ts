@@ -94,7 +94,7 @@ export async function GET(req: NextRequest) {
   const days = clampDays(searchParams.get("days"), 30);
   const real = searchParams.get("real") === "true";
 
-  const rawDaily = getDailyMetrics(days, { excludeSeed: real });
+  const rawDaily = await getDailyMetrics(days, { excludeSeed: real });
   const dailyAsc = [...rawDaily].reverse();
   const social = computeSocialAnalytics(dailyAsc);
 

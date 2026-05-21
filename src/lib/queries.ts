@@ -1,4 +1,4 @@
-import { getDb } from './db';
+import { sql, DEFAULT_TENANT_ID } from './db/client';
 // createNotification lives in ./notifications (Supabase-backed, no better-sqlite3)
 // and is re-exported here for existing callers.
 export { createNotification } from './notifications';
@@ -9,41 +9,41 @@ import type {
 } from '@/types';
 
 // ─── Overview ──────────────────────────────────────────
-export function getOverviewStats(filters?: { excludeSeed?: boolean }): OverviewStats {
-  const db = getDb();
+export async function getOverviewStats(_filters?: { excludeSeed?: boolean }): Promise<OverviewStats> {
+  const s = sql();
   const today = new Date().toISOString().slice(0, 10);
 
-  const sf = filters?.excludeSeed ? seedFilter : () => '';
+  const [postsRow, engRow, emailsRow, pipelineRow] = await Promise.all([
+    s`SELECT COUNT(*) AS c FROM content_posts
+        WHERE tenant_id = ${DEFAULT_TENANT_ID}
+        AND (published_at::date = ${today}::date OR created_at::date = ${today}::date)`,
+    s`SELECT COUNT(*) AS c FROM engagements
+        WHERE tenant_id = ${DEFAULT_TENANT_ID} AND created_at::date = ${today}::date`,
+    s`SELECT COUNT(*) AS c FROM sequences
+        WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'sent' AND sent_at::date = ${today}::date`,
+    s`SELECT COUNT(*) AS c FROM leads
+        WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status IN ('interested', 'booked')`,
+  ]);
 
-  const posts_today = (db.prepare(
-    `SELECT COUNT(*) as c FROM content_posts WHERE (date(published_at) = ? OR date(created_at) = ?) ${sf('content_posts')}`
-  ).get(today, today) as { c: number })?.c ?? 0;
-
-  const engagement_today = (db.prepare(
-    `SELECT COUNT(*) as c FROM engagements WHERE date(created_at) = ? ${sf('engagements')}`
-  ).get(today) as { c: number })?.c ?? 0;
-
-  const emails_sent = (db.prepare(
-    `SELECT COUNT(*) as c FROM sequences WHERE status = 'sent' AND date(sent_at) = ? ${sf('sequences')}`
-  ).get(today) as { c: number })?.c ?? 0;
-
-  const pipeline_count = (db.prepare(
-    `SELECT COUNT(*) as c FROM leads WHERE status IN ('interested', 'booked') ${sf('leads')}`
-  ).get() as { c: number })?.c ?? 0;
-
-  return { posts_today, engagement_today, emails_sent, pipeline_count };
+  return {
+    posts_today: Number(postsRow[0]?.c ?? 0),
+    engagement_today: Number(engRow[0]?.c ?? 0),
+    emails_sent: Number(emailsRow[0]?.c ?? 0),
+    pipeline_count: Number(pipelineRow[0]?.c ?? 0),
+  };
 }
 
-export function getAlerts(filters?: { excludeSeed?: boolean }): Alert[] {
-  const db = getDb();
+export async function getAlerts(_filters?: { excludeSeed?: boolean }): Promise<Alert[]> {
+  const s = sql();
   const alerts: Alert[] = [];
 
-  const sf = filters?.excludeSeed ? seedFilter : () => '';
-
   // Bounce rate check
-  const metrics = db.prepare(
-    `SELECT sends, bounces FROM daily_metrics ORDER BY date DESC LIMIT 1`
-  ).get() as { sends: number; bounces: number } | undefined;
+  const metricsRows = await s`
+    SELECT sends, bounces FROM daily_metrics
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    ORDER BY date DESC LIMIT 1
+  ` as unknown as { sends: number; bounces: number }[];
+  const metrics = metricsRows[0];
   if (metrics && metrics.sends > 0 && (metrics.bounces / metrics.sends) > 0.03) {
     alerts.push({
       id: 'bounce-rate',
@@ -54,11 +54,13 @@ export function getAlerts(filters?: { excludeSeed?: boolean }): Alert[] {
   }
 
   // Pending approvals > 24h
-  const stale = (db.prepare(
-    `SELECT COUNT(*) as c FROM content_posts
-     WHERE status = 'pending_approval'
-     AND created_at < datetime('now', '-24 hours') ${sf('content_posts')}`
-  ).get() as { c: number })?.c ?? 0;
+  const staleRows = await s`
+    SELECT COUNT(*) AS c FROM content_posts
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    AND status = 'pending_approval'
+    AND created_at < now() - interval '24 hours'
+  `;
+  const stale = Number(staleRows[0]?.c ?? 0);
   if (stale > 0) {
     alerts.push({
       id: 'stale-approvals',
@@ -69,11 +71,13 @@ export function getAlerts(filters?: { excludeSeed?: boolean }): Alert[] {
   }
 
   // Stale email approvals
-  const staleEmails = (db.prepare(
-    `SELECT COUNT(*) as c FROM sequences
-     WHERE status = 'pending_approval'
-     AND created_at < datetime('now', '-24 hours') ${sf('sequences')}`
-  ).get() as { c: number })?.c ?? 0;
+  const staleEmailRows = await s`
+    SELECT COUNT(*) AS c FROM sequences
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    AND status = 'pending_approval'
+    AND created_at < now() - interval '24 hours'
+  `;
+  const staleEmails = Number(staleEmailRows[0]?.c ?? 0);
   if (staleEmails > 0) {
     alerts.push({
       id: 'stale-email-approvals',
@@ -84,11 +88,13 @@ export function getAlerts(filters?: { excludeSeed?: boolean }): Alert[] {
   }
 
   // High engagement signal (viral)
-  const viral = db.prepare(
-    `SELECT summary FROM signals
-     WHERE relevance = 'high' AND date(created_at) = date('now') ${sf('signals')}
-     ORDER BY created_at DESC LIMIT 1`
-  ).get() as { summary: string } | undefined;
+  const viralRows = await s`
+    SELECT summary FROM signals
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    AND relevance = 'high' AND created_at::date = now()::date
+    ORDER BY created_at DESC LIMIT 1
+  ` as unknown as { summary: string }[];
+  const viral = viralRows[0];
   if (viral) {
     alerts.push({
       id: 'viral-signal',
@@ -99,17 +105,18 @@ export function getAlerts(filters?: { excludeSeed?: boolean }): Alert[] {
   }
 
   // Webhook-pushed notifications (unread, last 24h)
-  const notifications = db.prepare(
-    `SELECT id, severity, title, message, created_at FROM notifications
-     WHERE read = 0 AND created_at > datetime('now', '-24 hours')
-     ORDER BY created_at DESC LIMIT 10`
-  ).all() as { id: number; severity: string; title: string | null; message: string; created_at: string }[];
+  const notifications = await s`
+    SELECT id, severity, title, message, created_at FROM notifications
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    AND read = false AND created_at > now() - interval '24 hours'
+    ORDER BY created_at DESC LIMIT 10
+  ` as unknown as { id: number; severity: string; title: string | null; message: string; created_at: Date }[];
   for (const n of notifications) {
     alerts.push({
       id: `notif-${n.id}`,
       type: (n.severity === 'error' ? 'error' : n.severity === 'warning' ? 'warning' : 'info') as Alert['type'],
       message: n.title ? `${n.title}: ${n.message}` : n.message,
-      created_at: n.created_at,
+      created_at: typeof n.created_at === 'string' ? n.created_at : (n.created_at as Date).toISOString(),
     });
   }
 
@@ -117,172 +124,183 @@ export function getAlerts(filters?: { excludeSeed?: boolean }): Alert[] {
 }
 
 // ─── Content ───────────────────────────────────────────
-export function getContentPosts(filters?: {
+export async function getContentPosts(filters?: {
   status?: string;
   platform?: string;
   pillar?: number;
   excludeSeed?: boolean;
-}): ContentPost[] {
-  const db = getDb();
-  let sql = 'SELECT * FROM content_posts WHERE 1=1';
-  const params: unknown[] = [];
-
-  if (filters?.status) { sql += ' AND status = ?'; params.push(filters.status); }
-  if (filters?.platform) { sql += ' AND platform = ?'; params.push(filters.platform); }
-  if (filters?.pillar) { sql += ' AND pillar = ?'; params.push(filters.pillar); }
-  if (filters?.excludeSeed) { sql += ` ${seedFilter('content_posts')}`; }
-
-  sql += ' ORDER BY created_at DESC';
-  return db.prepare(sql).all(...params) as ContentPost[];
+}): Promise<ContentPost[]> {
+  const s = sql();
+  const rows = await s`
+    SELECT * FROM content_posts
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    ${filters?.status ? s`AND status = ${filters.status}` : s``}
+    ${filters?.platform ? s`AND platform = ${filters.platform}` : s``}
+    ${filters?.pillar ? s`AND pillar = ${filters.pillar}` : s``}
+    ORDER BY created_at DESC
+  `;
+  return rows as unknown as ContentPost[];
 }
 
-export function updateContentStatus(id: string, status: string): void {
-  const db = getDb();
-  db.prepare('UPDATE content_posts SET status = ? WHERE id = ?').run(status, id);
+export async function updateContentStatus(id: string, status: string): Promise<void> {
+  await sql()`
+    UPDATE content_posts SET status = ${status}
+    WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+  `;
 }
 
 // ─── Leads ─────────────────────────────────────────────
-export function getLeads(filters?: {
+const LEAD_SORT_COLS = ['score', 'created_at', 'last_touch_at', 'company'] as const;
+
+export async function getLeads(filters?: {
   status?: string;
   tier?: string;
   segment?: string;
   sort?: string;
   order?: 'asc' | 'desc';
   excludeSeed?: boolean;
-}): Lead[] {
-  const db = getDb();
-  let sql = 'SELECT * FROM leads WHERE 1=1';
-  const params: unknown[] = [];
-
-  if (filters?.status) { sql += ' AND status = ?'; params.push(filters.status); }
-  if (filters?.tier) { sql += ' AND tier = ?'; params.push(filters.tier); }
-  if (filters?.segment) { sql += ' AND industry_segment = ?'; params.push(filters.segment); }
-  if (filters?.excludeSeed) { sql += ` ${seedFilter('leads')}`; }
-
-  const sortCol = ['score', 'created_at', 'last_touch_at', 'company'].includes(filters?.sort || '')
-    ? filters!.sort
+}): Promise<Lead[]> {
+  const s = sql();
+  const sortCol = (LEAD_SORT_COLS as ReadonlyArray<string>).includes(filters?.sort || '')
+    ? (filters!.sort as string)
     : 'created_at';
-  const order = filters?.order === 'asc' ? 'ASC' : 'DESC';
-  sql += ` ORDER BY ${sortCol} ${order}`;
+  const order = filters?.order === 'asc' ? 'asc' : 'desc';
 
-  return db.prepare(sql).all(...params) as Lead[];
+  const rows = await s`
+    SELECT * FROM leads
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    ${filters?.status ? s`AND status = ${filters.status}` : s``}
+    ${filters?.tier ? s`AND tier = ${filters.tier}` : s``}
+    ${filters?.segment ? s`AND industry_segment = ${filters.segment}` : s``}
+    ORDER BY ${s(sortCol)} ${order === 'asc' ? s`ASC` : s`DESC`}
+  `;
+  return rows as unknown as Lead[];
 }
 
-export function updateLeadStatus(id: string, status: string): void {
-  const db = getDb();
-  db.prepare('UPDATE leads SET status = ?, last_touch_at = datetime(\'now\') WHERE id = ?').run(status, id);
+export async function updateLeadStatus(id: string, status: string): Promise<void> {
+  await sql()`
+    UPDATE leads SET status = ${status}, last_touch_at = now()
+    WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+  `;
 }
 
-export function getLeadFunnel(filters?: { excludeSeed?: boolean }): FunnelStep[] {
-  const db = getDb();
-  const sf = filters?.excludeSeed ? seedFilter('leads') : '';
-  const steps = ["new", "validated", "approved", "contacted", "replied", "interested", "booked", "qualified", "rejected", "disqualified"]; 
-  return steps.map(name => {
-    const row = db.prepare(`SELECT COUNT(*) as c FROM leads WHERE status = ? ${sf}`).get(name) as { c: number };
-    return { name, value: row?.c ?? 0 };
-  });
+export async function getLeadFunnel(_filters?: { excludeSeed?: boolean }): Promise<FunnelStep[]> {
+  const s = sql();
+  const steps = ["new", "validated", "approved", "contacted", "replied", "interested", "booked", "qualified", "rejected", "disqualified"];
+  const rows = await s`
+    SELECT status, COUNT(*) AS c FROM leads
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    GROUP BY status
+  ` as unknown as { status: string; c: string }[];
+  const counts = new Map(rows.map(r => [r.status, Number(r.c)]));
+  return steps.map(name => ({ name, value: counts.get(name) ?? 0 }));
 }
 
 // ─── Sequences ─────────────────────────────────────────
-export function getSequences(filters?: { status?: string; lead_id?: string; excludeSeed?: boolean }): Sequence[] {
-  const db = getDb();
-  let sql = 'SELECT * FROM sequences WHERE 1=1';
-  const params: unknown[] = [];
-
-  if (filters?.status) { sql += ' AND status = ?'; params.push(filters.status); }
-  if (filters?.lead_id) { sql += ' AND lead_id = ?'; params.push(filters.lead_id); }
-  if (filters?.excludeSeed) { sql += ` ${seedFilter('sequences')}`; }
-
-  sql += ' ORDER BY created_at DESC';
-  return db.prepare(sql).all(...params) as Sequence[];
+export async function getSequences(filters?: { status?: string; lead_id?: string; excludeSeed?: boolean }): Promise<Sequence[]> {
+  const s = sql();
+  const rows = await s`
+    SELECT * FROM sequences
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    ${filters?.status ? s`AND status = ${filters.status}` : s``}
+    ${filters?.lead_id ? s`AND lead_id = ${filters.lead_id}` : s``}
+    ORDER BY created_at DESC
+  `;
+  return rows as unknown as Sequence[];
 }
 
-export function updateSequenceStatus(id: string, status: string): void {
-  const db = getDb();
-  db.prepare('UPDATE sequences SET status = ? WHERE id = ?').run(status, id);
+export async function updateSequenceStatus(id: string, status: string): Promise<void> {
+  await sql()`
+    UPDATE sequences SET status = ${status}
+    WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+  `;
 }
 
 // ─── Suppression ───────────────────────────────────────
-export function getSuppression(filters?: { excludeSeed?: boolean }): Suppression[] {
-  const db = getDb();
-  const sf = filters?.excludeSeed ? seedFilter('suppression', 'email') : '';
-  return db.prepare(`SELECT * FROM suppression WHERE 1=1 ${sf} ORDER BY added_at DESC`).all() as Suppression[];
+export async function getSuppression(_filters?: { excludeSeed?: boolean }): Promise<Suppression[]> {
+  const rows = await sql()`
+    SELECT * FROM suppression
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    ORDER BY added_at DESC
+  `;
+  return rows as unknown as Suppression[];
 }
 
 // ─── Engagement ────────────────────────────────────────
-export function getEngagements(filters?: {
+export async function getEngagements(filters?: {
   platform?: string;
   action_type?: string;
   date?: string;
   excludeSeed?: boolean;
-}): Engagement[] {
-  const db = getDb();
-  let sql = 'SELECT * FROM engagements WHERE 1=1';
-  const params: unknown[] = [];
-
-  if (filters?.platform) { sql += ' AND platform = ?'; params.push(filters.platform); }
-  if (filters?.action_type) { sql += ' AND action_type = ?'; params.push(filters.action_type); }
-  if (filters?.date) { sql += ' AND date(created_at) = ?'; params.push(filters.date); }
-  if (filters?.excludeSeed) { sql += ` ${seedFilter('engagements')}`; }
-
-  sql += ' ORDER BY created_at DESC LIMIT 200';
-  return db.prepare(sql).all(...params) as Engagement[];
+}): Promise<Engagement[]> {
+  const s = sql();
+  const rows = await s`
+    SELECT * FROM engagements
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    ${filters?.platform ? s`AND platform = ${filters.platform}` : s``}
+    ${filters?.action_type ? s`AND action_type = ${filters.action_type}` : s``}
+    ${filters?.date ? s`AND created_at::date = ${filters.date}::date` : s``}
+    ORDER BY created_at DESC LIMIT 200
+  `;
+  return rows as unknown as Engagement[];
 }
 
 // ─── Signals ───────────────────────────────────────────
-export function getSignals(filters?: {
+export async function getSignals(filters?: {
   type?: string;
   relevance?: string;
   date?: string;
   excludeSeed?: boolean;
-}): Signal[] {
-  const db = getDb();
-  let sql = 'SELECT * FROM signals WHERE 1=1';
-  const params: unknown[] = [];
-
-  if (filters?.type) { sql += ' AND type = ?'; params.push(filters.type); }
-  if (filters?.relevance) { sql += ' AND relevance = ?'; params.push(filters.relevance); }
-  if (filters?.date) { sql += ' AND date = ?'; params.push(filters.date); }
-  if (filters?.excludeSeed) { sql += ` ${seedFilter('signals')}`; }
-
-  sql += ' ORDER BY created_at DESC LIMIT 200';
-  return db.prepare(sql).all(...params) as Signal[];
+}): Promise<Signal[]> {
+  const s = sql();
+  const rows = await s`
+    SELECT * FROM signals
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    ${filters?.type ? s`AND type = ${filters.type}` : s``}
+    ${filters?.relevance ? s`AND relevance = ${filters.relevance}` : s``}
+    ${filters?.date ? s`AND date = ${filters.date}` : s``}
+    ORDER BY created_at DESC LIMIT 200
+  `;
+  return rows as unknown as Signal[];
 }
 
 // ─── Experiments ───────────────────────────────────────
-export function getExperiments(filters?: { status?: string; excludeSeed?: boolean }): Experiment[] {
-  const db = getDb();
-  let sql = 'SELECT * FROM experiments WHERE 1=1';
-  const params: unknown[] = [];
-
-  if (filters?.status) { sql += ' AND status = ?'; params.push(filters.status); }
-  if (filters?.excludeSeed) { sql += ` ${seedFilter('experiments')}`; }
-
-  sql += ' ORDER BY week DESC, id DESC';
-  return db.prepare(sql).all(...params) as Experiment[];
+export async function getExperiments(filters?: { status?: string; excludeSeed?: boolean }): Promise<Experiment[]> {
+  const s = sql();
+  const rows = await s`
+    SELECT * FROM experiments
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    ${filters?.status ? s`AND status = ${filters.status}` : s``}
+    ORDER BY week DESC, id DESC
+  `;
+  return rows as unknown as Experiment[];
 }
 
-export function getLearnings(filters?: { excludeSeed?: boolean }): Learning[] {
-  const db = getDb();
-  const sf = filters?.excludeSeed ? seedFilter('learnings') : '';
-  return db.prepare(`SELECT * FROM learnings WHERE 1=1 ${sf} ORDER BY validated_week DESC, id DESC`).all() as Learning[];
+export async function getLearnings(_filters?: { excludeSeed?: boolean }): Promise<Learning[]> {
+  const rows = await sql()`
+    SELECT * FROM learnings
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    ORDER BY validated_week DESC, id DESC
+  `;
+  return rows as unknown as Learning[];
 }
 
 // ─── KPIs ──────────────────────────────────────────────
-export function getDailyMetrics(days: number = 90, filters?: { excludeSeed?: boolean }): DailyMetrics[] {
-  const db = getDb();
-  const sf = filters?.excludeSeed ? seedFilter('daily_metrics', 'date') : '';
-  return db.prepare(
-    `SELECT * FROM daily_metrics WHERE 1=1 ${sf} ORDER BY date DESC LIMIT ?`
-  ).all(days) as DailyMetrics[];
+export async function getDailyMetrics(days: number = 90, _filters?: { excludeSeed?: boolean }): Promise<DailyMetrics[]> {
+  const rows = await sql()`
+    SELECT * FROM daily_metrics
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    ORDER BY date DESC LIMIT ${days}
+  `;
+  return rows as unknown as DailyMetrics[];
 }
 
-export function getWeeklyKPIs(weeks: number = 12, filters?: { excludeSeed?: boolean }): WeeklyKPI[] {
-  const db = getDb();
-  const sf = filters?.excludeSeed ? seedFilter('daily_metrics', 'date') : '';
-  const metrics = db.prepare(
-    `SELECT * FROM daily_metrics WHERE 1=1 ${sf} ORDER BY date DESC LIMIT ?`
-  ).all(weeks * 7) as DailyMetrics[];
+export async function getWeeklyKPIs(weeks: number = 12, _filters?: { excludeSeed?: boolean }): Promise<WeeklyKPI[]> {
+  const metrics = await sql()`
+    SELECT * FROM daily_metrics
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    ORDER BY date DESC LIMIT ${weeks * 7}
+  ` as unknown as DailyMetrics[];
 
   // Group by ISO week
   const weekMap = new Map<string, DailyMetrics[]>();
@@ -323,78 +341,74 @@ function getISOWeek(date: Date): number {
 }
 
 // ─── Activity Log ──────────────────────────────────────
-export function getActivityLog(filters?: {
+export async function getActivityLog(filters?: {
   action?: string;
   limit?: number;
   excludeSeed?: boolean;
-}): ActivityEntry[] {
-  const db = getDb();
-  let sql = 'SELECT * FROM activity_log WHERE 1=1';
-  const params: unknown[] = [];
-
-  if (filters?.action) { sql += ' AND action = ?'; params.push(filters.action); }
-  if (filters?.excludeSeed) { sql += ` ${seedFilter('activity_log')}`; }
-
-  sql += ' ORDER BY ts DESC LIMIT ?';
-  params.push(filters?.limit ?? 100);
-
-  return db.prepare(sql).all(...params) as ActivityEntry[];
+}): Promise<ActivityEntry[]> {
+  const s = sql();
+  const limit = filters?.limit ?? 100;
+  const rows = await s`
+    SELECT * FROM activity_log
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    ${filters?.action ? s`AND action = ${filters.action}` : s``}
+    ORDER BY ts DESC LIMIT ${limit}
+  `;
+  return rows as unknown as ActivityEntry[];
 }
 
 // ─── Notifications ────────────────────────────────────
-// MIGRATED to Supabase. NOTE(supabase-migration): the read helpers below
-// (getNotifications, getAlerts) still read from the old SQLite db.ts, so
-// notifications written here will not appear in those reads until those are
-// ported too. See report.
 // createNotification was moved to ./notifications and is re-exported at the top
 // of this file, so it can be imported without pulling in better-sqlite3.
 
-export function getNotifications(filters?: {
+export async function getNotifications(filters?: {
   unread_only?: boolean;
   type?: string;
   limit?: number;
-}): Notification[] {
-  const db = getDb();
-  let sql = 'SELECT * FROM notifications WHERE 1=1';
-  const params: unknown[] = [];
-
-  if (filters?.unread_only) { sql += ' AND read = 0'; }
-  if (filters?.type) { sql += ' AND type = ?'; params.push(filters.type); }
-
-  sql += ' ORDER BY created_at DESC LIMIT ?';
-  params.push(filters?.limit ?? 50);
-
-  const rows = db.prepare(sql).all(...params) as (Omit<Notification, 'data' | 'read'> & { data: string | null; read: number })[];
+}): Promise<Notification[]> {
+  const s = sql();
+  const limit = filters?.limit ?? 50;
+  const rows = await s`
+    SELECT * FROM notifications
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    ${filters?.unread_only ? s`AND read = false` : s``}
+    ${filters?.type ? s`AND type = ${filters.type}` : s``}
+    ORDER BY created_at DESC LIMIT ${limit}
+  ` as unknown as (Omit<Notification, 'data' | 'read'> & { data: Record<string, unknown> | null; read: boolean })[];
+  // jsonb `data` comes back already parsed; `read` is a real boolean.
   return rows.map(r => ({
     ...r,
-    read: r.read === 1,
-    data: r.data ? JSON.parse(r.data) : null,
-  }));
+    read: r.read === true,
+    data: r.data ?? null,
+  })) as unknown as Notification[];
 }
 
-export function markNotificationRead(id: number): void {
-  getDb().prepare('UPDATE notifications SET read = 1 WHERE id = ?').run(id);
+export async function markNotificationRead(id: number): Promise<void> {
+  await sql()`
+    UPDATE notifications SET read = true
+    WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+  `;
 }
 
-export function markAllNotificationsRead(): void {
-  getDb().prepare('UPDATE notifications SET read = 1 WHERE read = 0').run();
+export async function markAllNotificationsRead(): Promise<void> {
+  await sql()`
+    UPDATE notifications SET read = true
+    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND read = false
+  `;
 }
 
 // ─── Seed Registry ────────────────────────────────────────
-export function isSeedRecord(tableName: string, recordId: string): boolean {
-  const db = getDb();
-  const row = db.prepare(
-    'SELECT 1 FROM seed_registry WHERE table_name = ? AND record_id = ?'
-  ).get(tableName, recordId);
-  return !!row;
+// There is NO seed_registry table in Supabase. The seed concept is a no-op now:
+// nothing is treated as a seed record, so `excludeSeed` filters become empty.
+export async function isSeedRecord(_tableName: string, _recordId: string): Promise<boolean> {
+  return false;
 }
 
-export function getSeedCount(): number {
-  const db = getDb();
-  return (db.prepare('SELECT COUNT(*) as c FROM seed_registry').get() as { c: number })?.c ?? 0;
+export async function getSeedCount(): Promise<number> {
+  return 0;
 }
 
-/** Returns SQL fragment to exclude seeded records from a query */
-export function seedFilter(tableName: string, idColumn: string = 'id'): string {
-  return `AND NOT EXISTS (SELECT 1 FROM seed_registry sr WHERE sr.table_name = '${tableName}' AND sr.record_id = CAST(${idColumn} AS TEXT))`;
+/** Returns SQL fragment to exclude seeded records — always empty (no seed_registry). */
+export function seedFilter(_tableName: string, _idColumn: string = 'id'): string {
+  return '';
 }

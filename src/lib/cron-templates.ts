@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { getDb } from '@/lib/db';
+import { sql, jsonb, DEFAULT_TENANT_ID } from '@/lib/db/client';
 
 export type CronTemplate = {
   id: string;
@@ -16,19 +16,24 @@ const MAX_NAME = 80;
 const MAX_DESC = 240;
 const MAX_JOB_JSON_BYTES = 128 * 1024;
 
-function ensureCronTemplatesTable(): void {
-  const db = getDb();
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS cron_templates (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL UNIQUE,
-      description TEXT,
-      job_json TEXT NOT NULL,
-      created_at_ms INTEGER NOT NULL,
-      updated_at_ms INTEGER NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_cron_templates_updated ON cron_templates(updated_at_ms);
-  `);
+// Raw row from postgres.js. `job_json` is jsonb (comes back parsed); timestamps
+// are timestamptz (Date objects). We re-serialize/convert to the legacy contract.
+interface RawTemplateRow {
+  id: string;
+  name: string;
+  description: string | null;
+  job_json: unknown;
+  created_at: Date | string;
+  updated_at: Date | string;
+}
+
+function toMs(v: Date | string): number {
+  return new Date(v).getTime();
+}
+
+// Re-serialize jsonb back to the indented-string contract callers expect.
+function jobToString(job: unknown): string {
+  return JSON.stringify(job, null, 2);
 }
 
 function normalizeName(value: unknown): string | null {
@@ -66,42 +71,52 @@ function validateJobJson(job: unknown): string {
   return json;
 }
 
+function isUniqueViolation(e: unknown): boolean {
+  const msg = String(e);
+  // Postgres unique_violation = 23505; also catch the textual hint.
+  return msg.includes('23505') || msg.includes('UNIQUE') || msg.includes('unique');
+}
+
 function newTemplateId(): string {
   return `tmpl_${randomBytes(6).toString('hex')}`;
 }
 
-export function listCronTemplates(limit = 50): CronTemplateRow[] {
-  ensureCronTemplatesTable();
-  const db = getDb();
+export async function listCronTemplates(limit = 50): Promise<CronTemplateRow[]> {
   const n = Math.max(1, Math.min(200, Math.floor(limit)));
-  return db.prepare(
-    `SELECT id, name, description, job_json, updated_at_ms
-     FROM cron_templates
-     ORDER BY updated_at_ms DESC
-     LIMIT ?`,
-  ).all(n) as CronTemplateRow[];
+  const rows = await sql()`
+    SELECT id, name, description, job_json, updated_at
+    FROM cron_templates
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    ORDER BY updated_at DESC
+    LIMIT ${n}
+  ` as unknown as RawTemplateRow[];
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    description: r.description,
+    job_json: jobToString(r.job_json),
+    updated_at_ms: toMs(r.updated_at),
+  }));
 }
 
-export function createCronTemplate(input: { name: unknown; description?: unknown; job: unknown }): CronTemplate {
-  ensureCronTemplatesTable();
+export async function createCronTemplate(input: { name: unknown; description?: unknown; job: unknown }): Promise<CronTemplate> {
   const name = normalizeName(input.name);
   if (!name) throw new Error(`Invalid name (max ${MAX_NAME} chars)`);
   const description = normalizeDescription(input.description);
   const job_json = validateJobJson(input.job);
 
   const now = Date.now();
-  const db = getDb();
   const id = newTemplateId();
   try {
-    db.prepare(
-      `INSERT INTO cron_templates (id, name, description, job_json, created_at_ms, updated_at_ms)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-    ).run(id, name, description, job_json, now, now);
+    await sql()`
+      INSERT INTO cron_templates (tenant_id, id, name, description, job_json, created_at, updated_at)
+      VALUES (
+        ${DEFAULT_TENANT_ID}, ${id}, ${name}, ${description},
+        ${jsonb(input.job)}, now(), now()
+      )
+    `;
   } catch (e) {
-    const msg = String(e);
-    if (msg.includes('UNIQUE') || msg.includes('unique')) {
-      throw new Error('Template name already exists');
-    }
+    if (isUniqueViolation(e)) throw new Error('Template name already exists');
     throw e;
   }
 
@@ -115,52 +130,55 @@ export function createCronTemplate(input: { name: unknown; description?: unknown
   };
 }
 
-export function updateCronTemplate(input: { id: unknown; name?: unknown; description?: unknown; job?: unknown }): CronTemplate {
-  ensureCronTemplatesTable();
+export async function updateCronTemplate(input: { id: unknown; name?: unknown; description?: unknown; job?: unknown }): Promise<CronTemplate> {
   const id = normalizeId(input.id);
   if (!id) throw new Error('Invalid id');
 
-  const db = getDb();
-  const existing = db.prepare(
-    'SELECT id, name, description, job_json, created_at_ms, updated_at_ms FROM cron_templates WHERE id = ?',
-  ).get(id) as CronTemplate | undefined;
+  const s = sql();
+  const existingRows = await s`
+    SELECT id, name, description, job_json, created_at, updated_at
+    FROM cron_templates
+    WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+  ` as unknown as RawTemplateRow[];
+  const existing = existingRows[0];
   if (!existing) throw new Error('Not found');
 
   const name = input.name === undefined ? existing.name : normalizeName(input.name);
   if (!name) throw new Error(`Invalid name (max ${MAX_NAME} chars)`);
   const description = input.description === undefined ? existing.description : normalizeDescription(input.description);
-  const job_json = input.job === undefined ? existing.job_json : validateJobJson(input.job);
+  // Validate when provided; carry the existing jsonb forward otherwise.
+  const job_json = input.job === undefined ? jobToString(existing.job_json) : validateJobJson(input.job);
+  const jobValue = input.job === undefined ? existing.job_json : input.job;
   const now = Date.now();
 
   try {
-    db.prepare(
-      `UPDATE cron_templates
-       SET name = ?, description = ?, job_json = ?, updated_at_ms = ?
-       WHERE id = ?`,
-    ).run(name, description, job_json, now, id);
+    await s`
+      UPDATE cron_templates
+      SET name = ${name}, description = ${description}, job_json = ${jsonb(jobValue)}, updated_at = now()
+      WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    `;
   } catch (e) {
-    const msg = String(e);
-    if (msg.includes('UNIQUE') || msg.includes('unique')) {
-      throw new Error('Template name already exists');
-    }
+    if (isUniqueViolation(e)) throw new Error('Template name already exists');
     throw e;
   }
 
   return {
-    ...existing,
+    id: existing.id,
     name,
     description,
     job_json,
+    created_at_ms: toMs(existing.created_at),
     updated_at_ms: now,
   };
 }
 
-export function deleteCronTemplate(idInput: unknown): void {
-  ensureCronTemplatesTable();
+export async function deleteCronTemplate(idInput: unknown): Promise<void> {
   const id = normalizeId(idInput);
   if (!id) throw new Error('Invalid id');
-  const db = getDb();
-  const info = db.prepare('DELETE FROM cron_templates WHERE id = ?').run(id);
-  if (info.changes === 0) throw new Error('Not found');
+  const result = await sql()`
+    DELETE FROM cron_templates
+    WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+  `;
+  if (result.count === 0) throw new Error('Not found');
 }
 

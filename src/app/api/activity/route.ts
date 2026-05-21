@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
   if (auth) return auth;
   const { searchParams } = req.nextUrl;
   const real = searchParams.get('real') === 'true';
-  const activity = getActivityLog({
+  const activity = await getActivityLog({
     action: searchParams.get('action') || undefined,
     limit: Number(searchParams.get('limit')) || 100,
     excludeSeed: real,

@@ -4,7 +4,7 @@ import { listIntegrations, upsertIntegration, clearIntegration, PROVIDERS } from
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  return NextResponse.json({ providers: PROVIDERS, integrations: listIntegrations() });
+  return NextResponse.json({ providers: PROVIDERS, integrations: await listIntegrations() });
 }
 
 export async function POST(request: Request) {
@@ -15,11 +15,11 @@ export async function POST(request: Request) {
   if (!body.provider) return NextResponse.json({ error: 'provider is required' }, { status: 400 });
 
   if (body.action === 'clear') {
-    clearIntegration(body.provider);
+    await clearIntegration(body.provider);
     return NextResponse.json({ ok: true });
   }
 
-  const row = upsertIntegration({
+  const row = await upsertIntegration({
     provider: body.provider,
     label: body.label,
     config: body.config,

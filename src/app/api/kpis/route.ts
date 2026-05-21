@@ -9,8 +9,8 @@ export async function GET(req: NextRequest) {
   const weeks = Number(searchParams.get('weeks')) || 12;
   const real = searchParams.get('real') === 'true';
 
-  const daily = getDailyMetrics(weeks * 7, { excludeSeed: real });
-  const weekly = getWeeklyKPIs(weeks, { excludeSeed: real });
+  const daily = await getDailyMetrics(weeks * 7, { excludeSeed: real });
+  const weekly = await getWeeklyKPIs(weeks, { excludeSeed: real });
 
   return NextResponse.json({ daily, weekly });
 }

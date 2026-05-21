@@ -251,7 +251,7 @@ export async function POST(req: NextRequest) {
     await fs.mkdir(path.dirname(abs), { recursive: true });
     await fs.writeFile(abs, content, 'utf-8');
 
-    logAudit({
+    await logAudit({
       actor,
       action: 'workspace.create',
       target: `workspace:${root.id}:${rel}`,
@@ -302,7 +302,7 @@ export async function PUT(req: NextRequest) {
 
     await writeFileAtomic(abs, content);
 
-    logAudit({
+    await logAudit({
       actor,
       action: 'workspace.update',
       target: `workspace:${root.id}:${rel}`,
@@ -345,7 +345,7 @@ export async function DELETE(req: NextRequest) {
 
     await fs.unlink(abs);
 
-    logAudit({
+    await logAudit({
       actor,
       action: 'workspace.delete',
       target: `workspace:${root.id}:${rel}`,

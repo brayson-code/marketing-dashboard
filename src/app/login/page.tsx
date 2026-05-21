@@ -2,13 +2,13 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
 
 function LoginForm() {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [googleEnabled, setGoogleEnabled] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -17,28 +17,20 @@ function LoginForm() {
     if (msg) setError(msg);
   }, [searchParams]);
 
-  useEffect(() => {
-    fetch('/api/auth/providers')
-      .then((r) => r.json())
-      .then((data) => setGoogleEnabled(Boolean(data?.google)))
-      .catch(() => setGoogleEnabled(false));
-  }, []);
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     setLoading(true);
 
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+      const supabase = createClient();
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
       });
 
-      if (!res.ok) {
-        const data = await res.json();
-        setError(data.error || 'Login failed');
+      if (signInError) {
+        setError(signInError.message || 'Login failed');
         return;
       }
 
@@ -55,15 +47,16 @@ function LoginForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label htmlFor="username" className="block text-sm font-medium text-[var(--foreground)] mb-1.5">
-          Username
+        <label htmlFor="email" className="block text-sm font-medium text-[var(--foreground)] mb-1.5">
+          Email
         </label>
         <input
-          id="username"
-          type="text"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
+          id="email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
           className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+          autoComplete="email"
           autoFocus
           required
         />
@@ -79,6 +72,7 @@ function LoginForm() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+          autoComplete="current-password"
           required
         />
       </div>
@@ -96,15 +90,6 @@ function LoginForm() {
       >
         {loading ? 'Signing in...' : 'Sign in'}
       </button>
-
-      {googleEnabled && (
-        <a
-          href={`/api/auth/google/start?from=${encodeURIComponent(searchParams.get('from') || '/')}`}
-          className="block w-full py-2.5 rounded-lg border border-[var(--border)] text-center text-sm font-medium hover:bg-[var(--muted)] transition-colors"
-        >
-          Sign in with Google
-        </a>
-      )}
     </form>
   );
 }

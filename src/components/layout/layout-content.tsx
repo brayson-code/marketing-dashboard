@@ -7,6 +7,7 @@ import { HeaderBar } from './header-bar';
 import { MobileNav } from './mobile-nav';
 import { AppShell } from './app-shell';
 import { CommandPalette } from '../command-palette';
+import { createClient } from '@/lib/supabase/client';
 
 const AUTH_PATHS = ['/login'];
 
@@ -20,10 +21,12 @@ export function LayoutContent({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (isAuthPath) return;
     let cancelled = false;
-    fetch('/api/auth/me', { cache: 'no-store' })
-      .then((res) => {
+    const supabase = createClient();
+    supabase.auth
+      .getUser()
+      .then(({ data, error }) => {
         if (cancelled) return;
-        if (!res.ok) {
+        if (error || !data?.user) {
           router.replace(`/login?from=${encodeURIComponent(pathname)}`);
           return;
         }

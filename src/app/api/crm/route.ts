@@ -213,7 +213,7 @@ export async function PATCH(request: Request) {
 
       db.prepare("UPDATE sequences SET status = ? WHERE id = ?").run(nextStatus, id);
       writebackSequenceStatus(id, nextStatus);
-      logAudit({
+      await logAudit({
         actor,
         action: "crm.sequence.update_status",
         target: `sequence:${id}`,
@@ -287,7 +287,7 @@ export async function PATCH(request: Request) {
         );
       }
     }
-    logAudit({
+    await logAudit({
       actor,
       action: 'crm.lead.update',
       target: `lead:${id}`,

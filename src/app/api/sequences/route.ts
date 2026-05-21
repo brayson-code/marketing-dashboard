@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
   if (auth) return auth;
   const { searchParams } = req.nextUrl;
   const real = searchParams.get("real") === "true";
-  const sequences = getSequences({
+  const sequences = await getSequences({
     status: searchParams.get("status") || undefined,
     lead_id: searchParams.get("lead_id") || undefined,
     excludeSeed: real,
@@ -43,9 +43,9 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
-  updateSequenceStatus(id, status);
+  await updateSequenceStatus(id, status);
   writebackSequenceStatus(id, status);
-  logAudit({
+  await logAudit({
     actor,
     action: "sequence.update_status",
     target: "sequence:" + id,

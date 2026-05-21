@@ -1,48 +1,33 @@
 import assert from 'node:assert/strict';
-import { after, beforeEach, test } from 'node:test';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
+import { test } from 'node:test';
 
-const tempDir = mkdtempSync(path.join(tmpdir(), 'hermes-cron-templates-test-'));
-const dbPath = path.join(tempDir, 'hermes-test.db');
-process.env.HERMES_DB_PATH = dbPath;
-
-import { resetDbForTests } from './db';
 import { createCronTemplate, deleteCronTemplate, listCronTemplates, updateCronTemplate } from './cron-templates';
 
-beforeEach(() => {
-  resetDbForTests();
-});
-
-after(() => {
-  resetDbForTests();
-  rmSync(tempDir, { recursive: true, force: true });
-});
-
-test('cron templates create/list/update/delete', () => {
-  const created = createCronTemplate({
-    name: 'Morning research',
+// NOTE: cron_templates is now Supabase-backed (tenant-scoped). This test exercises
+// the create/list/update/delete flow against the live DB; it requires SUPABASE_DB_URL
+// (run via `node --import tsx --env-file=.env.local`). It cleans up after itself.
+test('cron templates create/list/update/delete', async () => {
+  const uniqueName = `Morning research ${Date.now()}`;
+  const created = await createCronTemplate({
+    name: uniqueName,
     description: 'Template for research crons',
     job: { id: 'x', agentId: 'hermes', schedule: { expr: '0 9 * * 1-5' }, payload: { kind: 'agentTurn', message: 'hi' } },
   });
   assert.ok(created.id);
-  assert.equal(created.name, 'Morning research');
+  assert.equal(created.name, uniqueName);
 
-  const list1 = listCronTemplates(10);
-  assert.equal(list1.length, 1);
-  assert.equal(list1[0].name, 'Morning research');
+  const list1 = await listCronTemplates(200);
+  assert.ok(list1.some((t) => t.name === uniqueName));
 
-  const updated = updateCronTemplate({
+  const updated = await updateCronTemplate({
     id: created.id,
-    name: 'Morning research v2',
+    name: `${uniqueName} v2`,
     job: { id: 'y', agentId: 'hermes', payload: { kind: 'agentTurn', message: 'hello' } },
   });
-  assert.equal(updated.name, 'Morning research v2');
+  assert.equal(updated.name, `${uniqueName} v2`);
   assert.match(updated.job_json, /"message": "hello"/);
 
-  deleteCronTemplate(created.id);
-  const list2 = listCronTemplates(10);
-  assert.equal(list2.length, 0);
+  await deleteCronTemplate(created.id);
+  const list2 = await listCronTemplates(200);
+  assert.ok(!list2.some((t) => t.id === created.id));
 });
-

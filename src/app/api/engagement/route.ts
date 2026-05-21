@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
   if (auth) return auth;
   const { searchParams } = req.nextUrl;
   const real = searchParams.get('real') === 'true';
-  const engagements = getEngagements({
+  const engagements = await getEngagements({
     platform: searchParams.get('platform') || undefined,
     action_type: searchParams.get('action_type') || undefined,
     date: searchParams.get('date') || undefined,

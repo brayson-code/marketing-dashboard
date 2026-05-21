@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const actor = requireUser(req as unknown as Request);
-    const templates = listCronTemplates(100);
+    const templates = await listCronTemplates(100);
     const can_write = actor.role === 'admin' || actor.role === 'editor';
     return NextResponse.json({ templates, can_write });
   } catch (error) {
@@ -32,13 +32,13 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const created = createCronTemplate({
+    const created = await createCronTemplate({
       name: body?.name,
       description: body?.description,
       job: body?.job,
     });
 
-    logAudit({
+    await logAudit({
       actor,
       action: 'cron_template.create',
       target: `cron_template:${created.id}`,
@@ -60,14 +60,14 @@ export async function PATCH(req: NextRequest) {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const updated = updateCronTemplate({
+    const updated = await updateCronTemplate({
       id: body?.id,
       name: body?.name,
       description: body?.description,
       job: body?.job,
     });
 
-    logAudit({
+    await logAudit({
       actor,
       action: 'cron_template.update',
       target: `cron_template:${updated.id}`,
@@ -89,9 +89,9 @@ export async function DELETE(req: NextRequest) {
 
   try {
     const id = req.nextUrl.searchParams.get('id');
-    deleteCronTemplate(id);
+    await deleteCronTemplate(id);
 
-    logAudit({
+    await logAudit({
       actor,
       action: 'cron_template.delete',
       target: id ? `cron_template:${id}` : 'cron_template:unknown',
