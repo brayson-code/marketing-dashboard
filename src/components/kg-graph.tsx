@@ -169,9 +169,9 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
     const svg = svgRef.current;
     if (!svg || compact) return;
     const handler = (e: WheelEvent) => {
-      if (!e.shiftKey) return; // no modifier → page scrolls, graph stays put
-      e.preventDefault();
-      const delta = e.deltaY !== 0 ? e.deltaY : e.deltaX; // browsers route wheel to deltaX while Shift is held
+      if (!e.ctrlKey && !e.metaKey) return; // no modifier → page scrolls, graph stays put
+      e.preventDefault(); // also suppresses the browser's ctrl+scroll zoom
+      const delta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
       const factor = delta < 0 ? 1.12 : 1 / 1.12;
       const rect = svg.getBoundingClientRect();
       const ux = ((e.clientX - rect.left) / rect.width) * sizeRef.current.w;
@@ -226,7 +226,7 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
   };
   // Pan: Shift + drag the background (prevents accidental "surfing" on a normal click-drag).
   const onBgPointerDown = (e: React.PointerEvent) => {
-    if (compact || !e.shiftKey) return;
+    if (compact || (!e.ctrlKey && !e.metaKey)) return;
     drag.current = { ...drag.current, panning: true, startX: e.clientX, startY: e.clientY, panX: view.x, panY: view.y };
   };
 
@@ -316,8 +316,8 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
           <div className="absolute top-2 left-2 rounded-lg bg-[var(--card)]/90 border border-[var(--border)] px-2.5 py-2 text-[10px] leading-relaxed text-muted-foreground backdrop-blur-sm pointer-events-none select-none">
             <div className="font-semibold text-[var(--foreground)] mb-1">Graph controls</div>
             <div><b className="text-[var(--foreground)]">Drag</b> a node — reposition it</div>
-            <div><Kbd>Shift</Kbd> + drag — pan around</div>
-            <div><Kbd>Shift</Kbd> + scroll — zoom in/out</div>
+            <div><Kbd>Ctrl</Kbd> + drag — pan around</div>
+            <div><Kbd>Ctrl</Kbd> + scroll — zoom in/out</div>
             <div><b className="text-[var(--foreground)]">Hover</b> — highlight links · <b className="text-[var(--foreground)]">Click</b> — details</div>
           </div>
           {/* Reset view */}
