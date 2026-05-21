@@ -44,17 +44,26 @@ export function isImageAttachment(att: Attachment): boolean {
   return /\.(png|jpe?g|gif|webp)$/.test(path);
 }
 
-/** Coerce a recorded type/extension into a Claude-supported media_type. */
-function resolveMediaType(att: Attachment, sniffedContentType?: string | null): string | null {
-  const candidates = [att.type, sniffedContentType];
-  for (const c of candidates) {
-    if (c && SUPPORTED_IMAGE_TYPES.has(c.toLowerCase())) return c.toLowerCase();
+// Detect the REAL image format from the file's magic bytes. We can't trust the
+// URL extension or the server's Content-Type — iMessage/MMS media is frequently
+// mislabeled (e.g. served as image/jpeg but actually PNG/WebP/HEIC), which makes
+// Claude reject the block with a media_type mismatch. Returns null for formats
+// Claude can't read (e.g. HEIC) or non-images.
+function sniffImageMediaType(buf: Buffer): string | null {
+  if (buf.length < 12) return null;
+  // JPEG: FF D8 FF
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'image/png';
+  // GIF: "GIF8"
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x38) return 'image/gif';
+  // WebP: "RIFF"...."WEBP"
+  if (buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+  // HEIC/HEIF: ISO-BMFF "ftyp" box with an HEIF brand — Claude can't read these.
+  if (buf.toString('ascii', 4, 8) === 'ftyp') {
+    const brand = buf.toString('ascii', 8, 12).toLowerCase();
+    if (['heic', 'heix', 'hevc', 'heim', 'heis', 'hevx', 'mif1', 'msf1'].includes(brand)) return 'image/heic';
   }
-  const path = (att.storage_path ?? att.url ?? '').toLowerCase().split('?')[0];
-  if (path.endsWith('.png')) return 'image/png';
-  if (path.endsWith('.jpg') || path.endsWith('.jpeg')) return 'image/jpeg';
-  if (path.endsWith('.gif')) return 'image/gif';
-  if (path.endsWith('.webp')) return 'image/webp';
   return null;
 }
 
@@ -93,14 +102,16 @@ export async function toImageBlock(att: Attachment): Promise<Anthropic.ImageBloc
       console.error(`[vision] fetch ${res.status} for ${att.url.slice(0, 80)}`);
       return null;
     }
-    const mediaType = resolveMediaType(att, res.headers.get('content-type'));
-    if (!mediaType) {
-      console.error(`[vision] unsupported image type for ${att.url.slice(0, 80)}`);
-      return null;
-    }
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.length === 0 || buf.length > MAX_IMAGE_BYTES) {
       console.error(`[vision] image size ${buf.length} out of range`);
+      return null;
+    }
+    // Trust the actual bytes, not the URL/Content-Type — this is the fix for
+    // "specified as image/jpeg but the image is …" 400s from mislabeled MMS media.
+    const mediaType = sniffImageMediaType(buf);
+    if (!mediaType || !SUPPORTED_IMAGE_TYPES.has(mediaType)) {
+      console.error(`[vision] unreadable image (declared=${att.type ?? '?'}, sniffed=${mediaType ?? 'unknown'}) for ${att.url.slice(0, 80)}`);
       return null;
     }
     return {
@@ -127,7 +138,12 @@ export async function buildUserContent(
 
   const blocks = await Promise.all(images.map(toImageBlock));
   const imageBlocks = blocks.filter((b): b is Anthropic.ImageBlockParam => b !== null);
-  if (imageBlocks.length === 0) return text;
+  if (imageBlocks.length === 0) {
+    // Images were attached but none were readable (e.g. HEIC, or an expired URL).
+    // Tell Claude so it can ask the owner to resend, instead of silently ignoring.
+    const note = `[${images.length} image${images.length === 1 ? ' was' : 's were'} attached but couldn't be read — likely an unsupported format like HEIC. Ask the owner to resend it as a JPEG or PNG screenshot.]`;
+    return text ? `${text}\n\n${note}` : note;
+  }
 
   const content: Anthropic.ContentBlockParam[] = [...imageBlocks];
   // Claude needs non-empty text alongside images; supply a default caption.

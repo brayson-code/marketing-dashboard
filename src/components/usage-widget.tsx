@@ -224,11 +224,12 @@ export function UsageWidget() {
 
   return (
     <div
-      className="panel overflow-hidden"
+      className="panel overflow-hidden usage-card"
       style={{
-        borderColor: CLAUDE.primary,
-        background: 'rgba(234,88,12,0.10)',
-        boxShadow: '0 4px 18px rgba(234,88,12,0.12)',
+        border: `2px solid ${CLAUDE.primary}`,
+        borderRadius: 22,
+        background: '#F5F6F8',
+        boxShadow: '0 16px 38px -12px rgba(234,88,12,0.28), 0 8px 18px -8px rgba(0,0,0,0.10)',
       }}
     >
       <div className="panel-header flex items-center justify-between" style={{ borderColor: 'rgba(234,88,12,0.22)' }}>
@@ -245,6 +246,22 @@ export function UsageWidget() {
           <LimitBar label="Daily limit" limit={daily} />
           <LimitBar label="Weekly limit" limit={weekly} />
         </div>
+
+        {/* Dropdown toggle — sits right under the bars so you never scroll to hide */}
+        <button
+          type="button"
+          onClick={() => setShowChart((v) => !v)}
+          className="w-full flex items-center justify-center gap-1.5 pt-2 text-[11px] font-bold uppercase tracking-wide"
+          style={{ color: CLAUDE.primary, borderTop: `1px solid ${CLAUDE.border}` }}
+          aria-expanded={showChart}
+        >
+          {showChart ? 'Hide' : 'Usage over time & by agent'}
+          <ChevronDown
+            size={15}
+            className="transition-transform duration-200"
+            style={{ transform: showChart ? 'rotate(180deg)' : 'rotate(0deg)' }}
+          />
+        </button>
 
         {/* Everything below lives in the dropdown — hidden until expanded */}
         {showChart && (
@@ -315,22 +332,6 @@ export function UsageWidget() {
             )}
           </div>
         )}
-
-        {/* Bottom dropdown arrow — reveals usage over time + by agent */}
-        <button
-          type="button"
-          onClick={() => setShowChart((v) => !v)}
-          className="w-full flex items-center justify-center gap-1.5 pt-2 text-[11px] font-bold uppercase tracking-wide"
-          style={{ color: CLAUDE.primary, borderTop: `1px solid ${CLAUDE.border}` }}
-          aria-expanded={showChart}
-        >
-          {showChart ? 'Hide' : 'Usage over time & by agent'}
-          <ChevronDown
-            size={15}
-            className="transition-transform duration-200"
-            style={{ transform: showChart ? 'rotate(180deg)' : 'rotate(0deg)' }}
-          />
-        </button>
       </div>
     </div>
   );

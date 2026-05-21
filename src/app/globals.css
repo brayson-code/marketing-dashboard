@@ -503,3 +503,12 @@ textarea:focus {
   background-size: 200% 100%;
   animation: claude-bar-shimmer 2.2s linear infinite;
 }
+
+/* Usage widget: modern "floating card" feel */
+.usage-card {
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
+}
+.usage-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 22px 46px -12px rgba(234,88,12,0.34), 0 10px 22px -8px rgba(0,0,0,0.12);
+}
