@@ -11,6 +11,7 @@ interface BoardroomRow {
   loop_message_id: string | null;
   status: string | null;
   metadata: Record<string, unknown> | null;
+  attachments: unknown;
   created_at: Date;
 }
 

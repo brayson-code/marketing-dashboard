@@ -8,6 +8,7 @@ import { startTask, finishTask } from './agent-tasks';
 import { listActiveGoals, createGoal, appendProgress, updateGoalStatus, type GoalStatus } from './goals';
 import { createDraft, listDrafts, publishContent, sendEmail, confirmMeeting, type DraftType } from './drafts';
 import { kgToolDefinitions, handleKgTool } from './kg-tools';
+import { parseAttachments, buildUserContent } from './vision';
 
 const MODEL = 'claude-sonnet-4-6';
 const HISTORY_LIMIT = 24;
@@ -66,18 +67,31 @@ async function loadCurrentMemory(): Promise<string | null> {
 
 async function loadRecentHistory(limit = HISTORY_LIMIT): Promise<Anthropic.MessageParam[]> {
   const rows = (await sql()`
-    SELECT direction, text FROM boardroom_messages
+    SELECT direction, text, attachments FROM boardroom_messages
     WHERE tenant_id = ${DEFAULT_TENANT_ID}
     ORDER BY id DESC LIMIT ${limit}
-  `) as unknown as Array<{ direction: 'in' | 'out'; text: string }>;
+  `) as unknown as Array<{ direction: 'in' | 'out'; text: string; attachments: unknown }>;
 
-  return rows
-    .reverse()
-    .filter((r) => r.text && r.text.trim().length > 0)
-    .map((r) => ({
-      role: r.direction === 'in' ? ('user' as const) : ('assistant' as const),
-      content: r.text,
-    }));
+  // Newest last. Keep rows that have text OR image attachments (image-only MMS
+  // is valid). Inbound (user) rows with images get vision content blocks; the
+  // images are downloaded and base64-encoded so Claude can actually see them.
+  const ordered = rows.reverse();
+  const out: Anthropic.MessageParam[] = [];
+  for (const r of ordered) {
+    const text = (r.text ?? '').trim();
+    const attachments = r.direction === 'in' ? parseAttachments(r.attachments) : [];
+    if (!text && attachments.length === 0) continue;
+
+    if (r.direction === 'in' && attachments.length > 0) {
+      out.push({ role: 'user', content: await buildUserContent(text, attachments) });
+    } else {
+      out.push({
+        role: r.direction === 'in' ? 'user' : 'assistant',
+        content: text,
+      });
+    }
+  }
+  return out;
 }
 
 function buildTools(): Anthropic.Messages.ToolUnion[] {
@@ -417,7 +431,15 @@ export async function runOrchestrator(): Promise<{ ok: true; text: string } | { 
     return { ok: false, error: 'Latest message is not from the user; nothing to respond to' };
   }
 
-  const lastUserText = String(messages[messages.length - 1].content).slice(0, 500);
+  const lastContent = messages[messages.length - 1].content;
+  const lastUserText = (
+    typeof lastContent === 'string'
+      ? lastContent
+      : lastContent
+          .filter((b): b is Anthropic.TextBlockParam => b.type === 'text')
+          .map((b) => b.text)
+          .join(' ') || '[image]'
+  ).slice(0, 500);
   const orchestratorTaskId = await startTask('keyplayer', lastUserText);
   let totalInput = 0;
   let totalOutput = 0;

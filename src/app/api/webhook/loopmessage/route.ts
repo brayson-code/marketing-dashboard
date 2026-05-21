@@ -4,6 +4,43 @@ import { createNotification } from '@/lib/notifications';
 import { runOrchestrator } from '@/lib/orchestrator';
 import { sendIMessage } from '@/lib/loopmessage';
 import { parseIntent, executeIntent } from '@/lib/intents';
+import type { Attachment } from '@/lib/vision';
+
+// LoopMessage delivers MMS media in a few shapes depending on the integration:
+// an `attachments` array of URLs or objects, or singular media_url/attachment_url
+// fields. Normalize whatever is present into our Attachment shape so KeyPlayer
+// can "see" texted images. We keep the LoopMessage URL directly — the orchestrator
+// downloads it at reply time (the URL is still fresh since we run immediately).
+function extractAttachments(body: Record<string, unknown>): Attachment[] {
+  const out: Attachment[] = [];
+  const push = (url: unknown, type?: unknown, name?: unknown) => {
+    if (typeof url === 'string' && url.startsWith('http')) {
+      out.push({
+        url,
+        type: typeof type === 'string' ? type : undefined,
+        name: typeof name === 'string' ? name : undefined,
+      });
+    }
+  };
+
+  const raw = body.attachments;
+  if (Array.isArray(raw)) {
+    for (const item of raw) {
+      if (typeof item === 'string') push(item);
+      else if (item && typeof item === 'object') {
+        const o = item as Record<string, unknown>;
+        push(o.url ?? o.media_url ?? o.link, o.type ?? o.content_type ?? o.mime_type, o.name ?? o.filename);
+      }
+    }
+  }
+  // Singular fallbacks some LoopMessage configs send.
+  push(body.media_url, body.media_type);
+  push(body.attachment_url, body.attachment_type);
+
+  // De-dupe by URL.
+  const seen = new Set<string>();
+  return out.filter((a) => (seen.has(a.url) ? false : (seen.add(a.url), true)));
+}
 
 // LoopMessage inbound webhook.
 // Payload reference: https://docs.loopmessage.com/imessage-conversation-api/webhook
@@ -49,14 +86,17 @@ export async function POST(request: Request) {
   const contact = (body.contact ?? body.recipient ?? body.from) as string | undefined;
   const text = (body.text ?? body.message_text) as string | undefined;
   const messageId = (body.message_id ?? body.id) as string | undefined;
+  const attachments = extractAttachments(body);
 
-  if (eventType === 'message_inbound' && text) {
+  // Inbound counts if there's text OR media (image-only MMS is valid).
+  if (eventType === 'message_inbound' && (text || attachments.length > 0)) {
     await sql()`
-      INSERT INTO boardroom_messages (tenant_id, direction, sender, recipient, text, loop_message_id, status, metadata)
+      INSERT INTO boardroom_messages (tenant_id, direction, sender, recipient, text, loop_message_id, status, metadata, attachments)
       VALUES (
         ${DEFAULT_TENANT_ID}, 'in', ${contact ?? 'owner'},
-        ${process.env.LOOPMESSAGE_SENDER_NAME ?? 'keyplayers'}, ${String(text)},
-        ${messageId ?? null}, 'received', ${jsonb(body)}
+        ${process.env.LOOPMESSAGE_SENDER_NAME ?? 'keyplayers'}, ${String(text ?? '')},
+        ${messageId ?? null}, 'received', ${jsonb(body)},
+        ${attachments.length > 0 ? jsonb(attachments) : null}
       )
     `;
 
@@ -64,13 +104,15 @@ export async function POST(request: Request) {
       type: 'custom',
       severity: 'info',
       title: 'Owner iMessage',
-      message: String(text).slice(0, 200),
-      data: { source: 'loopmessage', event: eventType, message_id: messageId },
+      message: (String(text ?? '').slice(0, 200)) || `[${attachments.length} image${attachments.length === 1 ? '' : 's'}]`,
+      data: { source: 'loopmessage', event: eventType, message_id: messageId, attachments: attachments.length },
     });
 
     // Try fast-path intent first (approve / reject / publish / send / list / help).
     // If matched, execute deterministically and reply in < 1s without burning a Claude call.
-    const intent = parseIntent(String(text));
+    // Skip the fast path entirely for image-bearing messages — those always need
+    // the orchestrator's vision to interpret what was sent.
+    const intent = text && attachments.length === 0 ? parseIntent(String(text)) : null;
     if (intent) {
       // after() keeps the serverless function alive until this completes,
       // so the reply is actually sent (a bare detached promise can be killed).
