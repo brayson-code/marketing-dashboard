@@ -23,12 +23,26 @@ function isHostAllowedByLock(hostName: string): boolean {
   return allowed.includes(hostName.toLowerCase());
 }
 
+// The Vercel Cron *runner* endpoints. These are hit by Vercel's cron pinger
+// (Authorization: Bearer CRON_SECRET), not a browser, so they can't carry a
+// Supabase session cookie — they must bypass the auth gate and self-protect
+// with verifyCron(). NOTE: the cron *management* routes (/api/cron,
+// /api/cron/jobs, /api/cron/runs, /api/cron/templates) are deliberately NOT
+// here — those are called by the logged-in owner's browser and must require
+// auth, or anyone could create jobs / trigger token-spending agent runs.
+const CRON_RUNNER_PATHS = new Set([
+  '/api/cron/dispatch',
+  '/api/cron/proactive',
+  '/api/cron/improve',
+  '/api/cron/compact',
+]);
+
 // Paths that never require an authenticated Supabase user.
 function isPublicPath(pathname: string): boolean {
   if (pathname === '/login') return true;
   if (pathname.startsWith('/auth/')) return true; // Supabase OAuth/callback routes
   if (pathname.startsWith('/api/webhook/')) return true; // auth enforced in-handler
-  if (pathname.startsWith('/api/cron/')) return true; // CRON_SECRET enforced in-handler
+  if (CRON_RUNNER_PATHS.has(pathname)) return true; // CRON_SECRET enforced in-handler
   if (pathname === '/api/errors') return true; // client error reporting (may fire pre-login)
   return false;
 }
