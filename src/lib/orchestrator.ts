@@ -7,7 +7,7 @@ import { spawnSubAgent, SUBAGENT_REGISTRY } from './subagent';
 import { startTask, finishTask } from './agent-tasks';
 import { listActiveGoals, createGoal, appendProgress, updateGoalStatus, type GoalStatus } from './goals';
 import { createDraft, listDrafts, publishContent, sendEmail, confirmMeeting, type DraftType } from './drafts';
-import { remember as kgRemember, listEntities as kgListEntities, getEntityByName as kgGetEntity, neighborsOf as kgNeighborsOf, type RememberInput } from './kg';
+import { kgToolDefinitions, handleKgTool } from './kg-tools';
 
 const MODEL = 'claude-sonnet-4-6';
 const HISTORY_LIMIT = 24;
@@ -195,56 +195,8 @@ function buildTools(): Anthropic.Messages.ToolUnion[] {
       },
     },
 
-    // ── Knowledge graph tools ────────────────────────────────────────────────
-    {
-      name: 'kg_remember',
-      description:
-        'Record entities (people, companies, topics, leads, products) and relationships between them in the long-term knowledge graph. Use as you learn material facts — "X works at Y", "topic A is related to topic B" — so future turns can recall connections without re-searching. Idempotent on (kind, name) for entities and (from, to, label) for relations.',
-      input_schema: {
-        type: 'object',
-        properties: {
-          entities: {
-            type: 'array',
-            description: 'Entities to upsert. Pick a consistent `kind` (e.g. person, company, topic, lead, product, goal).',
-            items: {
-              type: 'object',
-              properties: {
-                kind: { type: 'string' },
-                name: { type: 'string' },
-                attributes: { type: 'object', additionalProperties: true, description: 'Optional structured attributes (role, url, stage, etc.).' },
-              },
-              required: ['kind', 'name'],
-            },
-          },
-          relations: {
-            type: 'array',
-            description: 'Directed labeled edges from→to.',
-            items: {
-              type: 'object',
-              properties: {
-                from: { type: 'object', properties: { kind: { type: 'string' }, name: { type: 'string' } }, required: ['kind', 'name'] },
-                to: { type: 'object', properties: { kind: { type: 'string' }, name: { type: 'string' } }, required: ['kind', 'name'] },
-                label: { type: 'string', description: 'e.g. works_at, mentioned_in, founded_by, competes_with' },
-                attributes: { type: 'object', additionalProperties: true },
-              },
-              required: ['from', 'to', 'label'],
-            },
-          },
-        },
-      },
-    },
-    {
-      name: 'kg_query',
-      description: 'Look up what is known about an entity by name (and optional kind). Returns the entity attributes plus its connections — both inbound and outbound. Use before research-analyst spawns to avoid re-finding things you already know.',
-      input_schema: {
-        type: 'object',
-        properties: {
-          name: { type: 'string' },
-          kind: { type: 'string', description: 'Optional kind filter to disambiguate.' },
-        },
-        required: ['name'],
-      },
-    },
+    // ── Knowledge graph tools (shared definition; see ./kg-tools) ────────────
+    ...kgToolDefinitions(),
 
     {
       name: 'spawn_subagent',
@@ -404,35 +356,9 @@ async function handleClientToolUse(
       : { type: 'tool_result', tool_use_id: toolUse.id, content: `No goal with id ${input.goal_id}.`, is_error: true };
   }
 
-  // ── Knowledge graph tools ─────────────────────────────────────────────────
-  if (toolUse.name === 'kg_remember') {
-    try {
-      const result = await kgRemember(toolUse.input as RememberInput);
-      return { type: 'tool_result', tool_use_id: toolUse.id, content: `Recorded ${result.entities} entities and ${result.relations} relations.` };
-    } catch (err) {
-      return { type: 'tool_result', tool_use_id: toolUse.id, content: `Error: ${(err as Error).message}`, is_error: true };
-    }
-  }
-  if (toolUse.name === 'kg_query') {
-    const input = toolUse.input as { name?: string; kind?: string };
-    if (!input.name) {
-      return { type: 'tool_result', tool_use_id: toolUse.id, content: 'Error: name is required.', is_error: true };
-    }
-    // Find by exact (kind, name) if kind given, else search by name
-    const exact = input.kind ? await kgGetEntity(input.kind, input.name) : null;
-    const matches = exact ? [exact] : await kgListEntities({ search: input.name, limit: 5 });
-    if (matches.length === 0) {
-      return { type: 'tool_result', tool_use_id: toolUse.id, content: `Nothing known about "${input.name}" yet.` };
-    }
-    const out = (await Promise.all(matches.map(async (e) => {
-      const nbrs = await kgNeighborsOf(e.id);
-      const nbrLines = nbrs.slice(0, 20).map((n) => {
-        const arrow = n.direction === 'out' ? '→' : '←';
-        return `  ${arrow} ${n.relation.label} ${arrow} ${n.entity.kind}:${n.entity.name}`;
-      }).join('\n');
-      return `[${e.kind}] ${e.name}\n  attrs: ${JSON.stringify(e.attributes)}\n  connections (${nbrs.length}):\n${nbrLines || '  (none)'}`;
-    }))).join('\n\n');
-    return { type: 'tool_result', tool_use_id: toolUse.id, content: out };
+  // ── Knowledge graph tools (shared handler; stamps source_agent='keyplayer') ─
+  if (toolUse.name === 'kg_remember' || toolUse.name === 'kg_query') {
+    return handleKgTool(toolUse, 'keyplayer');
   }
 
   // ── Drafts tools ─────────────────────────────────────────────────────────

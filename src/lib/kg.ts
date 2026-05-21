@@ -34,11 +34,27 @@ function hydrateRelation(r: RelationRow): KgRelation {
   return { ...r, attributes: r.attributes ?? {} };
 }
 
+/** Provenance stamped on writes: which agent recorded the fact and how sure it is. */
+export interface Provenance {
+  sourceAgent?: string;
+  confidence?: number;
+}
+
 /**
  * Upsert an entity by (kind, name). Returns the entity row.
  * If attributes are provided, they're merged (shallow) with existing.
+ * Provenance (source_agent, confidence) is stamped on insert and refreshed on
+ * re-write (last writer wins).
  */
-export async function upsertEntity(kind: string, name: string, attributes?: Record<string, unknown>): Promise<KgEntity> {
+export async function upsertEntity(
+  kind: string,
+  name: string,
+  attributes?: Record<string, unknown>,
+  prov?: Provenance,
+): Promise<KgEntity> {
+  const sourceAgent = prov?.sourceAgent ?? null;
+  const confidence = prov?.confidence ?? 1.0;
+
   const existingRows = await sql()`
     SELECT * FROM kg_entities
     WHERE tenant_id = ${DEFAULT_TENANT_ID} AND kind = ${kind} AND name = ${name}
@@ -46,20 +62,24 @@ export async function upsertEntity(kind: string, name: string, attributes?: Reco
   const existing = existingRows[0] as EntityRow | undefined;
 
   if (existing) {
-    if (attributes && Object.keys(attributes).length > 0) {
-      const merged = { ...(existing.attributes ?? {}), ...attributes };
-      await sql()`
-        UPDATE kg_entities SET attributes = ${jsonb(merged)}, updated_at = now()
-        WHERE id = ${existing.id} AND tenant_id = ${DEFAULT_TENANT_ID}
-      `;
-      return hydrateEntity({ ...existing, attributes: merged });
-    }
-    return hydrateEntity(existing);
+    const merged =
+      attributes && Object.keys(attributes).length > 0
+        ? { ...(existing.attributes ?? {}), ...attributes }
+        : (existing.attributes ?? {});
+    await sql()`
+      UPDATE kg_entities
+      SET attributes = ${jsonb(merged)},
+          source_agent = ${sourceAgent},
+          confidence = ${confidence},
+          updated_at = now()
+      WHERE id = ${existing.id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    `;
+    return hydrateEntity({ ...existing, attributes: merged });
   }
 
   const inserted = await sql()`
-    INSERT INTO kg_entities (tenant_id, kind, name, attributes)
-    VALUES (${DEFAULT_TENANT_ID}, ${kind}, ${name}, ${attributes ? jsonb(attributes) : null})
+    INSERT INTO kg_entities (tenant_id, kind, name, attributes, source_agent, confidence)
+    VALUES (${DEFAULT_TENANT_ID}, ${kind}, ${name}, ${attributes ? jsonb(attributes) : null}, ${sourceAgent}, ${confidence})
     RETURNING *
   `;
   return hydrateEntity(inserted[0] as EntityRow);
@@ -82,19 +102,32 @@ export async function link(
   to: { kind: string; name: string },
   label: string,
   attributes?: Record<string, unknown>,
+  prov?: Provenance,
 ): Promise<KgRelation> {
-  const fromE = await upsertEntity(from.kind, from.name);
-  const toE = await upsertEntity(to.kind, to.name);
+  const sourceAgent = prov?.sourceAgent ?? null;
+  const confidence = prov?.confidence ?? 1.0;
+
+  // Endpoint entities inherit the same provenance when created as a side effect.
+  const fromE = await upsertEntity(from.kind, from.name, undefined, prov);
+  const toE = await upsertEntity(to.kind, to.name, undefined, prov);
   const existingRows = await sql()`
     SELECT * FROM kg_relations
     WHERE tenant_id = ${DEFAULT_TENANT_ID} AND from_id = ${fromE.id} AND to_id = ${toE.id} AND label = ${label}
   `;
   const existing = existingRows[0] as RelationRow | undefined;
-  if (existing) return hydrateRelation(existing);
+  if (existing) {
+    // Last writer wins: refresh provenance on the idempotent re-write.
+    await sql()`
+      UPDATE kg_relations
+      SET source_agent = ${sourceAgent}, confidence = ${confidence}
+      WHERE id = ${existing.id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    `;
+    return hydrateRelation(existing);
+  }
 
   const inserted = await sql()`
-    INSERT INTO kg_relations (tenant_id, from_id, to_id, label, attributes)
-    VALUES (${DEFAULT_TENANT_ID}, ${fromE.id}, ${toE.id}, ${label}, ${attributes ? jsonb(attributes) : null})
+    INSERT INTO kg_relations (tenant_id, from_id, to_id, label, attributes, source_agent, confidence)
+    VALUES (${DEFAULT_TENANT_ID}, ${fromE.id}, ${toE.id}, ${label}, ${attributes ? jsonb(attributes) : null}, ${sourceAgent}, ${confidence})
     RETURNING *
   `;
   return hydrateRelation(inserted[0] as RelationRow);
@@ -139,20 +172,46 @@ export async function neighborsOf(entityId: number): Promise<Neighbor[]> {
   }));
 }
 
-export interface RememberInput {
-  entities?: Array<{ kind: string; name: string; attributes?: Record<string, unknown> }>;
-  relations?: Array<{ from: { kind: string; name: string }; to: { kind: string; name: string }; label: string; attributes?: Record<string, unknown> }>;
+export interface RememberEntityInput {
+  kind: string;
+  name: string;
+  attributes?: Record<string, unknown>;
+  /** Optional 0–1 confidence for this entity. Falls back to 1.0. */
+  confidence?: number;
 }
 
-export async function remember(input: RememberInput): Promise<{ entities: number; relations: number }> {
+export interface RememberRelationInput {
+  from: { kind: string; name: string };
+  to: { kind: string; name: string };
+  label: string;
+  attributes?: Record<string, unknown>;
+  /** Optional 0–1 confidence for this relation. Falls back to 1.0. */
+  confidence?: number;
+}
+
+export interface RememberInput {
+  entities?: RememberEntityInput[];
+  relations?: RememberRelationInput[];
+}
+
+/**
+ * Idempotently upsert a batch of entities + relations.
+ * Pass `opts.sourceAgent` to stamp provenance (which agent recorded each fact);
+ * per-item `confidence` overrides the 1.0 default. Backward compatible — `opts`
+ * is optional and omitting it preserves the original behavior.
+ */
+export async function remember(
+  input: RememberInput,
+  opts?: { sourceAgent?: string },
+): Promise<{ entities: number; relations: number }> {
   let entities = 0;
   for (const e of input.entities ?? []) {
-    await upsertEntity(e.kind, e.name, e.attributes);
+    await upsertEntity(e.kind, e.name, e.attributes, { sourceAgent: opts?.sourceAgent, confidence: e.confidence });
     entities++;
   }
   let relations = 0;
   for (const r of input.relations ?? []) {
-    await link(r.from, r.to, r.label, r.attributes);
+    await link(r.from, r.to, r.label, r.attributes, { sourceAgent: opts?.sourceAgent, confidence: r.confidence });
     relations++;
   }
   return { entities, relations };

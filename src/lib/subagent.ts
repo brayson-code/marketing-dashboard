@@ -3,6 +3,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { sql, jsonb, DEFAULT_TENANT_ID } from './db/client';
 import { startTask, finishTask } from './agent-tasks';
+import { kgToolDefinitions, handleKgTool } from './kg-tools';
 
 const STATE_DIR = join(process.cwd(), 'state/keyplayer');
 const SUBAGENT_DIR = join(process.cwd(), 'agents/sub-agents');
@@ -207,6 +208,8 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
 
   const tools: Anthropic.Messages.ToolUnion[] = [
     { type: 'web_search_20250305', name: 'web_search' },
+    // Shared KG tools so every sub-agent can read/write the team's graph.
+    ...kgToolDefinitions(),
   ];
 
   const messages: Anthropic.MessageParam[] = [{ role: 'user', content: hydratedTask }];
@@ -225,7 +228,29 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
       if (response.stop_reason === 'end_turn') break;
       if (response.stop_reason === 'refusal' || response.stop_reason === 'max_tokens') break;
       if (response.stop_reason === 'pause_turn') {
+        // web_search runs server-side; just continue the paused turn.
         messages.push({ role: 'assistant', content: response.content });
+        response = await client.messages.create({
+          model: spec.model,
+          max_tokens: spec.maxTokens,
+          system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
+          tools,
+          messages,
+        });
+        continue;
+      }
+      if (response.stop_reason === 'tool_use') {
+        // Sub-agents can use the shared KG tools (kg_query / kg_remember).
+        // Provenance: the sub-agent type id is the source agent.
+        const kgToolUses = response.content.filter(
+          (b): b is Anthropic.ToolUseBlock =>
+            b.type === 'tool_use' && (b.name === 'kg_query' || b.name === 'kg_remember'),
+        );
+        if (kgToolUses.length === 0) break;
+
+        messages.push({ role: 'assistant', content: response.content });
+        const toolResults = await Promise.all(kgToolUses.map((tu) => handleKgTool(tu, type)));
+        messages.push({ role: 'user', content: toolResults });
         response = await client.messages.create({
           model: spec.model,
           max_tokens: spec.maxTokens,
