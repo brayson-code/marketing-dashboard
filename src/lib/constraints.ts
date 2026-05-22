@@ -81,6 +81,27 @@ const VARIANTS: Partial<Record<AgentRole, Record<string, string>>> = {
       'claim is acceptable; rate each source Tier 1/2/3 and DATE it; flag unverified items. Output tight ' +
       'bullets, each tagged "[Tier, date]". Favor speed and recency over exhaustiveness.',
   },
+  content: {
+    base: TEMPLATES.content,
+    punchy:
+      'Constraints: open with a scroll-stopping hook in the first line; short punchy sentences; exactly one ' +
+      'clear CTA; optimize for shareability; <=120 words for social. Output the draft only. Never invent ' +
+      'statistics. This is a draft — never auto-published.',
+    authority:
+      'Constraints: open with a specific data point or contrarian insight and cite its source; measured ' +
+      'expert tone; teach one concrete, actionable takeaway; no hype words. Output the draft only. Never ' +
+      'invent statistics. This is a draft — never auto-published.',
+  },
+  outreach: {
+    base: TEMPLATES.outreach,
+    short:
+      'Constraints: draft only, never send. <=60 words: one sentence of context tied to a real cited signal, ' +
+      'then one specific ask. No pleasantries, no fabricated claims. Plain text. Owner approves before sending.',
+    value_first:
+      'Constraints: draft only, never send. Open with a specific, genuine observation about the recipient\'s ' +
+      'recent work; offer one concrete piece of value BEFORE any ask; <=120 words; no fabricated claims. ' +
+      'Plain text. Owner approves before sending.',
+  },
 };
 
 /** Available variant names for a role (always includes 'base'). */

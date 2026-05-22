@@ -7,8 +7,7 @@ import { sql, jsonb, DEFAULT_TENANT_ID } from './db/client';
 import { spawnSubAgent } from './subagent';
 import { computeNextRun } from './cron-expr';
 import { appendKnowledgeSection } from './documents';
-import { constraintsForVariant, kgPersistDirective, roleFor } from './constraints';
-import { chooseVariant } from './selection';
+import { kgPersistDirective } from './constraints';
 
 interface DueJobRow {
   id: string;
@@ -70,15 +69,13 @@ async function runOne(job: DueJobRow): Promise<{ id: string; status: 'ok' | 'err
     status = 'error';
     errorText = 'Job has no payload.message';
   } else {
-    // Phase 2 + selection: pick a constraint variant, append its constraints, and
-    // (when feeding the KB) the kg_remember directive with tier-derived confidence.
-    const variant = await chooseVariant(roleFor(job.agent_id), job.agent_id);
+    // spawnSubAgent picks + applies the constraint variant centrally. We only add
+    // the kg_remember directive (with tier-derived confidence) when feeding the KB.
     const message =
       String(job.payload.message) +
-      `\n\n# ${constraintsForVariant(job.agent_id, variant)}` +
       (saveToKb ? `\n\n# ${kgPersistDirective()}` : '');
     try {
-      const res = await spawnSubAgent(job.agent_id, message, undefined, { variant });
+      const res = await spawnSubAgent(job.agent_id, message);
       if (res.ok) {
         fullResult = (res.text ?? '').slice(0, RESULT_MAX);
         summary = (res.text ?? '').replace(/\s+/g, ' ').trim().slice(0, SUMMARY_MAX) || null;

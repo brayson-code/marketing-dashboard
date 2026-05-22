@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { sql, jsonb, DEFAULT_TENANT_ID } from './db/client';
 import { startTask, finishTask } from './agent-tasks';
 import { kgToolDefinitions, handleKgTool } from './kg-tools';
+import { chooseVariant } from './selection';
+import { constraintsForVariant, roleFor } from './constraints';
 
 const STATE_DIR = join(process.cwd(), 'state/keyplayer');
 const SUBAGENT_DIR = join(process.cwd(), 'agents/sub-agents');
@@ -184,7 +186,7 @@ async function persistMemoryRollup(rollupText: string): Promise<void> {
 export async function spawnSubAgent(type: string, task: string, parentTaskId?: number, opts?: { variant?: string }): Promise<SpawnResult> {
   const spec = SUBAGENT_REGISTRY[type];
   if (!spec) return { ok: false, error: `Unknown sub-agent type: ${type}. Available: ${Object.keys(SUBAGENT_REGISTRY).join(', ')}` };
-  const variant = opts?.variant ?? 'base';
+  let variant = opts?.variant ?? 'base';
 
   const rate = checkRate(type);
   if (!rate.allowed) {
@@ -193,12 +195,19 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
 
   if (!process.env.ANTHROPIC_API_KEY) return { ok: false, error: 'ANTHROPIC_API_KEY not configured' };
 
+  // Pick the constraint variant centrally so EVERY spawn (orchestrator, waves,
+  // cron, A2A) gets selection + the variant's constraints — not just some paths.
+  // Callers may pre-pick (e.g. a wave passes its choice); otherwise choose now.
+  if (!opts?.variant) variant = await chooseVariant(roleFor(type), type);
+
   // Auto-hydrate memory-compactor with raw boardroom + task history.
   // KeyPlayer just needs to ask for it — runtime supplies the data.
   let hydratedTask = task;
   if (type === 'memory-compactor') {
     hydratedTask = await buildMemoryCompactorPayload(task);
   }
+  // Append the chosen variant's role constraints (Phase 2 + selection).
+  hydratedTask = `${hydratedTask}\n\n# ${constraintsForVariant(type, variant)}`;
 
   // Live-tasks tracking. Record the constraint variant so the reward loop can
   // attribute this run's score to (role, agent, variant).

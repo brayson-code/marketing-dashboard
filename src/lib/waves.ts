@@ -12,8 +12,7 @@ import { sql, jsonb, DEFAULT_TENANT_ID } from './db/client';
 import { spawnSubAgent } from './subagent';
 import { appendKnowledgeSection } from './documents';
 import { appendProgress } from './goals';
-import { constraintsForVariant, kgPersistDirective, roleFor } from './constraints';
-import { chooseVariant } from './selection';
+import { kgPersistDirective, roleFor } from './constraints';
 
 const SYNTH_MODEL = 'claude-sonnet-4-6'; // synthesis is the quality chokepoint (decided)
 
@@ -59,7 +58,7 @@ async function llm(system: string, user: string, maxTokens: number): Promise<str
     .trim();
 }
 
-function composeAgentTask(brief: CampaignBrief, prior: string | null, agent: WaveAgentSpec, variant: string): string {
+function composeAgentTask(brief: CampaignBrief, prior: string | null, agent: WaveAgentSpec): string {
   const parts = [
     `# Campaign objective\n${brief.objective}`,
     `# Definition of success\n${brief.success}`,
@@ -67,9 +66,8 @@ function composeAgentTask(brief: CampaignBrief, prior: string | null, agent: Wav
   if (brief.audience) parts.push(`# Audience / context\n${brief.audience}`);
   if (prior) parts.push(`# Synthesis from the previous wave (build on this — do NOT repeat it)\n${prior}`);
   parts.push(`# Your specific assignment\n${agent.task}`);
-  // Per-role constraints for the CHOSEN variant (Phase 2 + selection). Research
-  // agents also persist findings to the graph with tier-derived confidence.
-  parts.push(`# ${constraintsForVariant(agent.agentId, variant)}`);
+  // The chosen variant's role constraints are appended centrally by spawnSubAgent.
+  // Research agents additionally persist findings to the graph with tier confidence.
   if (roleFor(agent.agentId) === 'research') parts.push(`# ${kgPersistDirective()}`);
   return parts.join('\n\n');
 }
@@ -173,9 +171,10 @@ export async function runNextWave(campaignId: string): Promise<{ done: boolean; 
   try {
     const results: AgentResult[] = await Promise.all(
       wave.agents.map(async (a) => {
-        const variant = await chooseVariant(roleFor(a.agentId), a.agentId);
-        const r = await spawnSubAgent(a.agentId, composeAgentTask(c.brief, prior, a, variant), undefined, { variant });
-        return { agentId: a.agentId, task: a.task, ok: r.ok, text: r.text ?? null, error: r.error ?? null, variant: r.variant ?? variant };
+        // spawnSubAgent picks + records the constraint variant; we read it back
+        // so outcome scoring can attribute the campaign result per variant.
+        const r = await spawnSubAgent(a.agentId, composeAgentTask(c.brief, prior, a));
+        return { agentId: a.agentId, task: a.task, ok: r.ok, text: r.text ?? null, error: r.error ?? null, variant: r.variant ?? 'base' };
       }),
     );
     const synthesis = await synthesizeWave(wave.label, c.brief, results);
