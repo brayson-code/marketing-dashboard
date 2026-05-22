@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { after } from 'next/server';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { sql, DEFAULT_TENANT_ID } from './db/client';
@@ -10,6 +11,8 @@ import { createDraft, listDrafts, publishContent, sendEmail, confirmMeeting, typ
 import { kgToolDefinitions, handleKgTool } from './kg-tools';
 import { parseAttachments, buildUserContent } from './vision';
 import { estimateCostUsd } from './usage';
+import { launchResearchCampaign } from './campaign-intake';
+import { runNextWave } from './waves';
 
 export interface OrchestratorUsage { input: number; output: number; cost_usd: number; model: string }
 
@@ -235,6 +238,18 @@ function buildTools(): Anthropic.Messages.ToolUnion[] {
         required: ['type', 'task'],
       },
     },
+    {
+      name: 'launch_campaign',
+      description:
+        'Launch a full multi-wave RESEARCH CAMPAIGN (parallel agent waves with synthesis passed between waves) for a substantial question — market sizing, competitive landscape, go-to-market, deep due-diligence. It drafts a brief, creates a tracked goal from the success criterion, and starts wave 1; the owner advances later waves from /campaigns. Use this (NOT spawn_subagent) when the owner asks for *thorough/deep* research that deserves multiple angles. For a quick one-off lookup, use spawn_subagent with research-analyst instead.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          request: { type: 'string', description: 'The research request in plain language — what to research and for what decision.' },
+        },
+        required: ['request'],
+      },
+    },
   ];
 }
 
@@ -270,6 +285,7 @@ async function callClaude(
 const CLIENT_TOOL_NAMES = new Set([
   'notify_owner',
   'spawn_subagent',
+  'launch_campaign',
   'list_goals',
   'create_goal',
   'update_goal_progress',
@@ -331,6 +347,32 @@ async function handleClientToolUse(
       tool_use_id: toolUse.id,
       content: `Sub-agent ${input.type} returned:${usage}\n\n${result.text}`,
     };
+  }
+
+  if (toolUse.name === 'launch_campaign') {
+    const request = (toolUse.input as { request?: string }).request?.trim();
+    if (!request) {
+      return { type: 'tool_result', tool_use_id: toolUse.id, content: 'Error: launch_campaign requires a `request`.', is_error: true };
+    }
+    try {
+      const launched = await launchResearchCampaign(request);
+      // Start wave 1 in the background so KeyPlayer can ack the owner immediately.
+      // after() runs the callback once the current request's response is sent; if
+      // we're somehow outside a request context, the owner just advances manually.
+      try {
+        after(async () => {
+          try { await runNextWave(launched.id); }
+          catch (e) { console.error('[launch_campaign] wave 1 failed:', (e as Error).message); }
+        });
+      } catch { /* no request context — owner advances from /campaigns */ }
+      return {
+        type: 'tool_result',
+        tool_use_id: toolUse.id,
+        content: `Launched research campaign "${launched.title}" (goal ${launched.goalId}). Wave 1 is running now; later waves are advanced by the owner at /campaigns. Success criterion: ${launched.brief.success}`,
+      };
+    } catch (e) {
+      return { type: 'tool_result', tool_use_id: toolUse.id, content: `Failed to launch campaign: ${(e as Error).message}`, is_error: true };
+    }
   }
 
   // ── Goals tools ──────────────────────────────────────────────────────────
