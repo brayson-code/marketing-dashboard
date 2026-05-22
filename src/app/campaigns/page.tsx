@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Waves, Loader2, Play, ChevronDown, FileText, Target, AlertTriangle } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface CampaignListItem {
   id: string;
@@ -43,16 +44,25 @@ export default function CampaignsPage() {
   const [launching, setLaunching] = useState(false);
   const [advancing, setAdvancing] = useState(false);
   const [openWave, setOpenWave] = useState<number | null>(null);
+  const [listLoading, setListLoading] = useState(true);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadList = useCallback(async () => {
-    const r = await fetch('/api/campaigns', { cache: 'no-store' });
-    if (r.ok) setList((await r.json()).campaigns ?? []);
+    try {
+      const r = await fetch('/api/campaigns', { cache: 'no-store' });
+      if (r.ok) setList((await r.json()).campaigns ?? []);
+    } finally {
+      setListLoading(false);
+    }
   }, []);
 
   const loadDetail = useCallback(async (id: string) => {
     const r = await fetch(`/api/campaigns/${id}`, { cache: 'no-store' });
-    if (r.ok) setDetail(await r.json());
+    if (r.ok) {
+      const j = await r.json();
+      // Only apply if this is still the campaign we're viewing.
+      setDetail((prev) => (j?.campaign?.id === id ? j : prev));
+    }
   }, []);
 
   useEffect(() => { loadList(); }, [loadList]);
@@ -93,6 +103,18 @@ export default function CampaignsPage() {
   async function advance() {
     if (!activeId || advancing) return;
     setAdvancing(true);
+    // Optimistic: show the next wave running immediately. Advancing almost
+    // always succeeds; revert from the server response on failure.
+    const prevDetail = detail;
+    setDetail((d) => {
+      if (!d) return d;
+      const nextWaveIndex = d.campaign.current_wave;
+      const hasStep = d.steps.some((s) => s.wave_index === nextWaveIndex);
+      const steps = hasStep
+        ? d.steps.map((s) => (s.wave_index === nextWaveIndex ? { ...s, status: 'running' } : s))
+        : [...d.steps, { wave_index: nextWaveIndex, label: null, status: 'running', synthesis: null, agent_results: null }];
+      return { ...d, campaign: { ...d.campaign, status: 'running' }, steps };
+    });
     try {
       const r = await fetch(`/api/campaigns/${activeId}/advance`, { method: 'POST' });
       const j = await r.json().catch(() => ({}));
@@ -100,6 +122,7 @@ export default function CampaignsPage() {
       toast.success('Running next wave…');
       setTimeout(() => loadDetail(activeId), 1500);
     } catch (e) {
+      setDetail(prevDetail); // revert the optimistic update
       toast.error((e as Error).message);
     } finally {
       setAdvancing(false);
@@ -134,7 +157,17 @@ export default function CampaignsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4">
         {/* List */}
         <div className="panel divide-y divide-border/40 overflow-hidden self-start">
-          {list.length === 0 ? (
+          {listLoading && list.length === 0 ? (
+            Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="px-3 py-2.5 space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <Skeleton className="h-3 flex-1" />
+                  <Skeleton className="h-4 w-12 rounded-full" />
+                </div>
+                <Skeleton className="h-2.5 w-14" />
+              </div>
+            ))
+          ) : list.length === 0 ? (
             <div className="p-4 text-xs text-muted-foreground">No campaigns yet.</div>
           ) : list.map((it) => (
             <button key={it.id} onClick={() => { setActiveId(it.id); setOpenWave(null); }}
@@ -151,7 +184,11 @@ export default function CampaignsPage() {
         {/* Detail */}
         <div className="min-w-0 space-y-3">
           {!c ? (
-            <div className="panel p-8 text-sm text-muted-foreground text-center">Select or launch a campaign.</div>
+            activeId && detail?.campaign.id !== activeId ? (
+              <CampaignDetailSkeleton />
+            ) : (
+              <div className="panel p-8 text-sm text-muted-foreground text-center">Select or launch a campaign.</div>
+            )
           ) : (
             <>
               <div className="panel p-4 space-y-3">
@@ -239,5 +276,34 @@ export default function CampaignsPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function CampaignDetailSkeleton() {
+  return (
+    <>
+      <div className="panel p-4 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-2">
+            <Skeleton className="h-5 w-56" />
+            <Skeleton className="h-3 w-32" />
+          </div>
+          <Skeleton className="h-5 w-16 rounded-full" />
+        </div>
+        <div className="bg-[var(--surface-2)] rounded-md p-3 space-y-2">
+          <Skeleton className="h-3 w-3/4" />
+          <Skeleton className="h-3 w-2/3" />
+        </div>
+      </div>
+      <div className="space-y-2">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="panel px-3 py-2.5 flex items-center gap-2">
+            <Skeleton className="h-3.5 w-3.5 rounded-full" />
+            <Skeleton className="h-3.5 flex-1" />
+            <Skeleton className="h-5 w-14 rounded-full" />
+          </div>
+        ))}
+      </div>
+    </>
   );
 }

@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { TrendingUp, Loader2, Info } from 'lucide-react';
+import { TrendingUp, Info } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface PolicyRow { role: string; agent_id: string; variant: string; n: number; reward_mean: number; last_reward: number | null; updated_at: string }
 interface EventRow { task_id: number | null; agent_id: string; role: string; reward: number; components: { approval: number | null; outcome: number | null; reliability: number | null }; stage: string; scored_at: string; source?: 'task' | 'campaign' }
@@ -47,7 +48,7 @@ export default function LearningPage() {
       </div>
 
       {loading ? (
-        <div className="panel p-8 flex items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 size={14} className="animate-spin" /> Loading…</div>
+        <LearningSkeleton />
       ) : !data ? (
         <div className="panel p-8 text-sm text-muted-foreground">Couldn&apos;t load learning data.</div>
       ) : data.policy.length === 0 ? (
@@ -139,6 +140,38 @@ function Stat({ label, value }: { label: string; value: string }) {
     <div className="panel p-3">
       <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className="text-2xl font-bold">{value}</div>
+    </div>
+  );
+}
+
+function LearningSkeleton() {
+  return (
+    <div className="space-y-4">
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="panel p-3 space-y-2">
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="h-7 w-12" />
+          </div>
+        ))}
+      </div>
+      {/* Per-agent policy list */}
+      <div>
+        <Skeleton className="h-3 w-28 mb-2" />
+        <div className="panel divide-y divide-border/40 overflow-hidden">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="px-3 py-2.5 flex items-center gap-3">
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <Skeleton className="h-3.5 w-40" />
+                <Skeleton className="h-2.5 w-28" />
+              </div>
+              <Skeleton className="h-2.5 w-40 shrink-0 rounded-full" />
+              <Skeleton className="h-3.5 w-8 shrink-0" />
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

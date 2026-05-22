@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Play, Pause, RotateCcw, History, Pencil, Plus, Trash2, X, BookmarkPlus, Wand2 } from 'lucide-react';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { toast } from '@/components/ui/toast';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface CronJob {
   id: string;
@@ -61,11 +62,14 @@ function formatRunTs(ts?: number | string | null) {
 
 export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedded' }) {
   const [refreshKey, setRefreshKey] = useState(0);
-  const { data } = useSmartPoll<CronStatusPayload>(
+  const { data, loading } = useSmartPoll<CronStatusPayload>(
     () => fetch('/api/cron').then(r => r.json()),
     { interval: 30_000, key: refreshKey },
   );
   const [pending, setPending] = useState<Record<string, boolean>>({});
+  // Optimistic enabled-state overrides, keyed by job id. Cleared once the poll
+  // catches up (handled inside runAction) or on revert.
+  const [optimisticEnabled, setOptimisticEnabled] = useState<Record<string, boolean>>({});
   const [runs, setRuns] = useState<Record<string, CronRun[]>>({});
   const [openRuns, setOpenRuns] = useState<Record<string, boolean>>({});
   const [editOpen, setEditOpen] = useState(false);
@@ -80,7 +84,11 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
   const [nlPrompt, setNlPrompt] = useState('');
   const [nlBusy, setNlBusy] = useState(false);
 
-  const jobs = useMemo(() => data?.jobs ?? [], [data?.jobs]);
+  const jobs = useMemo(() => {
+    const base = data?.jobs ?? [];
+    if (Object.keys(optimisticEnabled).length === 0) return base;
+    return base.map((j) => (j.id in optimisticEnabled ? { ...j, enabled: optimisticEnabled[j.id] } : j));
+  }, [data?.jobs, optimisticEnabled]);
   const canWrite = !!data?.can_write;
   const canTemplatesWrite = !!data?.can_templates_write;
 
@@ -114,8 +122,36 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
     refreshTemplates();
   }, [editOpen]);
 
+  // Reconcile optimistic toggle overrides with fresh poll data: once the server
+  // reports the same enabled value we optimistically set, drop the override.
+  useEffect(() => {
+    const fresh = data?.jobs;
+    if (!fresh) return;
+    setOptimisticEnabled((m) => {
+      if (Object.keys(m).length === 0) return m;
+      let changed = false;
+      const next = { ...m };
+      for (const job of fresh) {
+        if (job.id in next && (job.enabled !== false) === next[job.id]) {
+          delete next[job.id];
+          changed = true;
+        }
+      }
+      return changed ? next : m;
+    });
+  }, [data?.jobs]);
+
   const runAction = async (id: string, action: 'toggle' | 'trigger') => {
     setPending((p) => ({ ...p, [id]: true }));
+    // Optimistic: flip the enabled/status pill instantly for toggle. The PUT
+    // almost always succeeds; revert the override (and toast) on failure.
+    let applied = false;
+    if (action === 'toggle') {
+      const current = jobs.find((j) => j.id === id);
+      const nextEnabled = current?.enabled === false; // currently disabled -> enabling
+      setOptimisticEnabled((m) => ({ ...m, [id]: nextEnabled }));
+      applied = true;
+    }
     try {
       const res = await fetch('/api/cron', {
         method: 'PUT',
@@ -124,8 +160,17 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
       });
       if (!res.ok) throw new Error('Request failed');
       toast.success(action === 'trigger' ? 'Cron triggered' : 'Cron toggled');
+      // Refresh; the override is cleared once the poll returns fresh data.
       setRefreshKey((k) => k + 1);
     } catch {
+      if (applied) {
+        // Revert the optimistic flip.
+        setOptimisticEnabled((m) => {
+          const next = { ...m };
+          delete next[id];
+          return next;
+        });
+      }
       toast.error('Cron action failed');
     } finally {
       setPending((p) => ({ ...p, [id]: false }));
@@ -419,7 +464,36 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
       </div>
 
       <div className={variant === 'page' ? innerGridClass : `panel-body ${innerGridClass}`}>
-        {jobs.map(job => {
+        {loading && jobs.length === 0
+          ? Array.from({ length: 4 }).map((_, i) => (
+              <div key={`sk-${i}`} className="panel">
+                <div className="panel-header">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="space-y-1.5">
+                      <Skeleton className="h-3.5 w-36" />
+                      <Skeleton className="h-3 w-24" />
+                    </div>
+                    <Skeleton className="h-5 w-14 rounded-full" />
+                  </div>
+                </div>
+                <div className="panel-body space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    {Array.from({ length: 4 }).map((__, j) => (
+                      <div key={j} className="space-y-1.5">
+                        <Skeleton className="h-2.5 w-16" />
+                        <Skeleton className="h-3 w-20" />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <Skeleton className="h-7 w-20 rounded-md" />
+                    <Skeleton className="h-7 w-20 rounded-md" />
+                    <Skeleton className="h-7 w-16 rounded-md" />
+                  </div>
+                </div>
+              </div>
+            ))
+          : jobs.map(job => {
           const lastStatus = job.state?.lastStatus;
           const running = lastStatus === 'running';
           const ok = lastStatus === 'ok';

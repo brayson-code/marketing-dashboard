@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BrainCircuit, Plus, Save, Trash2, Loader2, FileText } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 
 type DocStatus = 'raw' | 'wiki' | 'archived';
 
@@ -137,7 +138,16 @@ export default function MemoryPage() {
           </div>
           <div className="flex-1 overflow-y-auto">
             {loading && docs.length === 0 ? (
-              <div className="p-4 text-xs text-muted-foreground flex items-center gap-2"><Loader2 size={12} className="animate-spin" /> Loading…</div>
+              Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="px-3 py-2.5 border-l-2 border-transparent space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <Skeleton className="h-3 w-3 rounded-sm shrink-0" />
+                    <Skeleton className="h-3 flex-1" />
+                    <Skeleton className="h-3.5 w-10 rounded-full" />
+                  </div>
+                  <Skeleton className="h-2.5 w-20" />
+                </div>
+              ))
             ) : docs.length === 0 ? (
               <div className="p-4 text-xs text-muted-foreground">No documents yet. Create one to start KeyPlayer&apos;s knowledge base.</div>
             ) : (
@@ -164,9 +174,22 @@ export default function MemoryPage() {
         {/* Editor */}
         <div className="flex-1 flex flex-col min-w-0">
           {!draft ? (
-            <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-              {activeId ? <span className="inline-flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Loading…</span> : 'Select or create a document'}
-            </div>
+            activeId ? (
+              <div className="flex-1 flex flex-col">
+                <div className="flex items-center gap-2 p-3 border-b border-border/60">
+                  <Skeleton className="h-5 flex-1" />
+                  <Skeleton className="h-7 w-20 rounded-md" />
+                  <Skeleton className="h-7 w-16 rounded-md" />
+                </div>
+                <div className="flex-1 p-4">
+                  <SkeletonEditorBody />
+                </div>
+              </div>
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+                Select or create a document
+              </div>
+            )
           ) : (
             <>
               <div className="flex items-center gap-2 p-3 border-b border-border/60">
@@ -224,6 +247,40 @@ function Stat({ label, value, hint, warn }: { label: string; value: number | str
   );
 }
 
+function SkeletonEditorBody() {
+  return (
+    <div className="space-y-2.5" aria-hidden="true">
+      <Skeleton className="h-4 w-1/2" />
+      <Skeleton className="h-3 w-full" />
+      <Skeleton className="h-3 w-full" />
+      <Skeleton className="h-3 w-5/6" />
+      <Skeleton className="h-3 w-2/3" />
+      <Skeleton className="h-3 w-full" />
+      <Skeleton className="h-3 w-3/4" />
+    </div>
+  );
+}
+
+function HealthSkeleton() {
+  return (
+    <div className="space-y-4">
+      {Array.from({ length: 3 }).map((_, sec) => (
+        <div key={sec}>
+          <Skeleton className="h-3 w-32 mb-2" />
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {Array.from({ length: 4 }).map((__, i) => (
+              <div key={i} className="panel p-3 space-y-2">
+                <Skeleton className="h-2.5 w-16" />
+                <Skeleton className="h-7 w-10" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function HealthView() {
   const [data, setData] = useState<HealthData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -237,7 +294,7 @@ function HealthView() {
     return () => { on = false; };
   }, []);
 
-  if (loading) return <div className="panel p-8 flex items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 size={14} className="animate-spin" /> Loading health…</div>;
+  if (loading) return <HealthSkeleton />;
   if (!data) return <div className="panel p-8 text-sm text-muted-foreground">Couldn&apos;t load memory health.</div>;
 
   return (

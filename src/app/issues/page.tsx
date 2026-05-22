@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Bug, X, GitPullRequest, Loader2, ShieldCheck, Slack, MessageSquare, ExternalLink, RefreshCw, ScanSearch } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 
 type Status = 'triage' | 'assigned' | 'fix_proposed' | 'in_review' | 'resolved' | 'ignored';
 type Level = 'error' | 'warning' | 'fatal';
@@ -106,9 +107,7 @@ export default function IssuesPage() {
       </div>
 
       {loading && issues.length === 0 ? (
-        <div className="panel p-8 text-center text-sm text-muted-foreground flex items-center justify-center gap-2">
-          <Loader2 size={14} className="animate-spin" /> Loading issues…
-        </div>
+        <BoardSkeleton columns={active.length} />
       ) : issues.length === 0 ? (
         <div className="panel p-8 text-center text-sm text-muted-foreground">
           <ShieldCheck size={20} className="mx-auto mb-2 text-success" />
@@ -139,6 +138,30 @@ function CapBadge({ ok, icon, label, envHint }: { ok: boolean; icon: React.React
     <span className={`badge inline-flex items-center gap-1 ${ok ? 'badge-success' : 'badge-neutral'}`} title={ok ? `${label} connected` : `Set ${envHint} to enable ${label}`}>
       {icon} {label}{!ok && ' ·off'}
     </span>
+  );
+}
+
+function BoardSkeleton({ columns }: { columns: number }) {
+  return (
+    <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${columns}, minmax(180px, 1fr))` }}>
+      {Array.from({ length: columns }).map((_, c) => (
+        <div key={c} className="panel p-2">
+          <div className="flex items-center justify-between px-1 pb-2">
+            <Skeleton className="h-3 w-16" />
+            <Skeleton className="h-4 w-5 rounded-full" />
+          </div>
+          <div className="space-y-2">
+            {Array.from({ length: 2 + (c % 2) }).map((__, i) => (
+              <div key={i} className="rounded-lg border border-border/60 bg-[var(--surface-2)] p-2.5 space-y-2">
+                <Skeleton className="h-2.5 w-24" />
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-2/3" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -198,10 +221,24 @@ function IssueDrawer({ id, caps, onClose, onChanged }: { id: string; caps: Capab
 
   async function patch(body: Record<string, string>, tag: string) {
     setBusy(tag);
+    // Optimistic: move the issue to its new status/priority immediately. These
+    // PATCHes almost always succeed; revert from the prior state on failure.
+    const prevIssue = issue;
+    if (issue && (body.status || body.priority)) {
+      setIssue({
+        ...issue,
+        ...(body.status ? { status: body.status as Status } : {}),
+        ...(body.priority ? { priority: body.priority as Issue['priority'] } : {}),
+      });
+    }
     try {
-      await fetch(`/api/issues/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const res = await fetch(`/api/issues/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!res.ok) throw new Error('Update failed');
       await load();
       onChanged();
+    } catch {
+      setIssue(prevIssue); // revert the optimistic move
+      setNotice('Could not update the issue — reverted.');
     } finally { setBusy(null); }
   }
 
@@ -245,7 +282,19 @@ function IssueDrawer({ id, caps, onClose, onChanged }: { id: string; caps: Capab
       <div className="absolute inset-0 bg-black/40" />
       <div className="relative w-full max-w-xl h-full bg-[var(--background)] border-l border-border overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         {!issue ? (
-          <div className="p-8 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 size={14} className="animate-spin" /> Loading…</div>
+          <div className="p-4 space-y-4">
+            <div className="space-y-2">
+              <Skeleton className="h-2.5 w-40" />
+              <Skeleton className="h-4 w-3/4" />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Skeleton className="h-7 w-24 rounded-md" />
+              <Skeleton className="h-7 w-20 rounded-md" />
+              <Skeleton className="h-7 w-16 rounded-md" />
+            </div>
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-20 w-full rounded-lg" />
+          </div>
         ) : (
           <div className="p-4 space-y-4">
             <div className="flex items-start justify-between gap-3">
