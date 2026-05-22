@@ -3,6 +3,27 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Bot, Crown, RefreshCw, Save, Trash2, Plus, X } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
+import { Skeleton } from '@/components/ui/skeleton';
+
+// Known Claude models (latest family). The select keeps any legacy/custom value
+// already on a def so it isn't silently dropped.
+const MODELS: { id: string; label: string }[] = [
+  { id: 'claude-opus-4-7', label: 'Opus 4.7 — most capable' },
+  { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6 — balanced' },
+  { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5 — fast & cheap' },
+];
+
+function ModelSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const known = MODELS.some((m) => m.id === value);
+  return (
+    <select className="input text-sm font-mono" value={value} onChange={(e) => onChange(e.target.value)}>
+      {!known && value && <option value={value}>{value} (custom)</option>}
+      {MODELS.map((m) => (
+        <option key={m.id} value={m.id}>{m.label}</option>
+      ))}
+    </select>
+  );
+}
 
 type AgentRole =
   | 'research'
@@ -305,7 +326,14 @@ export default function AgentStudioPage() {
 
           <div className="panel-body space-y-4">
             {loadingList ? (
-              <div className="text-xs text-muted-foreground">Loading agents…</div>
+              <div className="space-y-2">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="px-3 py-2 rounded-lg border border-border/50 space-y-2">
+                    <Skeleton className="h-3.5 w-2/3" />
+                    <Skeleton className="h-2.5 w-1/2" />
+                  </div>
+                ))}
+              </div>
             ) : agents.length === 0 ? (
               <div className="text-xs text-muted-foreground">
                 No agents defined yet. Use “New agent” to create your first specialist.
@@ -342,8 +370,12 @@ export default function AgentStudioPage() {
               </div>
             </div>
           ) : loadingDef || !draft || !def ? (
-            <div className="panel-body">
-              <div className="text-xs text-muted-foreground">Loading agent…</div>
+            <div className="panel-body space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-9" />)}
+              </div>
+              <Skeleton className="h-16" />
+              <Skeleton className="h-[460px]" />
             </div>
           ) : (
             <>
@@ -411,12 +443,7 @@ export default function AgentStudioPage() {
                   </label>
                   <label className="space-y-1">
                     <span className="text-xs text-muted-foreground">Model</span>
-                    <input
-                      className="input text-sm font-mono"
-                      value={draft.model}
-                      onChange={(e) => patch('model', e.target.value)}
-                      placeholder="claude-opus-4-7"
-                    />
+                    <ModelSelect value={draft.model} onChange={(v) => patch('model', v)} />
                   </label>
                   <div className="grid grid-cols-2 gap-3">
                     <label className="space-y-1">
@@ -629,7 +656,7 @@ function MonoField({
         <span className="text-[10px] text-muted-foreground">{hint}</span>
       </div>
       <textarea
-        className="input font-mono text-xs leading-relaxed min-h-[160px]"
+        className="input font-mono text-[13px] leading-6 min-h-[460px] resize-y"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         spellCheck={false}
@@ -737,12 +764,7 @@ function NewAgentModal({
           </div>
           <label className="block space-y-1">
             <span className="text-xs text-muted-foreground">Model</span>
-            <input
-              className="input text-sm font-mono"
-              value={model}
-              onChange={(e) => onModel(e.target.value)}
-              placeholder="claude-opus-4-7"
-            />
+            <ModelSelect value={model} onChange={onModel} />
           </label>
           <label className="block space-y-1">
             <span className="text-xs text-muted-foreground">Starter description</span>
