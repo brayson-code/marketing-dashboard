@@ -46,6 +46,7 @@ function formatTs(ts: string | number): string {
 export default function DraftsPage() {
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [filter, setFilter] = useState<DraftStatus | 'all'>('pending');
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
@@ -58,14 +59,41 @@ export default function DraftsPage() {
   }, [filter]);
 
   useEffect(() => { load(); const id = setInterval(load, 3000); return () => clearInterval(id); }, [load]);
+  useEffect(() => { if (!notice) return; const id = setTimeout(() => setNotice(null), 3000); return () => clearTimeout(id); }, [notice]);
+
+  const NOTICE: Record<string, string> = {
+    approve: 'Draft approved',
+    reject: 'Draft rejected',
+    publish: 'Published',
+    send: 'Sent',
+    confirm: 'Confirmed to calendar',
+  };
 
   async function act(id: number, action: 'approve' | 'reject' | 'publish' | 'send' | 'confirm') {
+    // Optimistic: reflect the new status immediately for the actions that map cleanly.
+    const optimisticStatus: Partial<Record<typeof action, DraftStatus>> = {
+      approve: 'approved', reject: 'rejected', publish: 'published', send: 'sent', confirm: 'confirmed',
+    };
+    const prev = drafts;
+    const next = optimisticStatus[action];
+    if (next) setDrafts((ds) => ds.map((d) => (d.id === id ? { ...d, status: next } : d)));
     try {
       const res = await fetch('/api/drafts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, draft_id: id }) });
       const json = await res.json();
-      if (!res.ok) setError(json.error || 'Failed');
-      else { setError(null); await load(); }
-    } catch (err) { setError((err as Error).message); }
+      if (!res.ok) {
+        setDrafts(prev); // roll back optimistic update
+        setError(json.error || 'Failed');
+        setNotice(null);
+      } else {
+        setError(null);
+        setNotice(`${NOTICE[action] ?? 'Done'} · #${id}`);
+        await load();
+      }
+    } catch (err) {
+      setDrafts(prev);
+      setError((err as Error).message);
+      setNotice(null);
+    }
   }
 
   function toggle(id: number) {
@@ -103,6 +131,12 @@ export default function DraftsPage() {
         </div>
       )}
 
+      {notice && (
+        <div className="panel p-3 text-xs text-emerald-500 flex items-center gap-1.5">
+          <CheckCircle2 size={12} /> {notice}
+        </div>
+      )}
+
       {drafts.length === 0 ? (
         <div className="panel p-4 text-xs text-muted-foreground text-center">
           No drafts {filter !== 'all' ? `with status "${filter}"` : 'yet'}. Ask KeyPlayer to draft something — content, email, meeting — and it&apos;ll appear here.
@@ -133,6 +167,9 @@ export default function DraftsPage() {
                         <button className="btn btn-primary btn-sm" onClick={() => act(d.id, meta.executeAction!)}>
                           {meta.executeAction === 'send' ? <Send size={11} /> : <CheckCircle2 size={11} />} {meta.executeLabel}
                         </button>
+                      )}
+                      {d.status === 'approved' && !meta.executeAction && (
+                        <span className="text-[11px] text-muted-foreground inline-flex items-center gap-1"><CheckCircle2 size={11} className="text-emerald-500" /> Approved — no further step</span>
                       )}
                     </span>
                   </div>
