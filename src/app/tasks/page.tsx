@@ -68,7 +68,7 @@ export default function TasksPage() {
   const [data, setData] = useState<TasksResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
-  const [view, setView] = useState<TaskView>('activity');
+  const [view, setView] = useState<TaskView>('pipeline');
 
   const load = useCallback(async () => {
     try {

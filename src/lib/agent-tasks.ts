@@ -53,7 +53,30 @@ export async function finishTask(
   `;
 }
 
+/**
+ * Self-healing: any task still 'running' past the serverless ceiling (300s) is a
+ * zombie — the function that owned it was killed before it could call finishTask,
+ * so the row is frozen and NO tokens are being spent. We give a generous 12-minute
+ * grace (4× the limit) before reaping, then mark it errored with a clear reason.
+ * Returns the number reaped. Cheap, idempotent; safe to run on every list.
+ */
+export async function reapStaleTasks(graceMinutes = 12): Promise<number> {
+  const rows = await sql()`
+    UPDATE agent_tasks
+    SET status = 'error',
+        error = COALESCE(error, 'Timed out — exceeded the 300s serverless limit and was killed before finishing (orphaned). No tokens consumed after termination.'),
+        stream_text = null,
+        completed_at = now()
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+      AND status = 'running'
+      AND started_at < now() - (${graceMinutes} * interval '1 minute')
+    RETURNING id
+  `;
+  return rows.length;
+}
+
 export async function listTasks(limit = 50): Promise<AgentTaskRow[]> {
+  await reapStaleTasks(); // clear zombies so the board never shows phantom "running" work
   const rows = await sql()`
     SELECT * FROM agent_tasks
     WHERE tenant_id = ${DEFAULT_TENANT_ID}
