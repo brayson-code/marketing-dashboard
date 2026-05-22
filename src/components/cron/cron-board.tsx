@@ -84,7 +84,11 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
 
   const summary = useMemo(() => {
     const total = jobs.length;
-    const errors = jobs.filter(j => j.enabled !== false && j.state?.lastStatus && j.state.lastStatus !== 'ok').length;
+    // 'running' is in-progress, not an error — only count true error states.
+    const errors = jobs.filter(j => {
+      const s = j.state?.lastStatus;
+      return j.enabled !== false && !!s && s !== 'ok' && s !== 'running';
+    }).length;
     const disabled = jobs.filter(j => j.enabled === false).length;
     return { total, errors, disabled };
   }, [jobs]);
@@ -363,8 +367,20 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
 
       <div className={variant === 'page' ? innerGridClass : `panel-body ${innerGridClass}`}>
         {jobs.map(job => {
-          const ok = job.state?.lastStatus === 'ok';
-          const statusClass = ok ? 'status-pill status-ok' : (job.state?.lastStatus ? 'status-pill status-danger' : 'status-pill status-neutral');
+          const lastStatus = job.state?.lastStatus;
+          const running = lastStatus === 'running';
+          const ok = lastStatus === 'ok';
+          // An actual failure is any status that isn't ok and isn't the
+          // transient 'running', or an explicit lastError.
+          const isError = (!!lastStatus && !ok && !running) || !!job.state?.lastError;
+          const statusClass = running
+            ? 'status-pill status-neutral'
+            : ok
+              ? 'status-pill status-ok'
+              : isError
+                ? 'status-pill status-danger'
+                : 'status-pill status-neutral';
+          const statusLabel = running ? 'running…' : (lastStatus || 'idle');
           const busy = !!pending[job.id];
           const isDisabled = job.enabled === false;
           const runList = runs[job.id] || [];
@@ -380,7 +396,7 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className={statusClass}>{job.state?.lastStatus || 'unknown'}</span>
+                    <span className={statusClass}>{statusLabel}</span>
                     {isDisabled && <span className="status-pill status-warn">disabled</span>}
                   </div>
                 </div>
@@ -493,7 +509,7 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
                   </div>
                 )}
 
-                {(job.state?.lastStatus && job.state.lastStatus !== 'ok') || job.state?.lastError ? (
+                {isError ? (
                   <details className="text-xs">
                     <summary className="cursor-pointer text-destructive">Error drilldown</summary>
                     <div className="mt-2 bg-destructive/10 border border-destructive/30 rounded-md p-2 space-y-2">
