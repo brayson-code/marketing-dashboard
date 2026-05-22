@@ -10,6 +10,7 @@ import { startTask, finishTask } from './agent-tasks';
 import { listActiveGoals } from './goals';
 import { listIssues } from './observability';
 import { createDraft } from './drafts';
+import { scoreUnscoredTasks } from './reward';
 import { createNotification } from './notifications';
 import { sendIMessage, isLoopMessageConfigured } from './loopmessage';
 import { sendSlack, isSlackConfigured } from './alerts';
@@ -91,6 +92,15 @@ export async function runImprovementSweep(): Promise<ImproveResult> {
   if (!process.env.ANTHROPIC_API_KEY) return { ok: false, proposals: 0, error: 'ANTHROPIC_API_KEY not configured' };
 
   const taskId = await startTask('improver', 'Continuous-improvement sweep');
+
+  // Phase 3: score completed runs into the reward policy before researching.
+  // Non-fatal — a scoring hiccup must not block the improvement sweep.
+  const scored = await scoreUnscoredTasks({ limit: 300 }).catch((e) => {
+    console.error('[improve] reward scoring failed:', (e as Error).message);
+    return null;
+  });
+  if (scored?.scored) console.log(`[improve] scored ${scored.scored} run(s) into the reward policy.`);
+
   const snapshot = await buildSnapshot();
   const client = new Anthropic({ maxRetries: 5 });
   const messages: Anthropic.MessageParam[] = [{ role: 'user', content: snapshot }];

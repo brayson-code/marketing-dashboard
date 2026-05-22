@@ -52,7 +52,9 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
   const [view, setView] = useState({ x: 0, y: 0, k: 1 });
 
   // Mutable state the rAF loop reads (avoids stale closures).
-  const sim = useRef({ edges: [] as KgGraphRelation[], w: 640, h: 480, dragId: null as number | null, raf: 0, ticks: 0, running: false, compact });
+  // `alpha` is a cooling factor (d3-force style): it scales applied forces and
+  // decays every tick so the layout settles instead of jittering forever.
+  const sim = useRef({ edges: [] as KgGraphRelation[], w: 640, h: 480, dragId: null as number | null, raf: 0, ticks: 0, running: false, compact, alpha: 1 });
 
   const validRelations = useMemo(
     () => relations.filter((r) => entities.some((e) => e.id === r.from_id) && entities.some((e) => e.id === r.to_id)),
@@ -77,6 +79,7 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
   const kick = useCallback(() => {
     const s = sim.current;
     s.ticks = 0;
+    s.alpha = 1; // reheat so an interaction (drag/new data) re-settles the layout
     if (s.running) return;
     s.running = true;
     const tick = () => {
@@ -86,6 +89,9 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
       const REPULSION = cmp ? 2600 : 6000;
       const CENTER = 0.016;
       const DAMP = 0.85;
+      const ALPHA_DECAY = 0.02; // ~exponential cool-down toward ALPHA_MIN
+      const ALPHA_MIN = 0.02;
+      const alpha = sim.current.alpha;
       const list = [...nodes.current.values()];
       const fx = new Map<number, number>(), fy = new Map<number, number>();
       list.forEach((n) => { fx.set(n.id, 0); fy.set(n.id, 0); });
@@ -112,18 +118,29 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
       let energy = 0;
       list.forEach((n) => {
         if (dragId === n.id) { n.vx = 0; n.vy = 0; return; }
-        const ax = fx.get(n.id)! + (cx - n.x) * CENTER;
-        const ay = fy.get(n.id)! + (cy - n.y) * CENTER;
-        n.vx = (n.vx + ax) * DAMP; n.vy = (n.vy + ay) * DAMP;
+        // Net acceleration, scaled by the cooling factor so motion fades out.
+        let ax = (fx.get(n.id)! + (cx - n.x) * CENTER) * alpha;
+        let ay = (fy.get(n.id)! + (cy - n.y) * CENTER) * alpha;
+        if (!Number.isFinite(ax)) ax = 0;
+        if (!Number.isFinite(ay)) ay = 0;
+        // Semi-implicit Euler with damping: decay existing velocity, then add accel.
+        n.vx = n.vx * DAMP + ax; n.vy = n.vy * DAMP + ay;
+        if (!Number.isFinite(n.vx)) n.vx = 0;
+        if (!Number.isFinite(n.vy)) n.vy = 0;
         n.x += Math.max(-25, Math.min(25, n.vx));
         n.y += Math.max(-25, Math.min(25, n.vy));
         n.x = Math.max(24, Math.min(w - 24, n.x));
         n.y = Math.max(24, Math.min(h - 24, n.y));
+        if (!Number.isFinite(n.x)) n.x = cx;
+        if (!Number.isFinite(n.y)) n.y = cy;
         energy += n.vx * n.vx + n.vy * n.vy;
       });
       forceRender((t) => t + 1);
       sim.current.ticks++;
-      if ((energy > 0.04 || dragId !== null) && sim.current.ticks < 1200) {
+      // Cool down toward ALPHA_MIN; the layout settles once alpha is low and motion is small.
+      sim.current.alpha = Math.max(ALPHA_MIN, alpha - ALPHA_DECAY);
+      const settled = alpha <= ALPHA_MIN && energy < 0.5;
+      if ((!settled || dragId !== null) && sim.current.ticks < 1200) {
         sim.current.raf = requestAnimationFrame(tick);
       } else {
         sim.current.running = false;
