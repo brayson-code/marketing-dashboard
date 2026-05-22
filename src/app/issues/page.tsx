@@ -1,10 +1,18 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Bug, X, GitPullRequest, Loader2, ShieldCheck, Slack, MessageSquare, ExternalLink, RefreshCw } from 'lucide-react';
+import { Bug, X, GitPullRequest, Loader2, ShieldCheck, Slack, MessageSquare, ExternalLink, RefreshCw, ScanSearch } from 'lucide-react';
 
 type Status = 'triage' | 'assigned' | 'fix_proposed' | 'in_review' | 'resolved' | 'ignored';
 type Level = 'error' | 'warning' | 'fatal';
+
+interface Revalidation {
+  still_present: 'yes' | 'no' | 'unclear';
+  patch_applies: 'yes' | 'no' | 'na' | 'unclear';
+  rationale: string;
+  checked_files: string[];
+  at: string;
+}
 
 interface Issue {
   id: string;
@@ -20,6 +28,7 @@ interface Issue {
   suggested_fix: string | null;
   pr_url: string | null;
   assignee: string | null;
+  revalidation: Revalidation | null;
   first_seen: string;
   last_seen: string;
 }
@@ -219,6 +228,18 @@ function IssueDrawer({ id, caps, onClose, onChanged }: { id: string; caps: Capab
     } finally { setBusy(null); }
   }
 
+  async function revalidate() {
+    setBusy('revalidate');
+    setNotice(null);
+    try {
+      const res = await fetch(`/api/issues/${id}/revalidate`, { method: 'POST' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) setNotice(json.error || `Re-validation failed (${res.status})`);
+      await load();
+      onChanged();
+    } finally { setBusy(null); }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
       <div className="absolute inset-0 bg-black/40" />
@@ -251,6 +272,9 @@ function IssueDrawer({ id, caps, onClose, onChanged }: { id: string; caps: Capab
                   <GitPullRequest size={12} /> View PR <ExternalLink size={11} />
                 </a>
               )}
+              <button onClick={revalidate} disabled={busy !== null} className="btn btn-ghost btn-sm" title="Re-run the diagnosis on the current code to check the issue (and any proposed fix) is still relevant">
+                {busy === 'revalidate' ? <Loader2 size={12} className="animate-spin" /> : <ScanSearch size={12} />} Is this still a problem?
+              </button>
               <button onClick={() => patch({ status: 'resolved' }, 'resolve')} disabled={busy !== null} className="btn btn-ghost btn-sm">Resolve</button>
               <button onClick={() => patch({ status: 'ignored' }, 'ignore')} disabled={busy !== null} className="btn btn-ghost btn-sm">Ignore</button>
               <select
@@ -264,6 +288,27 @@ function IssueDrawer({ id, caps, onClose, onChanged }: { id: string; caps: Capab
 
             {notice && (
               <div className="panel p-2.5 text-[11px]" style={{ color: 'var(--foreground)' }}>{notice}</div>
+            )}
+
+            {issue.revalidation && (
+              <Section title="Re-validation — is this still a problem?">
+                <div className="panel p-2.5 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <PresentPill v={issue.revalidation.still_present} />
+                    <PatchPill v={issue.revalidation.patch_applies} />
+                    <span className="text-[10px] text-muted-foreground ml-auto">checked {timeAgo(issue.revalidation.at)}</span>
+                  </div>
+                  <p className="text-xs leading-relaxed whitespace-pre-wrap">{issue.revalidation.rationale}</p>
+                  {issue.revalidation.checked_files.length > 0 && (
+                    <div className="text-[10px] text-muted-foreground">Files checked: {issue.revalidation.checked_files.join(', ')}</div>
+                  )}
+                  {issue.revalidation.still_present === 'no' && issue.status !== 'resolved' && (
+                    <button onClick={() => patch({ status: 'resolved' }, 'resolve')} disabled={busy !== null} className="btn btn-primary btn-sm">
+                      <ShieldCheck size={12} /> Looks fixed — Resolve
+                    </button>
+                  )}
+                </div>
+              </Section>
             )}
 
             {!caps.github && (
@@ -318,6 +363,19 @@ function IssueDrawer({ id, caps, onClose, onChanged }: { id: string; caps: Capab
       </div>
     </div>
   );
+}
+
+function PresentPill({ v }: { v: 'yes' | 'no' | 'unclear' }) {
+  if (v === 'yes') return <span className="status-pill status-danger">⚠ still present</span>;
+  if (v === 'no') return <span className="status-pill status-ok">✓ likely fixed</span>;
+  return <span className="status-pill status-neutral">? unclear</span>;
+}
+
+function PatchPill({ v }: { v: 'yes' | 'no' | 'na' | 'unclear' }) {
+  if (v === 'yes') return <span className="status-pill status-ok">patch still applies</span>;
+  if (v === 'no') return <span className="status-pill status-warn">patch stale</span>;
+  if (v === 'na') return <span className="status-pill status-neutral">no patch</span>;
+  return <span className="status-pill status-neutral">patch: unclear</span>;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

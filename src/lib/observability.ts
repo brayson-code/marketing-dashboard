@@ -51,11 +51,22 @@ export interface IssueRow {
   assignee: string | null;
   task_id: number | null;
   proposed_patch: Array<{ path: string; new_content: string }> | null;
+  revalidated_at: string | null;
+  revalidation: RevalidationVerdict | null;
   first_seen: string;
   last_seen: string;
   resolved_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// Verdict from a "Is this still a problem?" re-validation pass (see revalidate.ts).
+export interface RevalidationVerdict {
+  still_present: 'yes' | 'no' | 'unclear';
+  patch_applies: 'yes' | 'no' | 'na' | 'unclear';
+  rationale: string;
+  checked_files: string[];
+  at: string; // ISO timestamp
 }
 
 // Normalize a message so "User 4821 not found" and "User 99 not found" group
@@ -218,6 +229,15 @@ export async function getIssueEvents(id: string, limit = 20): Promise<ErrorEvent
     ORDER BY created_at DESC LIMIT ${limit}
   `) as unknown as ErrorEventRow[];
   return rows;
+}
+
+/** Store the latest "Is this still a problem?" verdict on the issue. */
+export async function saveRevalidation(id: string, verdict: RevalidationVerdict): Promise<void> {
+  await sql()`
+    UPDATE public.issues
+    SET revalidation = ${jsonb(verdict)}, revalidated_at = now(), updated_at = now()
+    WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+  `;
 }
 
 /** Store the Fixer's structured proposed patch so "Approve" can apply it exactly. */
