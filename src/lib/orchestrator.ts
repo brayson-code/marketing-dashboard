@@ -13,6 +13,7 @@ import { parseAttachments, buildUserContent } from './vision';
 import { estimateCostUsd } from './usage';
 import { launchResearchCampaign } from './campaign-intake';
 import { runNextWave } from './waves';
+import { listSpawnableSpecs } from './agent-defs';
 
 export interface OrchestratorUsage { input: number; output: number; cost_usd: number; model: string }
 
@@ -100,11 +101,15 @@ async function loadRecentHistory(limit = HISTORY_LIMIT): Promise<Anthropic.Messa
   return out;
 }
 
-function buildTools(): Anthropic.Messages.ToolUnion[] {
-  const subagentTypes = Object.keys(SUBAGENT_REGISTRY);
-  const subagentDescriptions = Object.values(SUBAGENT_REGISTRY)
-    .map((s) => `- \`${s.id}\` — ${s.description}`)
-    .join('\n');
+async function buildTools(): Promise<Anthropic.Messages.ToolUnion[]> {
+  // Roster from the live DB (Agent Studio) so newly-created specialists become
+  // spawnable by KeyPlayer; fall back to the hardcoded registry if unseeded.
+  let specs = await listSpawnableSpecs().catch(() => [] as Array<{ id: string; description: string }>);
+  if (specs.length === 0) {
+    specs = Object.values(SUBAGENT_REGISTRY).map((s) => ({ id: s.id, description: s.description }));
+  }
+  const subagentTypes = specs.map((s) => s.id);
+  const subagentDescriptions = specs.map((s) => `- \`${s.id}\` — ${s.description}`).join('\n');
 
   return [
     { type: 'web_search_20250305', name: 'web_search' },
@@ -277,7 +282,7 @@ async function callClaude(
     model: MODEL,
     max_tokens: 8000,
     system: systemBlocks,
-    tools: buildTools(),
+    tools: await buildTools(),
     messages,
   });
 }

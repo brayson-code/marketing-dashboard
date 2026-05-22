@@ -6,6 +6,7 @@ import { startTask, finishTask } from './agent-tasks';
 import { kgToolDefinitions, handleKgTool } from './kg-tools';
 import { chooseVariant } from './selection';
 import { constraintsForVariant, roleFor } from './constraints';
+import { getDefPrompt, getSpawnSpec } from './agent-defs';
 
 const STATE_DIR = join(process.cwd(), 'state/keyplayer');
 const SUBAGENT_DIR = join(process.cwd(), 'agents/sub-agents');
@@ -102,15 +103,24 @@ function checkRate(type: string): { allowed: true } | { allowed: false; resetInS
   return { allowed: true };
 }
 
-function loadSubAgentSystemPrompt(type: string): string {
-  const dir = join(SUBAGENT_DIR, type);
-  if (!existsSync(dir)) throw new Error(`Sub-agent template not found: ${type}`);
-  const config = JSON.parse(readFileSync(join(STATE_DIR, 'config.json'), 'utf-8')) as ConfigVars;
-  const parts = ['soul.md', 'agent.md', 'skills.md'].map((f) => readFileSync(join(dir, f), 'utf-8'));
-  let combined = parts.join('\n\n---\n\n');
-  for (const [k, v] of Object.entries(config)) {
-    if (typeof v === 'string') combined = combined.replaceAll(`{{${k}}}`, v);
+// Load a sub-agent's system prompt. Prefer the live DB definition (Agent Studio);
+// fall back to the bundled agents/** files. Then substitute {{CONFIG}} vars.
+async function loadSubAgentSystemPrompt(type: string): Promise<string> {
+  let combined = await getDefPrompt(type).catch(() => null);
+  if (!combined) {
+    const dir = join(SUBAGENT_DIR, type);
+    if (!existsSync(dir)) throw new Error(`Sub-agent template not found: ${type}`);
+    const parts = ['soul.md', 'agent.md', 'skills.md']
+      .map((f) => { try { return readFileSync(join(dir, f), 'utf-8'); } catch { return ''; } })
+      .filter(Boolean);
+    combined = parts.join('\n\n---\n\n');
   }
+  try {
+    const config = JSON.parse(readFileSync(join(STATE_DIR, 'config.json'), 'utf-8')) as ConfigVars;
+    for (const [k, v] of Object.entries(config)) {
+      if (typeof v === 'string') combined = combined.replaceAll(`{{${k}}}`, v);
+    }
+  } catch { /* no config file — leave placeholders as-is */ }
   return combined;
 }
 
@@ -184,7 +194,9 @@ async function persistMemoryRollup(rollupText: string): Promise<void> {
 }
 
 export async function spawnSubAgent(type: string, task: string, parentTaskId?: number, opts?: { variant?: string }): Promise<SpawnResult> {
-  const spec = SUBAGENT_REGISTRY[type];
+  // Resolve the spec from the live DB roster (Agent Studio); fall back to the
+  // hardcoded registry for builtins that haven't been seeded into the DB.
+  const spec = (await getSpawnSpec(type).catch(() => null)) ?? SUBAGENT_REGISTRY[type];
   if (!spec) return { ok: false, error: `Unknown sub-agent type: ${type}. Available: ${Object.keys(SUBAGENT_REGISTRY).join(', ')}` };
   let variant = opts?.variant ?? 'base';
 
@@ -216,7 +228,7 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
   await logA2A('keyplayer', type, task, { phase: 'dispatch', task_id: taskId });
 
   const client = new Anthropic({ maxRetries: 5 });
-  const systemPrompt = loadSubAgentSystemPrompt(type);
+  const systemPrompt = await loadSubAgentSystemPrompt(type);
 
   const tools: Anthropic.Messages.ToolUnion[] = [
     { type: 'web_search_20250305', name: 'web_search' },
