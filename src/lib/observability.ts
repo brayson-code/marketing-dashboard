@@ -232,6 +232,21 @@ export async function getIssueEvents(id: string, limit = 20): Promise<ErrorEvent
 }
 
 /** Store the latest "Is this still a problem?" verdict on the issue. */
+/**
+ * Open issues (not resolved/ignored) the triage sweep should re-check, preferring
+ * never-revalidated ones first. Bounded so a sweep fits a single cron invocation.
+ */
+export async function listIssuesForTriage(limit = 3): Promise<IssueRow[]> {
+  const rows = (await sql()`
+    SELECT * FROM public.issues
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+      AND status IN ('triage', 'assigned', 'fix_proposed', 'in_review')
+    ORDER BY (revalidated_at IS NOT NULL), revalidated_at ASC NULLS FIRST, last_seen DESC
+    LIMIT ${limit}
+  `) as unknown as IssueRow[];
+  return rows;
+}
+
 export async function saveRevalidation(id: string, verdict: RevalidationVerdict): Promise<void> {
   await sql()`
     UPDATE public.issues

@@ -3,6 +3,16 @@ import { sql, jsonb, DEFAULT_TENANT_ID } from './db/client';
 export type DraftType = 'content_post' | 'email' | 'meeting' | 'campaign' | 'other';
 export type DraftStatus = 'pending' | 'approved' | 'rejected' | 'published' | 'sent' | 'confirmed' | 'expired';
 
+export interface DraftRevalidation {
+  // Is the draft still worth acting on against the CURRENT state of goals / what's
+  // already shipped? yes = keep, no = stale/superseded, unclear = needs a human.
+  still_needed: 'yes' | 'no' | 'unclear';
+  superseded: boolean; // already covered by something published/sent/approved
+  rationale: string;
+  checked_files: string[]; // repo files read (proposals only)
+  at: string; // ISO
+}
+
 export interface DraftRow {
   id: number;
   type: DraftType;
@@ -15,6 +25,8 @@ export interface DraftRow {
   executed_at: Date | null;
   execution_note: string | null;
   metadata: Record<string, unknown> | null;
+  revalidated_at: Date | null;
+  revalidation: DraftRevalidation | null;
 }
 
 const VALID_TYPES: ReadonlyArray<DraftType> = ['content_post', 'email', 'meeting', 'campaign', 'other'];
@@ -61,6 +73,30 @@ export async function listDrafts(filters: { status?: DraftStatus | 'all'; limit?
     SELECT * FROM agent_drafts
     WHERE tenant_id = ${DEFAULT_TENANT_ID}
     ORDER BY created_at DESC LIMIT ${limit}
+  `;
+  return rows as unknown as DraftRow[];
+}
+
+/** Store a triage verdict back onto the draft. Read-only w.r.t. execution. */
+export async function saveDraftRevalidation(id: number, verdict: DraftRevalidation): Promise<void> {
+  await sql()`
+    UPDATE agent_drafts
+    SET revalidation = ${jsonb(verdict)}, revalidated_at = now()
+    WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+  `;
+}
+
+/**
+ * Open drafts (pending/approved-but-unexecuted) that the triage sweep should look at,
+ * oldest-first, preferring never-triaged ones. Bounded so a sweep fits one invocation.
+ */
+export async function listDraftsForTriage(limit = 5): Promise<DraftRow[]> {
+  const rows = await sql()`
+    SELECT * FROM agent_drafts
+    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+      AND status IN ('pending', 'approved')
+    ORDER BY (revalidated_at IS NOT NULL), revalidated_at ASC NULLS FIRST, created_at ASC
+    LIMIT ${limit}
   `;
   return rows as unknown as DraftRow[];
 }

@@ -1,10 +1,18 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Inbox, FileText, Mail, Calendar, Megaphone, Check, X, AlertCircle, Send, CheckCircle2 } from 'lucide-react';
+import { Inbox, FileText, Mail, Calendar, Megaphone, Check, X, AlertCircle, Send, CheckCircle2, ScanSearch, Loader2, Sparkles } from 'lucide-react';
 
 type DraftType = 'content_post' | 'email' | 'meeting' | 'campaign' | 'other';
 type DraftStatus = 'pending' | 'approved' | 'rejected' | 'published' | 'sent' | 'confirmed' | 'expired';
+
+interface DraftRevalidation {
+  still_needed: 'yes' | 'no' | 'unclear';
+  superseded: boolean;
+  rationale: string;
+  checked_files: string[];
+  at: string;
+}
 
 interface Draft {
   id: number;
@@ -18,6 +26,13 @@ interface Draft {
   reviewed_at: string | number | null;
   executed_at: string | number | null;
   execution_note: string | null;
+  revalidated_at: string | number | null;
+  revalidation: DraftRevalidation | null;
+}
+
+// A draft the triager judged no-longer-needed or already covered.
+function isFlagged(d: Draft): boolean {
+  return !!d.revalidation && (d.revalidation.still_needed === 'no' || d.revalidation.superseded);
 }
 
 const TYPE_META: Record<DraftType, { icon: typeof FileText; label: string; executeAction: 'publish' | 'send' | 'confirm' | null; executeLabel: string }> = {
@@ -49,6 +64,8 @@ export default function DraftsPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [filter, setFilter] = useState<DraftStatus | 'all'>('pending');
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [sweeping, setSweeping] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -96,6 +113,29 @@ export default function DraftsPage() {
     }
   }
 
+  // Per-item "is this still needed?" — reuses the same engine as the issues tab.
+  async function revalidate(id: number) {
+    setBusyId(id);
+    try {
+      const res = await fetch(`/api/drafts/${id}/revalidate`, { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok) { setError(json.error || 'Re-validation failed'); setNotice(null); }
+      else { setError(null); setNotice(`Triaged #${id}`); await load(); }
+    } catch (err) { setError((err as Error).message); }
+    finally { setBusyId(null); }
+  }
+
+  // Batch sweep — re-validates a bounded set of open drafts + issues server-side.
+  async function runSweep() {
+    setSweeping(true);
+    try {
+      const res = await fetch('/api/triggers/run-triage', { method: 'POST' });
+      if (!res.ok) { const j = await res.json(); setError(j.error || 'Sweep failed'); }
+      else { setError(null); setNotice('Triage sweep started — verdicts will appear as they land'); }
+    } catch (err) { setError((err as Error).message); }
+    finally { setSweeping(false); }
+  }
+
   function toggle(id: number) {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -116,12 +156,22 @@ export default function DraftsPage() {
             {pendingCount > 0 && ` · ${pendingCount} awaiting you`}
           </p>
         </div>
-        <div className="flex gap-1">
-          {(['pending', 'approved', 'all'] as const).map((f) => (
-            <button key={f} onClick={() => setFilter(f)} className={`tab ${filter === f ? 'active' : ''}`}>
-              {f}
-            </button>
-          ))}
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={runSweep}
+            disabled={sweeping}
+            className="btn btn-ghost btn-sm"
+            title="Re-validate a batch of open drafts + issues against current goals and what's already shipped, flagging stale ones for your review"
+          >
+            {sweeping ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />} Run triage sweep
+          </button>
+          <div className="flex gap-1">
+            {(['pending', 'approved', 'all'] as const).map((f) => (
+              <button key={f} onClick={() => setFilter(f)} className={`tab ${filter === f ? 'active' : ''}`}>
+                {f}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -147,16 +197,24 @@ export default function DraftsPage() {
             const meta = TYPE_META[d.type];
             const Icon = meta.icon;
             const isExpanded = expanded.has(d.id);
+            const flagged = isFlagged(d);
+            const isOpen = d.status === 'pending' || d.status === 'approved';
             return (
-              <div key={d.id} className="panel">
+              <div key={d.id} className={`panel ${flagged ? 'border-amber-500/50 bg-amber-500/[0.03]' : ''}`}>
                 <div className="p-3 space-y-2">
                   <div className="flex items-center gap-2 flex-wrap text-xs">
                     <Icon size={13} className="text-muted-foreground shrink-0" />
                     <span className="font-mono text-[10px] text-muted-foreground">#{d.id}</span>
                     <span className="font-medium">{meta.label}</span>
                     <span className={`badge ${STATUS_META[d.status]}`}>{d.status}</span>
+                    {flagged && <span className="badge badge-warning">needs review</span>}
                     <span className="text-muted-foreground">· {formatTs(d.created_at)}</span>
                     <span className="ml-auto flex gap-1">
+                      {isOpen && (
+                        <button className="btn btn-ghost btn-sm" disabled={busyId === d.id} onClick={() => revalidate(d.id)} title="Re-check whether this draft is still worth acting on">
+                          {busyId === d.id ? <Loader2 size={11} className="animate-spin" /> : <ScanSearch size={11} />} Still needed?
+                        </button>
+                      )}
                       {d.status === 'pending' && (
                         <>
                           <button className="btn btn-success btn-sm" onClick={() => act(d.id, 'approve')}><Check size={11} /> Approve</button>
@@ -182,6 +240,23 @@ export default function DraftsPage() {
                   )}
                   {d.execution_note && (
                     <div className="text-[11px] text-muted-foreground italic">Note: {d.execution_note}</div>
+                  )}
+                  {d.revalidation && (
+                    <div className="text-xs bg-[var(--surface-2)] p-2.5 rounded border border-border/60 space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <ScanSearch size={11} className="text-muted-foreground" />
+                        <span className="font-medium">Triage</span>
+                        <span className={`badge ${d.revalidation.still_needed === 'yes' ? 'badge-success' : d.revalidation.still_needed === 'no' ? 'badge-error' : 'badge-neutral'}`}>
+                          still needed: {d.revalidation.still_needed}
+                        </span>
+                        {d.revalidation.superseded && <span className="badge badge-warning">superseded</span>}
+                        {d.revalidated_at != null && <span className="text-[10px] text-muted-foreground ml-auto">checked {formatTs(d.revalidated_at)}</span>}
+                      </div>
+                      <p className="leading-relaxed whitespace-pre-wrap text-muted-foreground">{d.revalidation.rationale}</p>
+                      {d.revalidation.checked_files.length > 0 && (
+                        <div className="text-[10px] text-muted-foreground">Files checked: {d.revalidation.checked_files.join(', ')}</div>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
