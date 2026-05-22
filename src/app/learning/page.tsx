@@ -4,11 +4,12 @@ import { useEffect, useState } from 'react';
 import { TrendingUp, Loader2, Info } from 'lucide-react';
 
 interface PolicyRow { role: string; agent_id: string; variant: string; n: number; reward_mean: number; last_reward: number | null; updated_at: string }
-interface EventRow { task_id: number | null; agent_id: string; role: string; reward: number; components: { approval: number | null; outcome: number | null; reliability: number | null }; stage: string; scored_at: string }
+interface EventRow { task_id: number | null; agent_id: string; role: string; reward: number; components: { approval: number | null; outcome: number | null; reliability: number | null }; stage: string; scored_at: string; source?: 'task' | 'campaign' }
+interface Weights { approval: number; outcome: number; reliability: number }
 interface Data {
   policy: PolicyRow[];
   events: EventRow[];
-  summary: { totalRuns: number; weightedMean: number; byRole: Record<string, { n: number; mean: number }> };
+  summary: { totalRuns: number; weightedMean: number; byRole: Record<string, { n: number; mean: number }>; weights?: Weights };
 }
 
 function pct(n: number) { return `${Math.round(n * 100)}%`; }
@@ -55,11 +56,37 @@ export default function LearningPage() {
         </div>
       ) : (
         <>
+          <div className="flex flex-wrap items-center gap-2 text-[10px]">
+            {data.summary.weights && (
+              <span className="badge badge-neutral text-[9px] font-mono tabular-nums">
+                weights: A {data.summary.weights.approval.toFixed(2)} · O {data.summary.weights.outcome.toFixed(2)} · R {data.summary.weights.reliability.toFixed(2)}
+              </span>
+            )}
+            <span className="text-muted-foreground">R = Reliability · A = Approval · O = Outcome</span>
+          </div>
+
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <Stat label="Runs scored" value={String(data.summary.totalRuns)} />
             <Stat label="Mean reward" value={pct(data.summary.weightedMean)} />
             <Stat label="Agents tracked" value={String(data.policy.length)} />
           </div>
+
+          {Object.keys(data.summary.byRole ?? {}).length > 0 && (
+            <div>
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">By role</div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                {Object.entries(data.summary.byRole).map(([role, r]) => (
+                  <div key={role} className="panel p-3">
+                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground truncate">{role}</div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-lg font-bold font-mono tabular-nums" style={{ color: rewardColor(r.mean) }}>{r.mean.toFixed(2)}</span>
+                      <span className="text-[10px] text-muted-foreground">{r.n} run{r.n === 1 ? '' : 's'}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div>
             <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Per-agent policy</div>
@@ -90,7 +117,11 @@ export default function LearningPage() {
                 <div key={i} className="px-3 py-2 flex items-center gap-3 text-xs">
                   <span className="font-mono tabular-nums w-10" style={{ color: rewardColor(e.reward) }}>{e.reward.toFixed(2)}</span>
                   <span className="font-medium w-36 truncate">{e.agent_id}</span>
-                  <span className="text-[10px] text-muted-foreground hidden sm:inline">R {comp(e.components.reliability)} · A {comp(e.components.approval)} · O {comp(e.components.outcome)}</span>
+                  <span className={`badge ${e.source === 'campaign' ? 'badge-success' : 'badge-neutral'} text-[9px]`}>{e.source ?? 'task'}</span>
+                  {e.components?.outcome != null && (
+                    <span className="badge badge-info text-[9px] font-mono tabular-nums" title="Outcome — the truest signal">O {e.components.outcome.toFixed(2)}</span>
+                  )}
+                  <span className="text-[10px] text-muted-foreground hidden sm:inline">R {comp(e.components?.reliability ?? null)} · A {comp(e.components?.approval ?? null)} · O {comp(e.components?.outcome ?? null)}</span>
                   <span className={`badge ${e.stage === 'warm' ? 'badge-success' : 'badge-neutral'} text-[9px] ml-auto`}>{e.stage}</span>
                   <span className="text-[10px] text-muted-foreground w-8 text-right">{ago(e.scored_at)}</span>
                 </div>

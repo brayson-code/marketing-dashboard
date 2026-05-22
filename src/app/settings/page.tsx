@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import {
   Settings, Database, Shield, Info, ExternalLink,
-  RefreshCw, Trash2, Users, UserPlus, KeyRound, BrainCircuit, BellRing,
+  RefreshCw, Trash2, Users, UserPlus, KeyRound, BrainCircuit, BellRing, Scale,
 } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { timeAgo } from '@/lib/utils';
@@ -89,6 +89,12 @@ interface AlertPolicy {
   alert_never_ratio_threshold: number;
 }
 
+interface RewardWeights {
+  approval: number;
+  outcome: number;
+  reliability: number;
+}
+
 interface MemoryEffectPayload {
   instance: string;
   available: boolean;
@@ -131,6 +137,8 @@ export default function SettingsPage() {
   const [alertPolicies, setAlertPolicies] = useState<Record<InstanceId, AlertPolicy | null>>({});
   const [savingAlertPolicy, setSavingAlertPolicy] = useState<Record<InstanceId, boolean>>({});
   const [memoryEffects, setMemoryEffects] = useState<Record<InstanceId, MemoryEffectPayload | null>>({});
+  const [rewardWeights, setRewardWeights] = useState<RewardWeights | null>(null);
+  const [savingRewardWeights, setSavingRewardWeights] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -200,6 +208,15 @@ export default function SettingsPage() {
       .then((r) => r.json())
       .then((data: MeResponse) => setCurrentUser(data.user || null))
       .catch(() => setCurrentUser(null));
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/reward-config', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((data: { weights?: RewardWeights }) => {
+        if (data.weights) setRewardWeights(data.weights);
+      })
+      .catch(() => {});
   }, []);
 
   async function loadUsers() {
@@ -409,6 +426,26 @@ export default function SettingsPage() {
     }
   }
 
+  async function saveRewardWeights() {
+    if (!rewardWeights) return;
+    setSavingRewardWeights(true);
+    try {
+      const res = await fetch('/api/reward-config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(rewardWeights),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save reward weights');
+      if (data.weights) setRewardWeights(data.weights);
+      toast.success('Reward weights saved');
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setSavingRewardWeights(false);
+    }
+  }
+
   return (
     <div className="space-y-6 animate-in w-full">
       <div className="panel">
@@ -495,6 +532,59 @@ export default function SettingsPage() {
           <div className="h-32 flex items-center justify-center text-sm text-muted-foreground">
             Loading...
           </div>
+        )}
+      </div>
+
+      {/* Reward Weights */}
+      <div className="panel p-5 space-y-4">
+        <h2 className="text-sm font-medium flex items-center gap-2">
+          <Scale size={14} className="text-primary" /> Reward weights
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          How completed agent runs are scored (see Learning). Weights are
+          normalized to sum to 1 when saved.
+        </p>
+        {rewardWeights ? (
+          <>
+            <div className="space-y-4">
+              {([
+                { key: 'approval', label: 'Approval' },
+                { key: 'outcome', label: 'Outcome' },
+                { key: 'reliability', label: 'Reliability' },
+              ] as const).map(({ key, label }) => (
+                <label key={key} className="block space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">{label}</span>
+                    <span className="font-mono">{rewardWeights[key].toFixed(2)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={rewardWeights[key]}
+                    onChange={(e) =>
+                      setRewardWeights((prev) =>
+                        prev ? { ...prev, [key]: Number(e.target.value) } : prev,
+                      )
+                    }
+                    className="w-full"
+                  />
+                </label>
+              ))}
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={saveRewardWeights}
+                disabled={savingRewardWeights}
+                className="btn btn-primary text-sm"
+              >
+                {savingRewardWeights ? 'Saving...' : 'Save Reward Weights'}
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="text-sm text-muted-foreground">Loading reward weights...</div>
         )}
       </div>
       </>

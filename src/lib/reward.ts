@@ -22,13 +22,33 @@ export interface RewardWeights { approval: number; outcome: number; reliability:
 // Base owner weights (decided: 0.5 / 0.3 / 0.2). Cold start leans on the dense
 // process/reliability signal (Kimi-style: reward the act of doing it well first),
 // then warms toward the true outcome signal as the agent accumulates history.
-const BASE_WEIGHTS: RewardWeights = { approval: 0.5, outcome: 0.3, reliability: 0.2 };
-const COLD_WEIGHTS: RewardWeights = { approval: 0.4, outcome: 0.1, reliability: 0.5 };
+const DEFAULT_WEIGHTS: RewardWeights = { approval: 0.5, outcome: 0.3, reliability: 0.2 };
 const WARM_THRESHOLD = 20; // runs before an agent is considered "warm"
 
-// TODO(weights-ui): read owner-tuned weights from a settings row when the slider lands.
-function stageWeights(stage: 'cold' | 'warm'): RewardWeights {
-  return stage === 'cold' ? COLD_WEIGHTS : BASE_WEIGHTS;
+// Owner-tunable base weights (slice 4b) live in public.reward_config; warm stage
+// uses them as-is. Falls back to defaults if unset/unreadable.
+export async function getOwnerWeights(): Promise<RewardWeights> {
+  try {
+    const rows = (await sql()`
+      SELECT w_approval, w_outcome, w_reliability FROM public.reward_config
+      WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    `) as unknown as Array<{ w_approval: number; w_outcome: number; w_reliability: number }>;
+    if (!rows[0]) return DEFAULT_WEIGHTS;
+    return { approval: Number(rows[0].w_approval), outcome: Number(rows[0].w_outcome), reliability: Number(rows[0].w_reliability) };
+  } catch {
+    return DEFAULT_WEIGHTS;
+  }
+}
+
+// Cold start (Kimi-style spawn→success): redirect most of outcome's weight to the
+// dense reliability signal while outcome data is still sparse; warm restores it.
+// Sums are preserved (approval + 0.3·o + (r + 0.7·o) = approval + o + r).
+function coldFrom(w: RewardWeights): RewardWeights {
+  return { approval: w.approval, outcome: w.outcome * 0.3, reliability: w.reliability + w.outcome * 0.7 };
+}
+
+function stageWeights(stage: 'cold' | 'warm', owner: RewardWeights): RewardWeights {
+  return stage === 'cold' ? coldFrom(owner) : owner;
 }
 
 type Component = number | null;
@@ -101,6 +121,7 @@ export async function scoreUnscoredTasks(opts: { limit?: number; dryRun?: boolea
     LIMIT ${limit}
   `) as unknown as UnscoredTask[];
 
+  const owner = await getOwnerWeights();
   const approvals = await approvalByAgent();
   // Current per-agent run counts (for cold/warm staging).
   const policyRows = (await sql()`
@@ -117,7 +138,7 @@ export async function scoreUnscoredTasks(opts: { limit?: number; dryRun?: boolea
     const approval = approvals.has(t.agent_id) ? approvals.get(t.agent_id)! : null;
     const outcome: Component = null; // TODO(outcome): goal/campaign-event attribution + the flip
     const stage: 'cold' | 'warm' = (counts.get(t.agent_id) ?? 0) >= WARM_THRESHOLD ? 'warm' : 'cold';
-    const weights = stageWeights(stage);
+    const weights = stageWeights(stage, owner);
     const reward = blend({ approval, outcome, reliability }, weights);
     if (reward == null) continue;
 
@@ -150,6 +171,80 @@ export async function scoreUnscoredTasks(opts: { limit?: number; dryRun?: boolea
   return { scored: Object.values(agg).reduce((s, v) => s + v.n, 0), byAgent, dryRun };
 }
 
+/**
+ * Outcome attribution (slice 2). When a research campaign completes, credit an
+ * OUTCOME reward to each agent that ran in it — boosted by the linked goal's
+ * verified status (done → 1.0, abandoned → 0.2, else campaign-complete 0.7).
+ * This is the goal-event signal the curriculum flips toward; these events use
+ * the warm (outcome-weighted) blend. Scored once per campaign (outcome_scored_at).
+ */
+export async function scoreOutcomes(opts: { dryRun?: boolean } = {}): Promise<{ scored: number; campaigns: number }> {
+  const dryRun = !!opts.dryRun;
+  const owner = await getOwnerWeights();
+  const warm = stageWeights('warm', owner);
+  const approvals = await approvalByAgent();
+
+  const campaigns = (await sql()`
+    SELECT w.id, w.goal_id, g.status AS goal_status
+    FROM public.wave_runs w
+    LEFT JOIN public.goals g ON g.id = w.goal_id AND g.tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE w.tenant_id = ${DEFAULT_TENANT_ID} AND w.status = 'done' AND w.outcome_scored_at IS NULL
+    LIMIT 50
+  `) as unknown as Array<{ id: string; goal_id: string | null; goal_status: string | null }>;
+
+  let scored = 0;
+  for (const c of campaigns) {
+    const outcomeVal = c.goal_status === 'done' ? 1 : c.goal_status === 'abandoned' ? 0.2 : 0.7;
+    const agentRows = (await sql()`
+      SELECT (a->>'agentId') AS agent_id,
+             count(*)::int AS n,
+             count(*) FILTER (WHERE (a->>'ok') = 'true')::int AS ok
+      FROM public.wave_step_runs s,
+           lateral jsonb_array_elements(coalesce(s.agent_results, '[]'::jsonb)) a
+      WHERE s.tenant_id = ${DEFAULT_TENANT_ID} AND s.wave_run_id = ${c.id}
+      GROUP BY (a->>'agentId')
+    `) as unknown as Array<{ agent_id: string | null; n: number; ok: number }>;
+
+    for (const ar of agentRows) {
+      if (!ar.agent_id) continue;
+      const role = roleFor(ar.agent_id);
+      const reliability = ar.n > 0 ? ar.ok / ar.n : null;
+      const approval = approvals.has(ar.agent_id) ? approvals.get(ar.agent_id)! : null;
+      const reward = blend({ approval, outcome: outcomeVal, reliability }, warm);
+      if (reward == null) continue;
+      const ref = `${c.id}:${ar.agent_id}`;
+
+      if (!dryRun) {
+        const ins = (await sql()`
+          INSERT INTO public.reward_events (tenant_id, task_id, agent_id, role, reward, components, weights, stage, source, ref)
+          VALUES (${DEFAULT_TENANT_ID}, ${null}, ${ar.agent_id}, ${role}, ${reward},
+                  ${jsonb({ approval, outcome: outcomeVal, reliability })}, ${jsonb(warm)}, 'warm', 'campaign', ${ref})
+          ON CONFLICT (tenant_id, ref) WHERE ref IS NOT NULL DO NOTHING
+          RETURNING id
+        `) as unknown as Array<{ id: number }>;
+        if (ins.length > 0) {
+          await sql()`
+            INSERT INTO public.agent_policy (tenant_id, role, agent_id, variant, n, reward_sum, reward_mean, last_reward, updated_at)
+            VALUES (${DEFAULT_TENANT_ID}, ${role}, ${ar.agent_id}, 'base', 1, ${reward}, ${reward}, ${reward}, now())
+            ON CONFLICT (tenant_id, role, agent_id, variant) DO UPDATE
+              SET n = public.agent_policy.n + 1,
+                  reward_sum = public.agent_policy.reward_sum + ${reward},
+                  reward_mean = (public.agent_policy.reward_sum + ${reward}) / (public.agent_policy.n + 1),
+                  last_reward = ${reward}, updated_at = now()
+          `;
+          scored++;
+        }
+      } else {
+        scored++;
+      }
+    }
+    if (!dryRun) {
+      await sql()`UPDATE public.wave_runs SET outcome_scored_at = now() WHERE id = ${c.id} AND tenant_id = ${DEFAULT_TENANT_ID}`;
+    }
+  }
+  return { scored, campaigns: campaigns.length };
+}
+
 // ── Reads for the Learning view ─────────────────────────────────────────────
 
 export interface PolicyRow { role: string; agent_id: string; variant: string; n: number; reward_mean: number; last_reward: number | null; updated_at: string }
@@ -163,11 +258,11 @@ export async function getPolicy(): Promise<PolicyRow[]> {
   return rows.map((r) => ({ ...r, reward_mean: Number(r.reward_mean), last_reward: r.last_reward == null ? null : Number(r.last_reward), updated_at: new Date(r.updated_at).toISOString() }));
 }
 
-export interface RewardEventRow { task_id: number | null; agent_id: string; role: string; reward: number; components: { approval: number | null; outcome: number | null; reliability: number | null }; stage: string; scored_at: string }
+export interface RewardEventRow { task_id: number | null; agent_id: string; role: string; reward: number; components: { approval: number | null; outcome: number | null; reliability: number | null }; stage: string; source: string; scored_at: string }
 
 export async function recentRewardEvents(limit = 50): Promise<RewardEventRow[]> {
   const rows = (await sql()`
-    SELECT task_id, agent_id, role, reward, components, stage, scored_at
+    SELECT task_id, agent_id, role, reward, components, stage, source, scored_at
     FROM public.reward_events WHERE tenant_id = ${DEFAULT_TENANT_ID}
     ORDER BY scored_at DESC LIMIT ${Math.min(limit, 200)}
   `) as unknown as Array<Omit<RewardEventRow, 'reward' | 'scored_at'> & { reward: string | number; scored_at: Date }>;

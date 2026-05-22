@@ -10,7 +10,7 @@ import { startTask, finishTask } from './agent-tasks';
 import { listActiveGoals } from './goals';
 import { listIssues } from './observability';
 import { createDraft } from './drafts';
-import { scoreUnscoredTasks } from './reward';
+import { scoreUnscoredTasks, scoreOutcomes } from './reward';
 import { createNotification } from './notifications';
 import { sendIMessage, isLoopMessageConfigured } from './loopmessage';
 import { sendSlack, isSlackConfigured } from './alerts';
@@ -99,7 +99,11 @@ export async function runImprovementSweep(): Promise<ImproveResult> {
     console.error('[improve] reward scoring failed:', (e as Error).message);
     return null;
   });
-  if (scored?.scored) console.log(`[improve] scored ${scored.scored} run(s) into the reward policy.`);
+  const outcomes = await scoreOutcomes().catch((e) => {
+    console.error('[improve] outcome scoring failed:', (e as Error).message);
+    return null;
+  });
+  if (scored?.scored || outcomes?.scored) console.log(`[improve] scored ${scored?.scored ?? 0} run(s) + ${outcomes?.scored ?? 0} outcome(s) into the reward policy.`);
 
   const snapshot = await buildSnapshot();
   const client = new Anthropic({ maxRetries: 5 });
