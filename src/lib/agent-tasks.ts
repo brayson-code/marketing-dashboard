@@ -12,9 +12,18 @@ export interface AgentTaskRow {
   error: string | null;
   input_tokens: number | null;
   output_tokens: number | null;
+  stream_text: string | null;
   started_at: Date;
   completed_at: Date | null;
   metadata: Record<string, unknown> | null;
+}
+
+/** Live transcript: overwrite a running task's in-progress output buffer. */
+export async function setTaskStream(taskId: number, text: string): Promise<void> {
+  await sql()`
+    UPDATE agent_tasks SET stream_text = ${text}
+    WHERE id = ${taskId} AND tenant_id = ${DEFAULT_TENANT_ID}
+  `;
 }
 
 export async function startTask(agentId: string, task: string, parentId?: number, meta?: Record<string, unknown>): Promise<number> {
@@ -38,6 +47,7 @@ export async function finishTask(
         error = COALESCE(${fields.error ?? null}, error),
         input_tokens = COALESCE(${fields.inputTokens ?? null}, input_tokens),
         output_tokens = COALESCE(${fields.outputTokens ?? null}, output_tokens),
+        stream_text = null,
         completed_at = now()
     WHERE id = ${taskId} AND tenant_id = ${DEFAULT_TENANT_ID}
   `;

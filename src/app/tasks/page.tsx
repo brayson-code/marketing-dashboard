@@ -15,6 +15,7 @@ interface AgentTask {
   error: string | null;
   input_tokens: number | null;
   output_tokens: number | null;
+  stream_text: string | null;
   // Supabase returns timestamptz as ISO strings; tolerate legacy unix numbers too.
   started_at: string | number;
   completed_at: string | number | null;
@@ -118,6 +119,15 @@ export default function TasksPage() {
             )}
           </div>
           <div className="text-sm text-foreground line-clamp-2">{t.task}</div>
+          {t.status === 'running' && t.stream_text && (
+            <div
+              className="mt-1 text-[11px] font-mono whitespace-pre-wrap bg-[var(--surface-2)] rounded p-2 max-h-48 overflow-y-auto border border-border/40"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {t.stream_text}
+              <span className="inline-block w-1.5 h-3 ml-0.5 bg-primary/70 animate-pulse align-middle" />
+            </div>
+          )}
           {isExpanded && (
             <div className="pt-2 space-y-2 text-xs">
               <div>

@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { sql, jsonb, DEFAULT_TENANT_ID } from './db/client';
-import { startTask, finishTask } from './agent-tasks';
+import { startTask, finishTask, setTaskStream } from './agent-tasks';
 import { kgToolDefinitions, handleKgTool } from './kg-tools';
 import { chooseVariant } from './selection';
 import { constraintsForVariant, roleFor } from './constraints';
@@ -238,14 +238,29 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
 
   const messages: Anthropic.MessageParam[] = [{ role: 'user', content: hydratedTask }];
 
-  try {
-    let response = await client.messages.create({
+  // Live transcript: stream text deltas into the task's stream_text buffer so the
+  // Tasks page can watch the run fill in. Writes are debounced to ~1/sec.
+  let streamBuf = '';
+  let lastWrite = 0;
+  const onDelta = (t: string) => {
+    streamBuf += t;
+    const now = Date.now();
+    if (now - lastWrite > 900) { lastWrite = now; void setTaskStream(taskId, streamBuf).catch(() => {}); }
+  };
+  const turn = async (): Promise<Anthropic.Message> => {
+    const stream = client.messages.stream({
       model: spec.model,
       max_tokens: spec.maxTokens,
       system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
       tools,
       messages,
     });
+    stream.on('text', onDelta);
+    return stream.finalMessage();
+  };
+
+  try {
+    let response = await turn();
 
     let safety = 0;
     while (safety++ < 8) {
@@ -254,13 +269,7 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
       if (response.stop_reason === 'pause_turn') {
         // web_search runs server-side; just continue the paused turn.
         messages.push({ role: 'assistant', content: response.content });
-        response = await client.messages.create({
-          model: spec.model,
-          max_tokens: spec.maxTokens,
-          system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
-          tools,
-          messages,
-        });
+        response = await turn();
         continue;
       }
       if (response.stop_reason === 'tool_use') {
@@ -275,13 +284,7 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
         messages.push({ role: 'assistant', content: response.content });
         const toolResults = await Promise.all(kgToolUses.map((tu) => handleKgTool(tu, type)));
         messages.push({ role: 'user', content: toolResults });
-        response = await client.messages.create({
-          model: spec.model,
-          max_tokens: spec.maxTokens,
-          system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
-          tools,
-          messages,
-        });
+        response = await turn();
         continue;
       }
       break;
