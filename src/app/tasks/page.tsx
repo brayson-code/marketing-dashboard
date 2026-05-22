@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Activity, CheckCircle2, AlertCircle, Loader2, ArrowRight, Zap } from 'lucide-react';
+import { Pipeline } from '@/components/tasks/pipeline';
+
+type TaskView = 'activity' | 'pipeline';
 
 type TaskStatus = 'running' | 'done' | 'error' | 'cancelled';
 
@@ -65,6 +68,7 @@ export default function TasksPage() {
   const [data, setData] = useState<TasksResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [view, setView] = useState<TaskView>('activity');
 
   const load = useCallback(async () => {
     try {
@@ -191,43 +195,65 @@ export default function TasksPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="space-y-1">
           <h1 className="text-xl font-semibold">Tasks</h1>
-          <p className="text-xs text-muted-foreground">Live view of orchestrator and sub-agent activity. Refreshes every 2s.</p>
+          <p className="text-xs text-muted-foreground">
+            {view === 'activity'
+              ? 'Live view of orchestrator and sub-agent activity. Refreshes every 2s.'
+              : 'How the orchestrator’s parallel agent waves flow toward each goal. Refreshes every 3s.'}
+          </p>
         </div>
         <div className="flex items-center gap-2 text-xs flex-wrap">
-          <button onClick={runProactive} className="btn btn-ghost btn-sm" title="Trigger KeyPlayer to scan for stalled goals, pending drafts, long-running tasks, etc.">
-            <Zap size={11} /> Run proactive sweep
-          </button>
-          <span className="badge badge-info inline-flex items-center gap-1.5">
-            <Loader2 size={11} className={running.length > 0 ? 'animate-spin' : ''} />
-            {running.length} running
-          </span>
-          <span className="badge badge-neutral">{data?.counts.total ?? 0} total</span>
+          <div className="flex gap-1">
+            <button onClick={() => setView('activity')} className={`tab ${view === 'activity' ? 'active' : ''}`}>
+              Activity
+            </button>
+            <button onClick={() => setView('pipeline')} className={`tab ${view === 'pipeline' ? 'active' : ''}`}>
+              Pipeline
+            </button>
+          </div>
+          {view === 'activity' && (
+            <>
+              <button onClick={runProactive} className="btn btn-ghost btn-sm" title="Trigger KeyPlayer to scan for stalled goals, pending drafts, long-running tasks, etc.">
+                <Zap size={11} /> Run proactive sweep
+              </button>
+              <span className="badge badge-info inline-flex items-center gap-1.5">
+                <Loader2 size={11} className={running.length > 0 ? 'animate-spin' : ''} />
+                {running.length} running
+              </span>
+              <span className="badge badge-neutral">{data?.counts.total ?? 0} total</span>
+            </>
+          )}
         </div>
       </div>
 
-      {error && (
+      {error && view === 'activity' && (
         <div className="panel p-3 text-xs text-destructive flex items-center gap-1.5">
           <AlertCircle size={12} /> {error}
         </div>
       )}
 
-      {running.length > 0 && (
-        <div className="space-y-2">
-          <div className="section-title">In progress</div>
-          <div className="space-y-2">{orderWithChildren(running).map(renderTask)}</div>
-        </div>
-      )}
+      {view === 'pipeline' ? (
+        <Pipeline />
+      ) : (
+        <>
+          {running.length > 0 && (
+            <div className="space-y-2">
+              <div className="section-title">In progress</div>
+              <div className="space-y-2">{orderWithChildren(running).map(renderTask)}</div>
+            </div>
+          )}
 
-      <div className="space-y-2">
-        <div className="section-title">Recent</div>
-        {recent.length === 0 ? (
-          <div className="panel p-4 text-xs text-muted-foreground text-center">
-            No completed tasks yet. Send a message to KeyPlayer to kick one off.
+          <div className="space-y-2">
+            <div className="section-title">Recent</div>
+            {recent.length === 0 ? (
+              <div className="panel p-4 text-xs text-muted-foreground text-center">
+                No completed tasks yet. Send a message to KeyPlayer to kick one off.
+              </div>
+            ) : (
+              <div className="space-y-2">{orderWithChildren(recent).map(renderTask)}</div>
+            )}
           </div>
-        ) : (
-          <div className="space-y-2">{orderWithChildren(recent).map(renderTask)}</div>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }
