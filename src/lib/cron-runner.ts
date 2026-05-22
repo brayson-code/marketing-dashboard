@@ -7,6 +7,7 @@ import { sql, jsonb, DEFAULT_TENANT_ID } from './db/client';
 import { spawnSubAgent } from './subagent';
 import { computeNextRun } from './cron-expr';
 import { appendKnowledgeSection } from './documents';
+import { constraintsFor, kgPersistDirective } from './constraints';
 
 interface DueJobRow {
   id: string;
@@ -17,14 +18,6 @@ interface DueJobRow {
   schedule_tz: string;
   payload: { message?: string; saveToKb?: boolean; kbDoc?: string } & Record<string, unknown>;
 }
-
-// Appended to the agent's task when a job feeds the knowledge base, so research
-// reliably lands in the shared graph (not just the doc) for the email/sales
-// agents to reuse.
-const KG_DIRECTIVE =
-  '\n\nWhen finished, also call kg_remember to store the key entities and ' +
-  'relationships you found (companies, products, competitors, campaigns and how ' +
-  'they relate) so the email and sales agents can reuse them without re-searching.';
 
 function utcStamp(d = new Date()): string {
   return d.toISOString().replace('T', ' ').replace(/:\d\d\.\d+Z$/, ' UTC');
@@ -76,7 +69,12 @@ async function runOne(job: DueJobRow): Promise<{ id: string; status: 'ok' | 'err
     status = 'error';
     errorText = 'Job has no payload.message';
   } else {
-    const message = String(job.payload.message) + (saveToKb ? KG_DIRECTIVE : '');
+    // Phase 2: append role-appropriate constraints; and (when feeding the KB)
+    // the kg_remember directive with tier-derived confidence.
+    const message =
+      String(job.payload.message) +
+      `\n\n# ${constraintsFor(job.agent_id)}` +
+      (saveToKb ? `\n\n# ${kgPersistDirective()}` : '');
     try {
       const res = await spawnSubAgent(job.agent_id, message);
       if (res.ok) {

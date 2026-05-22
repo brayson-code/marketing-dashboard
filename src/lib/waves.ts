@@ -12,16 +12,9 @@ import { sql, jsonb, DEFAULT_TENANT_ID } from './db/client';
 import { spawnSubAgent } from './subagent';
 import { appendKnowledgeSection } from './documents';
 import { appendProgress } from './goals';
+import { constraintsFor, kgPersistDirective, roleFor } from './constraints';
 
 const SYNTH_MODEL = 'claude-sonnet-4-6'; // synthesis is the quality chokepoint (decided)
-
-// Constraints > instructions (brief principle #1): give every research agent the
-// same hard boundaries so output is comparable and quantified.
-const RESEARCH_CONSTRAINTS =
-  'Constraints: run 5-8 focused web searches; cross-reference 2-3 sources per claim; ' +
-  'rate each source Tier 1 (analyst/official filings), Tier 2 (reputable press), or Tier 3 (blog/social); ' +
-  'quantify and DATE every finding; explicitly flag anything you could not verify. ' +
-  'Be concise — bullets with the source tier in brackets.';
 
 export interface CampaignBrief {
   objective: string;
@@ -65,15 +58,18 @@ async function llm(system: string, user: string, maxTokens: number): Promise<str
     .trim();
 }
 
-function composeAgentTask(brief: CampaignBrief, prior: string | null, agentTask: string): string {
+function composeAgentTask(brief: CampaignBrief, prior: string | null, agent: WaveAgentSpec): string {
   const parts = [
     `# Campaign objective\n${brief.objective}`,
     `# Definition of success\n${brief.success}`,
   ];
   if (brief.audience) parts.push(`# Audience / context\n${brief.audience}`);
   if (prior) parts.push(`# Synthesis from the previous wave (build on this — do NOT repeat it)\n${prior}`);
-  parts.push(`# Your specific assignment\n${agentTask}`);
-  parts.push(`# ${RESEARCH_CONSTRAINTS}`);
+  parts.push(`# Your specific assignment\n${agent.task}`);
+  // Per-role constraints (Phase 2). Research agents also persist findings to the
+  // shared graph with tier-derived confidence so the rest of the team reuses them.
+  parts.push(`# ${constraintsFor(agent.agentId)}`);
+  if (roleFor(agent.agentId) === 'research') parts.push(`# ${kgPersistDirective()}`);
   return parts.join('\n\n');
 }
 
@@ -176,7 +172,7 @@ export async function runNextWave(campaignId: string): Promise<{ done: boolean; 
   try {
     const results: AgentResult[] = await Promise.all(
       wave.agents.map(async (a) => {
-        const r = await spawnSubAgent(a.agentId, composeAgentTask(c.brief, prior, a.task));
+        const r = await spawnSubAgent(a.agentId, composeAgentTask(c.brief, prior, a));
         return { agentId: a.agentId, task: a.task, ok: r.ok, text: r.text ?? null, error: r.error ?? null };
       }),
     );
