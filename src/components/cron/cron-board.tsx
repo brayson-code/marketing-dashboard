@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Play, Pause, RotateCcw, History, Pencil, Plus, Trash2, X, BookmarkPlus } from 'lucide-react';
+import { Play, Pause, RotateCcw, History, Pencil, Plus, Trash2, X, BookmarkPlus, Wand2 } from 'lucide-react';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { toast } from '@/components/ui/toast';
 
@@ -77,6 +77,8 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
   const [templates, setTemplates] = useState<CronTemplate[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templateId, setTemplateId] = useState<string>('');
+  const [nlPrompt, setNlPrompt] = useState('');
+  const [nlBusy, setNlBusy] = useState(false);
 
   const jobs = useMemo(() => data?.jobs ?? [], [data?.jobs]);
   const canWrite = !!data?.can_write;
@@ -135,6 +137,7 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
     setEditMode('create');
     setEditJobId(null);
     setTemplateId('');
+    setNlPrompt('');
     setEditJson(JSON.stringify({
       id: 'daily-research',
       name: 'Daily competitor scan',
@@ -143,6 +146,8 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
       schedule: { expr: '0 9 * * 1-5', tz: 'America/New_York' },
       payload: {
         message: 'Scan for notable AI marketing tool launches in the last 24h. Return 5 bullets with sources.',
+        saveToKb: true,
+        kbDoc: 'Competitor intel',
       },
       skill: 'research',
     }, null, 2));
@@ -154,6 +159,7 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
     setEditMode('edit');
     setEditJobId(job.id);
     setTemplateId('');
+    setNlPrompt('');
     // Strip transient fields added by the Hermes API enrichment.
     const rest: Record<string, unknown> = { ...job };
     delete rest.lastRun;
@@ -168,6 +174,28 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
     setEditError(null);
     setTemplateId(id);
     setEditJson(t.job_json);
+  };
+
+  const generateFromNl = async () => {
+    const prompt = nlPrompt.trim();
+    if (!prompt || nlBusy) return;
+    setNlBusy(true);
+    setEditError(null);
+    try {
+      const res = await fetch('/api/cron/draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(payload?.error || 'Could not generate a job'));
+      setEditJson(JSON.stringify(payload.job, null, 2));
+      toast.success('Draft ready — review and Save');
+    } catch (e) {
+      setEditError((e as Error).message || 'Could not generate a job');
+    } finally {
+      setNlBusy(false);
+    }
   };
 
   const saveTemplateFromEditor = async () => {
@@ -279,7 +307,7 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
                   {editMode === 'create' ? 'Add Cron Job' : `Edit Cron Job${editJobId ? `: ${editJobId}` : ''}`}
                 </h2>
                 <div className="text-[10px] text-muted-foreground mt-1">
-                  Edit the job JSON: <code>agentId</code> (a KeyPlayer sub-agent), <code>schedule.expr</code> (5-field cron) + <code>tz</code>, and <code>payload.message</code> (the task). Stored in Supabase; runs on the hourly dispatcher.
+                  <code>agentId</code> (a KeyPlayer sub-agent), <code>schedule.expr</code> (5-field cron) + <code>tz</code>, <code>payload.message</code> (the task). Results save to the knowledge base by default (<code>payload.saveToKb</code>/<code>kbDoc</code>) so the email + sales agents can reuse them. Runs on the hourly dispatcher.
                 </div>
               </div>
               <button type="button" aria-label="Close cron editor" onClick={() => setEditOpen(false)} className="text-muted-foreground hover:text-foreground">
@@ -292,6 +320,31 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
                   {editError}
                 </div>
               )}
+
+              <div className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-2">
+                <label className="text-[11px] font-medium flex items-center gap-1.5">
+                  <Wand2 size={13} className="text-primary" /> Describe it in plain English
+                </label>
+                <textarea
+                  className="w-full input text-xs min-h-[58px]"
+                  placeholder="e.g. Every weekday at 8am, scan competitors' Meta ads and new content and summarize the key moves for the sales team."
+                  value={nlPrompt}
+                  onChange={(e) => setNlPrompt(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); generateFromNl(); } }}
+                  aria-label="Describe the cron job in plain English"
+                />
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span className="text-[10px] text-muted-foreground">KeyPlayer fills in the schedule, agent, and task below — review before you save.</span>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm text-xs"
+                    onClick={generateFromNl}
+                    disabled={nlBusy || !nlPrompt.trim()}
+                  >
+                    {nlBusy ? 'Generating…' : (<><Wand2 size={12} /> Generate</>)}
+                  </button>
+                </div>
+              </div>
 
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -326,7 +379,7 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
               </div>
 
               <textarea
-                className="w-full min-h-[55vh] input font-mono text-xs leading-relaxed"
+                className="w-full min-h-[34vh] input font-mono text-xs leading-relaxed"
                 value={editJson}
                 onChange={(e) => setEditJson(e.target.value)}
                 aria-label="Cron job JSON editor"

@@ -6,6 +6,7 @@
 import { sql, jsonb, DEFAULT_TENANT_ID } from './db/client';
 import { spawnSubAgent } from './subagent';
 import { computeNextRun } from './cron-expr';
+import { appendKnowledgeSection } from './documents';
 
 interface DueJobRow {
   id: string;
@@ -14,7 +15,19 @@ interface DueJobRow {
   enabled: boolean;
   schedule_expr: string;
   schedule_tz: string;
-  payload: { message?: string } & Record<string, unknown>;
+  payload: { message?: string; saveToKb?: boolean; kbDoc?: string } & Record<string, unknown>;
+}
+
+// Appended to the agent's task when a job feeds the knowledge base, so research
+// reliably lands in the shared graph (not just the doc) for the email/sales
+// agents to reuse.
+const KG_DIRECTIVE =
+  '\n\nWhen finished, also call kg_remember to store the key entities and ' +
+  'relationships you found (companies, products, competitors, campaigns and how ' +
+  'they relate) so the email and sales agents can reuse them without re-searching.';
+
+function utcStamp(d = new Date()): string {
+  return d.toISOString().replace('T', ' ').replace(/:\d\d\.\d+Z$/, ' UTC');
 }
 
 const SUMMARY_MAX = 500;
@@ -42,10 +55,19 @@ async function runOne(job: DueJobRow): Promise<{ id: string; status: 'ok' | 'err
     WHERE tenant_id = ${DEFAULT_TENANT_ID} AND id = ${job.id}
   `;
 
+  // Knowledge-base wiring: on by default so cron output is reusable by the rest
+  // of the team. Set payload.saveToKb=false to opt out; payload.kbDoc names the
+  // target document (defaults to a per-job "intel log").
+  const saveToKb = job.payload?.saveToKb !== false;
+  const kbDoc =
+    (typeof job.payload?.kbDoc === 'string' && job.payload.kbDoc.trim()) ||
+    `${label} — intel log`;
+
   let status: 'ok' | 'error' = 'ok';
   let summary: string | null = null;
   let errorText: string | null = null;
   let fullResult: string | null = null;
+  let savedTo: string | null = null;
 
   if (!job.agent_id) {
     status = 'error';
@@ -54,11 +76,21 @@ async function runOne(job: DueJobRow): Promise<{ id: string; status: 'ok' | 'err
     status = 'error';
     errorText = 'Job has no payload.message';
   } else {
+    const message = String(job.payload.message) + (saveToKb ? KG_DIRECTIVE : '');
     try {
-      const res = await spawnSubAgent(job.agent_id, String(job.payload.message));
+      const res = await spawnSubAgent(job.agent_id, message);
       if (res.ok) {
         fullResult = (res.text ?? '').slice(0, RESULT_MAX);
         summary = (res.text ?? '').replace(/\s+/g, ' ').trim().slice(0, SUMMARY_MAX) || null;
+        // Persist the readable digest into the editable KB doc.
+        if (saveToKb && fullResult) {
+          try {
+            await appendKnowledgeSection(kbDoc, `${label} — ${utcStamp()}`, fullResult);
+            savedTo = kbDoc;
+          } catch (err) {
+            console.error(`[cron-runner] KB save failed for ${job.id}:`, (err as Error).message);
+          }
+        }
       } else {
         status = 'error';
         errorText = res.error ?? 'Sub-agent returned no result';
@@ -88,7 +120,8 @@ async function runOne(job: DueJobRow): Promise<{ id: string; status: 'ok' | 'err
 
   const secs = Math.round(durationMs / 1000);
   if (status === 'ok') {
-    await notify(`Cron "${label}" completed`, `${job.agent_id} finished in ${secs}s.`, 'info');
+    const kb = savedTo ? ` Saved to knowledge base → "${savedTo}".` : '';
+    await notify(`Cron "${label}" completed`, `${job.agent_id} finished in ${secs}s.${kb}`, 'info');
   } else {
     await notify(`Cron "${label}" failed`, errorText || 'Unknown error', 'warning');
   }
