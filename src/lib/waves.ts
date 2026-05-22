@@ -173,7 +173,7 @@ export async function runNextWave(campaignId: string): Promise<{ done: boolean; 
       wave.agents.map(async (a) => {
         // spawnSubAgent picks + records the constraint variant; we read it back
         // so outcome scoring can attribute the campaign result per variant.
-        const r = await spawnSubAgent(a.agentId, composeAgentTask(c.brief, prior, a));
+        const r = await spawnSubAgent(a.agentId, composeAgentTask(c.brief, prior, a), undefined, { maxTurns: 6 });
         return { agentId: a.agentId, task: a.task, ok: r.ok, text: r.text ?? null, error: r.error ?? null, variant: r.variant ?? 'base' };
       }),
     );
@@ -319,4 +319,40 @@ export function buildResearchCampaign(brief: CampaignBrief): WaveSpec[] {
       ],
     },
   ];
+}
+
+// Where the app lives, for self-invocation (auto-advance chains wave→wave by
+// re-triggering itself in a fresh function so each wave gets a clean 300s budget).
+function appBaseUrl(): string {
+  const fromEnv = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL;
+  if (fromEnv) return fromEnv.replace(/\/$/, '');
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return 'https://keyplayers-command-center-woad.vercel.app';
+}
+
+/**
+ * Fire-and-forget the next wave in a SEPARATE serverless invocation. This is how
+ * a campaign auto-advances end-to-end without manual clicks: each finished wave
+ * kicks the next one, and because every wave runs in its own function it keeps a
+ * full 300s budget (no single mega-run to time out). Secret-gated via CRON_SECRET.
+ */
+function fireNextWave(campaignId: string): void {
+  const secret = process.env.CRON_SECRET?.trim();
+  const url = `${appBaseUrl()}/api/cron/advance`;
+  void fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...(secret ? { authorization: `Bearer ${secret}` } : {}) },
+    body: JSON.stringify({ id: campaignId }),
+  }).catch((e) => console.error('[waves] fireNextWave failed:', (e as Error).message));
+}
+
+/**
+ * Run one wave, then auto-chain the next until the campaign is done or errors.
+ * Used by launch + the /api/cron/advance self-trigger. The manual "Advance" button
+ * still works as an override but is no longer required.
+ */
+export async function runAndChain(campaignId: string): Promise<{ done: boolean; ranWave?: number; error?: string }> {
+  const r = await runNextWave(campaignId);
+  if (!r.done && !r.error) fireNextWave(campaignId); // more waves remain → keep going
+  return r;
 }

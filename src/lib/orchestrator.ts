@@ -12,7 +12,7 @@ import { kgToolDefinitions, handleKgTool } from './kg-tools';
 import { parseAttachments, buildUserContent } from './vision';
 import { estimateCostUsd } from './usage';
 import { launchResearchCampaign } from './campaign-intake';
-import { runNextWave } from './waves';
+import { runAndChain } from './waves';
 import { listSpawnableSpecs } from './agent-defs';
 
 export interface OrchestratorUsage { input: number; output: number; cost_usd: number; model: string }
@@ -366,14 +366,14 @@ async function handleClientToolUse(
       // we're somehow outside a request context, the owner just advances manually.
       try {
         after(async () => {
-          try { await runNextWave(launched.id); }
+          try { await runAndChain(launched.id); }
           catch (e) { console.error('[launch_campaign] wave 1 failed:', (e as Error).message); }
         });
       } catch { /* no request context — owner advances from /campaigns */ }
       return {
         type: 'tool_result',
         tool_use_id: toolUse.id,
-        content: `Launched research campaign "${launched.title}" (goal ${launched.goalId}). Wave 1 is running now; later waves are advanced by the owner at /campaigns. Success criterion: ${launched.brief.success}`,
+        content: `Launched research campaign "${launched.title}" (goal ${launched.goalId}). Wave 1 is running now and the rest will auto-advance through to completion — watch it live at /tasks (Pipeline). Success criterion: ${launched.brief.success}`,
       };
     } catch (e) {
       return { type: 'tool_result', tool_use_id: toolUse.id, content: `Failed to launch campaign: ${(e as Error).message}`, is_error: true };

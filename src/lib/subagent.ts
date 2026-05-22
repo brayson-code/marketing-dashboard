@@ -193,7 +193,7 @@ async function persistMemoryRollup(rollupText: string): Promise<void> {
   }
 }
 
-export async function spawnSubAgent(type: string, task: string, parentTaskId?: number, opts?: { variant?: string }): Promise<SpawnResult> {
+export async function spawnSubAgent(type: string, task: string, parentTaskId?: number, opts?: { variant?: string; maxTurns?: number }): Promise<SpawnResult> {
   // Resolve the spec from the live DB roster (Agent Studio); fall back to the
   // hardcoded registry for builtins that haven't been seeded into the DB.
   const spec = (await getSpawnSpec(type).catch(() => null)) ?? SUBAGENT_REGISTRY[type];
@@ -262,8 +262,12 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
   try {
     let response = await turn();
 
+    // Cap the tool-use loop. Each turn may include a (slow) server-side web_search,
+    // so fewer turns = faster wall-clock + less chance of blowing the 300s function
+    // limit. Callers in a wave pass a tighter cap; default stays generous.
+    const maxTurns = Math.max(1, Math.min(opts?.maxTurns ?? 8, 12));
     let safety = 0;
-    while (safety++ < 8) {
+    while (safety++ < maxTurns) {
       if (response.stop_reason === 'end_turn') break;
       if (response.stop_reason === 'refusal' || response.stop_reason === 'max_tokens') break;
       if (response.stop_reason === 'pause_turn') {

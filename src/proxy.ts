@@ -36,6 +36,7 @@ const CRON_RUNNER_PATHS = new Set([
   '/api/cron/improve',
   '/api/cron/compact',
   '/api/cron/triage',
+  '/api/cron/advance',
 ]);
 
 // Paths that never require an authenticated Supabase user.

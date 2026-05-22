@@ -1,5 +1,5 @@
 import { NextResponse, after } from 'next/server';
-import { listCampaigns, runNextWave } from '@/lib/waves';
+import { listCampaigns, runAndChain } from '@/lib/waves';
 import { launchResearchCampaign } from '@/lib/campaign-intake';
 
 export const dynamic = 'force-dynamic';
@@ -23,12 +23,12 @@ export async function POST(request: Request) {
     const launched = await launchResearchCampaign(req);
     after(async () => {
       try {
-        await runNextWave(launched.id);
+        await runAndChain(launched.id); // wave 1 now; the rest auto-advance to completion
       } catch (err) {
         console.error(`[campaigns] wave 1 of ${launched.id} failed:`, (err as Error).message);
       }
     });
-    return NextResponse.json({ ...launched, dispatched: 'wave-1' }, { status: 202 });
+    return NextResponse.json({ ...launched, dispatched: 'auto-advance' }, { status: 202 });
   } catch (error) {
     return NextResponse.json({ error: (error as Error).message }, { status: 400 });
   }

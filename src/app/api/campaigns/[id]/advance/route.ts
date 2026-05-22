@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { after } from 'next/server';
-import { runNextWave, getCampaignDetail } from '@/lib/waves';
+import { runAndChain, getCampaignDetail } from '@/lib/waves';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // one wave (2-3 agents) runs in the background
@@ -15,7 +15,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   }
   after(async () => {
     try {
-      await runNextWave(id);
+      await runAndChain(id); // resume + auto-advance to completion
     } catch (err) {
       console.error(`[campaigns] advance ${id} failed:`, (err as Error).message);
     }
