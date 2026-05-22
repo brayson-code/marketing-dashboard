@@ -63,7 +63,40 @@ const TEMPLATES: Record<AgentRole, string> = {
     'Constraints: be concise and specific; cite a source for any external/current claim; flag uncertainty explicitly.',
 };
 
-/** The role-appropriate constraint block for an agent. */
+// Constraint VARIANTS per role — alternatives the selection bandit A/B-tests
+// (Phase 3). 'base' is the default template above; extra variants are tried by
+// chooseVariant() and the best-performing one wins. Today only the research role
+// has alternatives (it's where campaigns run); other roles are base-only until
+// there's reason to vary them.
+const VARIANTS: Partial<Record<AgentRole, Record<string, string>>> = {
+  research: {
+    base: TEMPLATES.research,
+    deep:
+      'Constraints: run 8-12 web searches; cross-reference 3-4 sources per claim; use ONLY Tier 1 ' +
+      '(analyst report / official filing) and Tier 2 (reputable press) sources — exclude blogs/social; ' +
+      'quantify and DATE every finding; flag anything you could not verify. Output bullets tagged with ' +
+      'source tier + date, e.g. "[T1, 2026-03]". Favor depth and rigor over breadth.',
+    fast:
+      'Constraints: run 3-5 quick web searches prioritizing the most RECENT sources; one solid source per ' +
+      'claim is acceptable; rate each source Tier 1/2/3 and DATE it; flag unverified items. Output tight ' +
+      'bullets, each tagged "[Tier, date]". Favor speed and recency over exhaustiveness.',
+  },
+};
+
+/** Available variant names for a role (always includes 'base'). */
+export function variantNames(role: AgentRole): string[] {
+  const v = VARIANTS[role];
+  const names = v ? Object.keys(v) : [];
+  return names.includes('base') ? names : ['base', ...names];
+}
+
+/** The constraint block for a specific (agent, variant); falls back to base. */
+export function constraintsForVariant(agentId: string, variant = 'base'): string {
+  const role = roleFor(agentId);
+  return VARIANTS[role]?.[variant] ?? TEMPLATES[role];
+}
+
+/** The role-appropriate (base) constraint block for an agent. */
 export function constraintsFor(agentId: string): string {
   return TEMPLATES[roleFor(agentId)];
 }

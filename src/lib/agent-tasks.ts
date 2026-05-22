@@ -1,4 +1,4 @@
-import { sql, DEFAULT_TENANT_ID } from './db/client';
+import { sql, jsonb, DEFAULT_TENANT_ID } from './db/client';
 
 export type TaskStatus = 'running' | 'done' | 'error' | 'cancelled';
 
@@ -17,10 +17,10 @@ export interface AgentTaskRow {
   metadata: Record<string, unknown> | null;
 }
 
-export async function startTask(agentId: string, task: string, parentId?: number): Promise<number> {
+export async function startTask(agentId: string, task: string, parentId?: number, meta?: Record<string, unknown>): Promise<number> {
   const rows = await sql()`
-    INSERT INTO agent_tasks (tenant_id, agent_id, parent_id, status, task)
-    VALUES (${DEFAULT_TENANT_ID}, ${agentId}, ${parentId ?? null}, 'running', ${task})
+    INSERT INTO agent_tasks (tenant_id, agent_id, parent_id, status, task, metadata)
+    VALUES (${DEFAULT_TENANT_ID}, ${agentId}, ${parentId ?? null}, 'running', ${task}, ${meta ? jsonb(meta) : null})
     RETURNING id
   `;
   return Number(rows[0].id);

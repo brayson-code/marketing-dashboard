@@ -12,7 +12,8 @@ import { sql, jsonb, DEFAULT_TENANT_ID } from './db/client';
 import { spawnSubAgent } from './subagent';
 import { appendKnowledgeSection } from './documents';
 import { appendProgress } from './goals';
-import { constraintsFor, kgPersistDirective, roleFor } from './constraints';
+import { constraintsForVariant, kgPersistDirective, roleFor } from './constraints';
+import { chooseVariant } from './selection';
 
 const SYNTH_MODEL = 'claude-sonnet-4-6'; // synthesis is the quality chokepoint (decided)
 
@@ -27,7 +28,7 @@ export interface CampaignBrief {
 export interface WaveAgentSpec { agentId: string; task: string }
 export interface WaveSpec { label: string; agents: WaveAgentSpec[] }
 
-export interface AgentResult { agentId: string; task: string; ok: boolean; text: string | null; error: string | null }
+export interface AgentResult { agentId: string; task: string; ok: boolean; text: string | null; error: string | null; variant?: string }
 
 interface CampaignRow {
   id: string;
@@ -58,7 +59,7 @@ async function llm(system: string, user: string, maxTokens: number): Promise<str
     .trim();
 }
 
-function composeAgentTask(brief: CampaignBrief, prior: string | null, agent: WaveAgentSpec): string {
+function composeAgentTask(brief: CampaignBrief, prior: string | null, agent: WaveAgentSpec, variant: string): string {
   const parts = [
     `# Campaign objective\n${brief.objective}`,
     `# Definition of success\n${brief.success}`,
@@ -66,9 +67,9 @@ function composeAgentTask(brief: CampaignBrief, prior: string | null, agent: Wav
   if (brief.audience) parts.push(`# Audience / context\n${brief.audience}`);
   if (prior) parts.push(`# Synthesis from the previous wave (build on this — do NOT repeat it)\n${prior}`);
   parts.push(`# Your specific assignment\n${agent.task}`);
-  // Per-role constraints (Phase 2). Research agents also persist findings to the
-  // shared graph with tier-derived confidence so the rest of the team reuses them.
-  parts.push(`# ${constraintsFor(agent.agentId)}`);
+  // Per-role constraints for the CHOSEN variant (Phase 2 + selection). Research
+  // agents also persist findings to the graph with tier-derived confidence.
+  parts.push(`# ${constraintsForVariant(agent.agentId, variant)}`);
   if (roleFor(agent.agentId) === 'research') parts.push(`# ${kgPersistDirective()}`);
   return parts.join('\n\n');
 }
@@ -172,8 +173,9 @@ export async function runNextWave(campaignId: string): Promise<{ done: boolean; 
   try {
     const results: AgentResult[] = await Promise.all(
       wave.agents.map(async (a) => {
-        const r = await spawnSubAgent(a.agentId, composeAgentTask(c.brief, prior, a));
-        return { agentId: a.agentId, task: a.task, ok: r.ok, text: r.text ?? null, error: r.error ?? null };
+        const variant = await chooseVariant(roleFor(a.agentId), a.agentId);
+        const r = await spawnSubAgent(a.agentId, composeAgentTask(c.brief, prior, a, variant), undefined, { variant });
+        return { agentId: a.agentId, task: a.task, ok: r.ok, text: r.text ?? null, error: r.error ?? null, variant: r.variant ?? variant };
       }),
     );
     const synthesis = await synthesizeWave(wave.label, c.brief, results);

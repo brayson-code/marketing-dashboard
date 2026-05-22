@@ -70,7 +70,12 @@ function reliabilityOf(status: string): number | null {
   return null; // running / unknown — not terminal, don't score
 }
 
-interface UnscoredTask { id: number; agent_id: string; status: string; completed_at: Date }
+interface UnscoredTask { id: number; agent_id: string; status: string; completed_at: Date; metadata: { variant?: string } | null }
+
+function variantOf(meta: { variant?: string } | null): string {
+  const v = meta?.variant;
+  return typeof v === 'string' && v ? v : 'base';
+}
 
 // Per-agent approval ratio over a recent window: approved / (approved+rejected).
 async function approvalByAgent(sinceDays = 45): Promise<Map<string, number>> {
@@ -108,7 +113,7 @@ export async function scoreUnscoredTasks(opts: { limit?: number; dryRun?: boolea
   const dryRun = !!opts.dryRun;
 
   const tasks = (await sql()`
-    SELECT t.id, t.agent_id, t.status, t.completed_at
+    SELECT t.id, t.agent_id, t.status, t.completed_at, t.metadata
     FROM public.agent_tasks t
     WHERE t.tenant_id = ${DEFAULT_TENANT_ID}
       AND t.completed_at IS NOT NULL
@@ -141,17 +146,18 @@ export async function scoreUnscoredTasks(opts: { limit?: number; dryRun?: boolea
     const weights = stageWeights(stage, owner);
     const reward = blend({ approval, outcome, reliability }, weights);
     if (reward == null) continue;
+    const variant = variantOf(t.metadata);
 
     if (!dryRun) {
       await sql()`
-        INSERT INTO public.reward_events (tenant_id, task_id, agent_id, role, reward, components, weights, stage)
-        VALUES (${DEFAULT_TENANT_ID}, ${t.id}, ${t.agent_id}, ${role}, ${reward},
+        INSERT INTO public.reward_events (tenant_id, task_id, agent_id, role, variant, reward, components, weights, stage)
+        VALUES (${DEFAULT_TENANT_ID}, ${t.id}, ${t.agent_id}, ${role}, ${variant}, ${reward},
                 ${jsonb({ approval, outcome, reliability })}, ${jsonb(weights)}, ${stage})
         ON CONFLICT (tenant_id, task_id) WHERE task_id IS NOT NULL DO NOTHING
       `;
       await sql()`
         INSERT INTO public.agent_policy (tenant_id, role, agent_id, variant, n, reward_sum, reward_mean, last_reward, updated_at)
-        VALUES (${DEFAULT_TENANT_ID}, ${role}, ${t.agent_id}, 'base', 1, ${reward}, ${reward}, ${reward}, now())
+        VALUES (${DEFAULT_TENANT_ID}, ${role}, ${t.agent_id}, ${variant}, 1, ${reward}, ${reward}, ${reward}, now())
         ON CONFLICT (tenant_id, role, agent_id, variant) DO UPDATE
           SET n = public.agent_policy.n + 1,
               reward_sum = public.agent_policy.reward_sum + ${reward},
@@ -197,13 +203,14 @@ export async function scoreOutcomes(opts: { dryRun?: boolean } = {}): Promise<{ 
     const outcomeVal = c.goal_status === 'done' ? 1 : c.goal_status === 'abandoned' ? 0.2 : 0.7;
     const agentRows = (await sql()`
       SELECT (a->>'agentId') AS agent_id,
+             coalesce(a->>'variant', 'base') AS variant,
              count(*)::int AS n,
              count(*) FILTER (WHERE (a->>'ok') = 'true')::int AS ok
       FROM public.wave_step_runs s,
            lateral jsonb_array_elements(coalesce(s.agent_results, '[]'::jsonb)) a
       WHERE s.tenant_id = ${DEFAULT_TENANT_ID} AND s.wave_run_id = ${c.id}
-      GROUP BY (a->>'agentId')
-    `) as unknown as Array<{ agent_id: string | null; n: number; ok: number }>;
+      GROUP BY (a->>'agentId'), coalesce(a->>'variant', 'base')
+    `) as unknown as Array<{ agent_id: string | null; variant: string; n: number; ok: number }>;
 
     for (const ar of agentRows) {
       if (!ar.agent_id) continue;
@@ -212,12 +219,12 @@ export async function scoreOutcomes(opts: { dryRun?: boolean } = {}): Promise<{ 
       const approval = approvals.has(ar.agent_id) ? approvals.get(ar.agent_id)! : null;
       const reward = blend({ approval, outcome: outcomeVal, reliability }, warm);
       if (reward == null) continue;
-      const ref = `${c.id}:${ar.agent_id}`;
+      const ref = `${c.id}:${ar.agent_id}:${ar.variant}`;
 
       if (!dryRun) {
         const ins = (await sql()`
-          INSERT INTO public.reward_events (tenant_id, task_id, agent_id, role, reward, components, weights, stage, source, ref)
-          VALUES (${DEFAULT_TENANT_ID}, ${null}, ${ar.agent_id}, ${role}, ${reward},
+          INSERT INTO public.reward_events (tenant_id, task_id, agent_id, role, variant, reward, components, weights, stage, source, ref)
+          VALUES (${DEFAULT_TENANT_ID}, ${null}, ${ar.agent_id}, ${role}, ${ar.variant}, ${reward},
                   ${jsonb({ approval, outcome: outcomeVal, reliability })}, ${jsonb(warm)}, 'warm', 'campaign', ${ref})
           ON CONFLICT (tenant_id, ref) WHERE ref IS NOT NULL DO NOTHING
           RETURNING id
@@ -225,7 +232,7 @@ export async function scoreOutcomes(opts: { dryRun?: boolean } = {}): Promise<{ 
         if (ins.length > 0) {
           await sql()`
             INSERT INTO public.agent_policy (tenant_id, role, agent_id, variant, n, reward_sum, reward_mean, last_reward, updated_at)
-            VALUES (${DEFAULT_TENANT_ID}, ${role}, ${ar.agent_id}, 'base', 1, ${reward}, ${reward}, ${reward}, now())
+            VALUES (${DEFAULT_TENANT_ID}, ${role}, ${ar.agent_id}, ${ar.variant}, 1, ${reward}, ${reward}, ${reward}, now())
             ON CONFLICT (tenant_id, role, agent_id, variant) DO UPDATE
               SET n = public.agent_policy.n + 1,
                   reward_sum = public.agent_policy.reward_sum + ${reward},
@@ -258,11 +265,11 @@ export async function getPolicy(): Promise<PolicyRow[]> {
   return rows.map((r) => ({ ...r, reward_mean: Number(r.reward_mean), last_reward: r.last_reward == null ? null : Number(r.last_reward), updated_at: new Date(r.updated_at).toISOString() }));
 }
 
-export interface RewardEventRow { task_id: number | null; agent_id: string; role: string; reward: number; components: { approval: number | null; outcome: number | null; reliability: number | null }; stage: string; source: string; scored_at: string }
+export interface RewardEventRow { task_id: number | null; agent_id: string; role: string; variant: string; reward: number; components: { approval: number | null; outcome: number | null; reliability: number | null }; stage: string; source: string; scored_at: string }
 
 export async function recentRewardEvents(limit = 50): Promise<RewardEventRow[]> {
   const rows = (await sql()`
-    SELECT task_id, agent_id, role, reward, components, stage, source, scored_at
+    SELECT task_id, agent_id, role, variant, reward, components, stage, source, scored_at
     FROM public.reward_events WHERE tenant_id = ${DEFAULT_TENANT_ID}
     ORDER BY scored_at DESC LIMIT ${Math.min(limit, 200)}
   `) as unknown as Array<Omit<RewardEventRow, 'reward' | 'scored_at'> & { reward: string | number; scored_at: Date }>;

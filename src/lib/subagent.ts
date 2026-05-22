@@ -128,6 +128,7 @@ export interface SpawnResult {
   text?: string;
   error?: string;
   usage?: { input: number; output: number };
+  variant?: string; // constraint variant chosen for this run (Phase 3 selection)
 }
 
 interface BoardroomRow { direction: 'in' | 'out'; sender: string; text: string; created_at: Date }
@@ -180,9 +181,10 @@ async function persistMemoryRollup(rollupText: string): Promise<void> {
   }
 }
 
-export async function spawnSubAgent(type: string, task: string, parentTaskId?: number): Promise<SpawnResult> {
+export async function spawnSubAgent(type: string, task: string, parentTaskId?: number, opts?: { variant?: string }): Promise<SpawnResult> {
   const spec = SUBAGENT_REGISTRY[type];
   if (!spec) return { ok: false, error: `Unknown sub-agent type: ${type}. Available: ${Object.keys(SUBAGENT_REGISTRY).join(', ')}` };
+  const variant = opts?.variant ?? 'base';
 
   const rate = checkRate(type);
   if (!rate.allowed) {
@@ -198,8 +200,9 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
     hydratedTask = await buildMemoryCompactorPayload(task);
   }
 
-  // Live-tasks tracking
-  const taskId = await startTask(type, task, parentTaskId);
+  // Live-tasks tracking. Record the constraint variant so the reward loop can
+  // attribute this run's score to (role, agent, variant).
+  const taskId = await startTask(type, task, parentTaskId, { variant });
   // Log the dispatch (from keyplayer -> sub-agent)
   await logA2A('keyplayer', type, task, { phase: 'dispatch', task_id: taskId });
 
@@ -297,6 +300,7 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
       ok: true,
       text,
       usage: { input: response.usage.input_tokens, output: response.usage.output_tokens },
+      variant,
     };
   } catch (err) {
     const msg = err instanceof Anthropic.APIError ? `Anthropic ${err.status}: ${err.message}` : (err as Error).message;
