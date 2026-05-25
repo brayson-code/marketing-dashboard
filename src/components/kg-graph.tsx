@@ -89,16 +89,30 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
     });
   }, []);
 
-  // Only keep relations whose endpoints exist, then shape into force-graph data.
-  // Rebuilds when the data identity changes; force-graph keeps positions warm.
+  // Content signature: only the actual entities/relations matter, not array
+  // identity. The /kg page re-fetches every 5s and hands us fresh arrays with
+  // identical content; without this guard force-graph would re-run its whole
+  // simulation each poll and never settle/center. We rebuild graphData (and let
+  // force-graph re-layout) ONLY when this signature changes.
+  const sig = useMemo(
+    () =>
+      entities.map((e) => `${e.id}:${e.kind}:${e.name}`).join('|') +
+      '::' +
+      relations.map((r) => `${r.from_id}-${r.to_id}-${r.label}`).join('|'),
+    [entities, relations],
+  );
+  const cache = useRef<{ sig: string; data: { nodes: GNode[]; links: GLink[] } }>({ sig: '', data: { nodes: [], links: [] } });
   const graphData = useMemo(() => {
+    if (cache.current.sig === sig && cache.current.data.nodes.length > 0) return cache.current.data; // unchanged → keep warm positions
     const ids = new Set(entities.map((e) => e.id));
     const nodes: GNode[] = entities.map((e) => ({ id: e.id, name: e.name, kind: e.kind }));
     const links: GLink[] = relations
       .filter((r) => ids.has(r.from_id) && ids.has(r.to_id))
       .map((r) => ({ source: r.from_id, target: r.to_id, label: r.label }));
-    return { nodes, links };
-  }, [entities, relations]);
+    const data = { nodes, links };
+    cache.current = { sig, data };
+    return data;
+  }, [sig, entities, relations]);
 
   // Adjacency for hover highlighting (neighbors + incident edges stay lit).
   const neighbors = useMemo(() => {
