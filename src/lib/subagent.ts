@@ -7,6 +7,7 @@ import { kgToolDefinitions, handleKgTool } from './kg-tools';
 import { chooseVariant } from './selection';
 import { constraintsForVariant, roleFor } from './constraints';
 import { selectGenesForTask, genesDirective, recordGeneApplications } from './genes';
+import { logTimeSaving, actionTypeForAgent } from './roi';
 import { getDefPrompt, getSpawnSpec } from './agent-defs';
 
 const STATE_DIR = join(process.cwd(), 'state/keyplayer');
@@ -332,6 +333,10 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
       inputTokens: response.usage.input_tokens,
       outputTokens: response.usage.output_tokens,
     });
+
+    // ROI: log the time this agent run saved (preset minutes for its action type).
+    // Best-effort + idempotent per task; never blocks the result.
+    await logTimeSaving({ actionType: actionTypeForAgent(type), agentId: type, source: 'agent', taskId }).catch(() => {});
 
     return {
       ok: true,

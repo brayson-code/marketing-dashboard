@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   Gauge, Bot, PenLine, MessageCircle, Mail, Contact, Zap,
   Search, BarChart3, LineChart, BrainCircuit, Rocket, Clock, List, Settings,
-  FolderOpen, MessagesSquare, Activity, Target, Inbox, Network, DollarSign, Plug, Bug, Waves, TrendingUp, Dna,
+  FolderOpen, MessagesSquare, Activity, Target, Inbox, Network, DollarSign, Plug, Bug, Waves, TrendingUp, Dna, Timer,
 } from 'lucide-react';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { useDashboard } from '@/store';
@@ -64,6 +64,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/issues', label: 'Issues', icon: Bug },
       { href: '/kpis', label: 'KPIs', icon: BarChart3 },
       { href: '/analytics', label: 'Analytics', icon: LineChart },
+      { href: '/roi', label: 'ROI', icon: Timer },
       { href: '/usage', label: 'Usage', icon: DollarSign },
       { href: '/learning', label: 'Learning', icon: TrendingUp },
       { href: '/genes', label: 'Genes', icon: Dna },

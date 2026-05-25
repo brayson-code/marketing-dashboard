@@ -19,42 +19,35 @@ existing app and sequences the work. Status legend: ☐ todo · ◐ in progress 
 
 ---
 
-## Phase 0 — Foundation: multi-tenant + RLS  *(prereq for a client product)*
-The app is effectively single-tenant today (`DEFAULT_TENANT_ID`, backend uses the
-postgres role which BYPASSES RLS). A client product needs real per-workspace isolation.
-- ☐ `workspaces` table + membership (client + VA roles per workspace)
-- ☐ Per-workspace auth/session → resolve tenant from the logged-in user, not a constant
-- ☐ RLS policies on every table; stop relying on the bypass role for tenant scoping
-- ☐ Migrate existing data under a default workspace
+## CONFIRMED SCOPE (Brayson decisions, 2026-05-25)
+- Time-saved tracker = **Time + full ROI** (Key Audit: revenue/profit/hours/admin% → $/hr → projected ROI).
+- Per-task minutes = **sensible presets, editable** per workspace.
+- Social OAuth = **publish content + read analytics/engagement + pull brand voice**.
+- UI = **PRD "Liquid Glass"** (dark `#0A0A0F`, emerald `#10D982`, frosted glass, Sora/Inter, motion).
+- Single-tenant for now (no client workspaces / multi-tenant unless Brayson asks).
 
-## Phase 1 — Shell: navigation + "Liquid Glass" theme  *(makes it FEEL like V2 fast)*
-- ☐ Sidebar relabel + regroup (COMMAND / WORK / GROW / BUILD / SETTINGS) — see nav map
-- ☐ Theme tokens: `#0A0A0F` base, emerald `#10D982`, amber `#F5A623`, frosted glass, Sora/Inter
-- ☐ framer-motion page/card transitions; number odometers; agent "thinking" states
-- ☐ Top nav: agent status dot, notifications bell, search, user/plan badge
+## Track A — Time-saved + ROI tracker  *(headline new feature; unblocked — BUILD FIRST)*
+- ☐ `key_audit` table + standalone audit-input form (not the 8-step wizard) + live calculator
+- ☐ `time_savings_log` table + editable per-action minute presets (email 8m, research 20m, …)
+- ☐ Auto-log: when an agent task / draft completes, log minutes + $ saved by action type
+- ☐ ROI dashboard page: hours saved, value reclaimed, old vs new $/hr, per-agent breakdown, trend
 
-## Phase 2 — Activation: onboarding + ROI  *(the most important V2 feature)*
-- ☐ 8-step onboarding wizard (full-screen takeover, progress bar, image slots, role branch, confetti)
-- ☐ `key_audit` table + live ROI calculator (the lead-magnet math)
-- ☐ `time_savings_log` table + per-action minute presets + ROI dashboard (projected→actual)
-- ☐ `onboarding_complete` flag + trigger on first login
+## Track B — "Liquid Glass" UI redesign  *(unblocked)*
+- ☑ Nav relabel: Squads→Agents, Comms→Inbox (shipped 2026-05-25)
+- ☐ Theme tokens (#0A0A0F base, emerald #10D982, frosted glass, Sora/Inter)
+- ☐ framer-motion transitions; glass panels; number odometers
+- ☐ Workspace/Knowledge label decision (our "Workspace" = Agent Studio; `/kg` already = Knowledge)
 
-## Phase 3 — Boardroom + agent training
-- ☐ Boardroom page redesign (executive cards w/ portraits, status, last action, chat)
-- ☐ Map our agents to ATLAS/REX/MARA/NOVA personas (+ locked VEGA/ARIA on Pro)
-- ☐ Agent Training UI (plain-English prompt + traits + focus areas) → `agent_instruction_versions` + history
-      (overlaps existing Agent Studio + the strategy-gene layer)
+## Track C — Social OAuth (IG/FB/LinkedIn/YouTube/X)  *(BLOCKED on dev apps + credentials)*
+Each platform needs a registered developer app + client id/secret + redirect URI, and several
+need review for publish scopes (Meta publishing, LinkedIn `w_member_social`, X paid API tier).
+- ☐ **Prereq (Brayson):** create dev apps + provide credentials per platform; pick first platform
+- ☐ Generic OAuth connect/callback + token store (per provider)
+- ☐ Publish path (draft → approve → post), read path (analytics → KPIs), brand-voice pull → KB
 
-## Phase 4 — Dream Mode  *(flagship differentiator)*
-- ☐ Productize the existing cron/proactive sweep into a nightly session
-- ☐ `dream_sessions` table; typed cards (opportunity/efficiency/risk/competitive/follow_up)
-- ☐ Dream Mode page (activation + active states, morning briefing card row)
-- ☐ Morning digest email/Slack (Phase 4b — needs email infra)
-
-## Phase 5 — Integrations + business brain
-- ☐ OAuth flows: Google (Drive/Gmail/Calendar) first, then Slack, Notion, ClickUp
-- ☐ Firecrawl website scrape on onboarding → `knowledge_nodes`
-- ☐ Knowledge page redesign (filters, add/upload/connect, last-used-by-agent)
+## DESCOPED (in the PRD, but NOT requested — do not build unless Brayson confirms)
+8-step onboarding wizard · Dream Mode · AI-Boardroom personas (ATLAS/REX/…) · agent-training UI ·
+multi-tenant/client workspaces · Firecrawl · Granola/ClickUp/Notion non-social integrations.
 
 ---
 
