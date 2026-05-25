@@ -3,6 +3,15 @@
 Source PRD: `keycommand-v2-prd.md` (Mitch, 2026-05-24). This plan maps the PRD onto the
 existing app and sequences the work. Status legend: ☐ todo · ◐ in progress · ☑ done.
 
+> **SCOPE CORRECTION (Brayson, 2026-05-25):** the PRD was written fast and contains
+> out-of-scope items. The ACTUAL V2 ask is narrow: **(1) a different UI look** (align
+> with Mitch's aesthetic) and **(2) a time-saved-per-task tracker** (show users how much
+> time the agents save per task), **plus (3) OAuth to connect social accounts**
+> (Instagram/Facebook/LinkedIn/YouTube/X). Treat the rest of the PRD (8-step onboarding
+> wizard, Key Audit $ calculator, Dream Mode, AI-Boardroom personas, agent-training UI,
+> multi-tenant/clients) as **NOT confirmed** — do not build them unless Brayson says so.
+> The phases below are kept for reference but most are descoped pending his answers.
+
 > **Gating decision (answer before Phase 1):** redesign THIS app (Next 16, project
 > `zgtiviorskkcuzxnpvha`) and point `command.keyplayers.com` at it, OR fork the engine
 > into the KeyCommand Supabase project (`qdlfesoejaoxfqziubpd`, ca-central-1)?
