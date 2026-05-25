@@ -9,11 +9,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import type { ForceGraphMethods, NodeObject, LinkObject } from 'react-force-graph-2d';
 
-// Canvas lib touches window/document at import → load client-only. next/dynamic
-// erases the component's generics, so we type it loosely here; our own callbacks
-// below stay strongly typed against GNode/GLink.
+// Canvas lib touches window/document at import → load client-only via a wrapper
+// that forwards the instance through a `graphRef` prop (next/dynamic doesn't
+// forward refs, so zoomToFit() needs this indirection). Typed loosely here; our
+// own callbacks below stay strongly typed against GNode/GLink.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const ForceGraph2D = dynamic(() => import('react-force-graph-2d'), { ssr: false }) as any;
+const ForceGraph2D = dynamic(() => import('./kg-force-graph'), { ssr: false }) as any;
 
 export interface KgGraphEntity {
   id: number;
@@ -246,7 +247,7 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
     <div ref={containerRef} style={{ width: '100%', position: 'relative' }}>
       <div style={{ borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--card)', overflow: 'hidden' }}>
         <ForceGraph2D
-          ref={fgRef}
+          graphRef={fgRef}
           graphData={graphData}
           width={width}
           height={height}

@@ -37,8 +37,8 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'CORE',
     items: [
       { href: '/', label: 'Overview', icon: Gauge },
-      { href: '/agents/squads', label: 'Squads', icon: Bot },
-      { href: '/agents/comms', label: 'Comms', icon: MessageCircle },
+      { href: '/agents/squads', label: 'Agents', icon: Bot },
+      { href: '/agents/comms', label: 'Inbox', icon: MessageCircle },
       { href: '/boardroom', label: 'Boardroom', icon: MessagesSquare },
       { href: '/tasks', label: 'Tasks', icon: Activity },
       { href: '/drafts', label: 'Drafts', icon: Inbox },
