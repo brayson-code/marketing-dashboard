@@ -1,6 +1,19 @@
 'use client';
 
+// Knowledge-graph renderer backed by react-force-graph-2d (canvas + d3-force).
+// Replaces the previous hand-rolled SVG sim that re-rendered the whole React tree
+// every animation frame (O(n²) + 60fps reconciliation = jank). The physics + pan/
+// zoom/drag now run on canvas with no React re-render per tick. Same public API.
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
+import type { ForceGraphMethods, NodeObject, LinkObject } from 'react-force-graph-2d';
+
+// Canvas lib touches window/document at import → load client-only. next/dynamic
+// erases the component's generics, so we type it loosely here; our own callbacks
+// below stay strongly typed against GNode/GLink.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const ForceGraph2D = dynamic(() => import('react-force-graph-2d'), { ssr: false }) as any;
 
 export interface KgGraphEntity {
   id: number;
@@ -38,308 +51,213 @@ const FALLBACK_COLOR = '#94a3b8';
 const colorForKind = (kind: string) => KIND_COLORS[kind?.toLowerCase()] ?? FALLBACK_COLOR;
 const truncate = (s: string, max: number) => (s.length <= max ? s : s.slice(0, max - 1) + '…');
 
-interface SimNode { id: number; x: number; y: number; vx: number; vy: number; }
+interface GNode extends NodeObject {
+  id: number;
+  name: string;
+  kind: string;
+}
+interface GLink extends LinkObject {
+  source: number | GNode;
+  target: number | GNode;
+  label: string;
+}
+
+// Resolve a CSS custom property to a concrete color the canvas can use (canvas
+// can't read `var(--x)`). Falls back to a sensible default for SSR/first paint.
+function cssVar(name: string, fallback: string): string {
+  if (typeof window === 'undefined') return fallback;
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+}
 
 export default function KnowledgeGraph({ entities, relations, compact = false, onSelect }: KnowledgeGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const svgRef = useRef<SVGSVGElement>(null);
-  const [size, setSize] = useState({ w: 640, h: compact ? 220 : 480 });
-  const sizeRef = useRef(size);
-  sizeRef.current = size;
-  const nodes = useRef<Map<number, SimNode>>(new Map());
-  const [, forceRender] = useState(0);
+  const fgRef = useRef<ForceGraphMethods<GNode, GLink> | undefined>(undefined);
+  const height = compact ? 220 : 480;
+  const [width, setWidth] = useState(640);
   const [hoverId, setHoverId] = useState<number | null>(null);
-  const [view, setView] = useState({ x: 0, y: 0, k: 1 });
 
-  // Mutable state the rAF loop reads (avoids stale closures).
-  // `alpha` is a cooling factor (d3-force style): it scales applied forces and
-  // decays every tick so the layout settles instead of jittering forever.
-  const sim = useRef({ edges: [] as KgGraphRelation[], w: 640, h: 480, dragId: null as number | null, raf: 0, ticks: 0, running: false, compact, alpha: 1 });
-
-  const validRelations = useMemo(
-    () => relations.filter((r) => entities.some((e) => e.id === r.from_id) && entities.some((e) => e.id === r.to_id)),
-    [relations, entities],
-  );
-
-  const connectedIds = useMemo(() => {
-    if (hoverId === null) return null;
-    const set = new Set<number>([hoverId]);
-    validRelations.forEach((r) => {
-      if (r.from_id === hoverId) set.add(r.to_id);
-      if (r.to_id === hoverId) set.add(r.from_id);
+  // Theme colors resolved from CSS vars (re-read on mount; cheap).
+  const [theme, setTheme] = useState({ border: '#2a2a2a', fg: '#e5e5e5', card: '#111', primary: '#6366f1', muted: '#888' });
+  useEffect(() => {
+    setTheme({
+      border: cssVar('--border', '#2a2a2a'),
+      fg: cssVar('--foreground', '#e5e5e5'),
+      card: cssVar('--card', '#111'),
+      primary: cssVar('--primary', '#6366f1'),
+      muted: cssVar('--muted-foreground', '#888'),
     });
-    return set;
-  }, [hoverId, validRelations]);
-
-  sim.current.edges = validRelations;
-  sim.current.w = size.w;
-  sim.current.h = size.h;
-  sim.current.compact = compact;
-
-  const kick = useCallback(() => {
-    const s = sim.current;
-    s.ticks = 0;
-    s.alpha = 1; // reheat so an interaction (drag/new data) re-settles the layout
-    if (s.running) return;
-    s.running = true;
-    const tick = () => {
-      const { w, h, edges, dragId, compact: cmp } = sim.current;
-      const cx = w / 2, cy = h / 2;
-      const REST = cmp ? 64 : 96;
-      const REPULSION = cmp ? 2600 : 6000;
-      const CENTER = 0.016;
-      const DAMP = 0.85;
-      const ALPHA_DECAY = 0.02; // ~exponential cool-down toward ALPHA_MIN
-      const ALPHA_MIN = 0.02;
-      const alpha = sim.current.alpha;
-      const list = [...nodes.current.values()];
-      const fx = new Map<number, number>(), fy = new Map<number, number>();
-      list.forEach((n) => { fx.set(n.id, 0); fy.set(n.id, 0); });
-      for (let i = 0; i < list.length; i++) {
-        for (let j = i + 1; j < list.length; j++) {
-          const a = list[i], b = list[j];
-          let dx = a.x - b.x, dy = a.y - b.y;
-          let d2 = dx * dx + dy * dy; if (d2 < 1) d2 = 1;
-          const d = Math.sqrt(d2), f = REPULSION / d2;
-          const ux = dx / d, uy = dy / d;
-          fx.set(a.id, fx.get(a.id)! + ux * f); fy.set(a.id, fy.get(a.id)! + uy * f);
-          fx.set(b.id, fx.get(b.id)! - ux * f); fy.set(b.id, fy.get(b.id)! - uy * f);
-        }
-      }
-      edges.forEach((r) => {
-        const a = nodes.current.get(r.from_id), b = nodes.current.get(r.to_id);
-        if (!a || !b) return;
-        const dx = b.x - a.x, dy = b.y - a.y;
-        const d = Math.sqrt(dx * dx + dy * dy) || 1;
-        const k = ((d - REST) / d) * 0.06;
-        fx.set(a.id, fx.get(a.id)! + dx * k); fy.set(a.id, fy.get(a.id)! + dy * k);
-        fx.set(b.id, fx.get(b.id)! - dx * k); fy.set(b.id, fy.get(b.id)! - dy * k);
-      });
-      let energy = 0;
-      list.forEach((n) => {
-        if (dragId === n.id) { n.vx = 0; n.vy = 0; return; }
-        // Net acceleration, scaled by the cooling factor so motion fades out.
-        let ax = (fx.get(n.id)! + (cx - n.x) * CENTER) * alpha;
-        let ay = (fy.get(n.id)! + (cy - n.y) * CENTER) * alpha;
-        if (!Number.isFinite(ax)) ax = 0;
-        if (!Number.isFinite(ay)) ay = 0;
-        // Semi-implicit Euler with damping: decay existing velocity, then add accel.
-        n.vx = n.vx * DAMP + ax; n.vy = n.vy * DAMP + ay;
-        if (!Number.isFinite(n.vx)) n.vx = 0;
-        if (!Number.isFinite(n.vy)) n.vy = 0;
-        n.x += Math.max(-25, Math.min(25, n.vx));
-        n.y += Math.max(-25, Math.min(25, n.vy));
-        n.x = Math.max(24, Math.min(w - 24, n.x));
-        n.y = Math.max(24, Math.min(h - 24, n.y));
-        if (!Number.isFinite(n.x)) n.x = cx;
-        if (!Number.isFinite(n.y)) n.y = cy;
-        energy += n.vx * n.vx + n.vy * n.vy;
-      });
-      forceRender((t) => t + 1);
-      sim.current.ticks++;
-      // Cool down toward ALPHA_MIN; the layout settles once alpha is low and motion is small.
-      sim.current.alpha = Math.max(ALPHA_MIN, alpha - ALPHA_DECAY);
-      const settled = alpha <= ALPHA_MIN && energy < 0.5;
-      if ((!settled || dragId !== null) && sim.current.ticks < 1200) {
-        sim.current.raf = requestAnimationFrame(tick);
-      } else {
-        sim.current.running = false;
-      }
-    };
-    sim.current.raf = requestAnimationFrame(tick);
   }, []);
 
+  // Only keep relations whose endpoints exist, then shape into force-graph data.
+  // Rebuilds when the data identity changes; force-graph keeps positions warm.
+  const graphData = useMemo(() => {
+    const ids = new Set(entities.map((e) => e.id));
+    const nodes: GNode[] = entities.map((e) => ({ id: e.id, name: e.name, kind: e.kind }));
+    const links: GLink[] = relations
+      .filter((r) => ids.has(r.from_id) && ids.has(r.to_id))
+      .map((r) => ({ source: r.from_id, target: r.to_id, label: r.label }));
+    return { nodes, links };
+  }, [entities, relations]);
+
+  // Adjacency for hover highlighting (neighbors + incident edges stay lit).
+  const neighbors = useMemo(() => {
+    const m = new Map<number, Set<number>>();
+    for (const l of graphData.links) {
+      const s = typeof l.source === 'object' ? l.source.id : l.source;
+      const t = typeof l.target === 'object' ? l.target.id : l.target;
+      if (!m.has(s)) m.set(s, new Set());
+      if (!m.has(t)) m.set(t, new Set());
+      m.get(s)!.add(t);
+      m.get(t)!.add(s);
+    }
+    return m;
+  }, [graphData]);
+
+  const isLit = useCallback(
+    (id: number) => hoverId === null || id === hoverId || (neighbors.get(hoverId)?.has(id) ?? false),
+    [hoverId, neighbors],
+  );
+
+  // Track container width so the canvas fills the panel responsively.
   useEffect(() => {
     const el = containerRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver((ents) => {
       const w = ents[0].contentRect.width;
-      if (w > 0) setSize({ w: Math.max(220, Math.round(w)), h: compact ? 220 : 480 });
+      if (w > 0) setWidth(Math.max(220, Math.round(w)));
     });
     ro.observe(el);
     return () => ro.disconnect();
+  }, []);
+
+  // Fit the graph to the viewport once it settles.
+  const onEngineStop = useCallback(() => {
+    fgRef.current?.zoomToFit(400, compact ? 20 : 40);
   }, [compact]);
 
-  useEffect(() => {
-    const { w, h } = sim.current;
-    const cx = w / 2, cy = h / 2;
-    const n = entities.length;
-    const next = new Map<number, SimNode>();
-    entities.forEach((e, i) => {
-      const prev = nodes.current.get(e.id);
-      if (prev) next.set(e.id, prev);
-      else {
-        const angle = (i / Math.max(1, n)) * Math.PI * 2;
-        const r = Math.min(w, h) / 3.2;
-        next.set(e.id, { id: e.id, x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r, vx: 0, vy: 0 });
+  const nodeR = compact ? 4 : 6;
+
+  // Draw each node: kind-colored disc + soft glow + initial glyph + name label.
+  const drawNode = useCallback(
+    (node: GNode, ctx: CanvasRenderingContext2D, globalScale: number) => {
+      const x = node.x ?? 0;
+      const y = node.y ?? 0;
+      const lit = isLit(node.id);
+      const hovered = hoverId === node.id;
+      const color = colorForKind(node.kind);
+      const r = hovered ? nodeR * 1.3 : nodeR;
+      ctx.globalAlpha = lit ? 1 : 0.25;
+
+      // glow
+      ctx.beginPath();
+      ctx.arc(x, y, r * 2.1, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.globalAlpha = (lit ? 1 : 0.25) * (hovered ? 0.28 : 0.16);
+      ctx.fill();
+
+      // disc
+      ctx.globalAlpha = lit ? 1 : 0.25;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.lineWidth = (hovered ? 1.6 : 1.2) / globalScale;
+      ctx.strokeStyle = hovered ? theme.fg : theme.card;
+      ctx.stroke();
+
+      // initial glyph
+      const glyph = node.name.charAt(0).toUpperCase();
+      ctx.font = `700 ${r * 1.1}px ui-sans-serif, system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#fff';
+      ctx.fillText(glyph, x, y);
+
+      // name label (skip when zoomed far out to reduce clutter)
+      if (globalScale > 0.6 || hovered) {
+        const fontSize = (compact ? 10 : 12) / globalScale;
+        ctx.font = `${hovered ? 600 : 400} ${fontSize}px ui-sans-serif, system-ui, sans-serif`;
+        ctx.fillStyle = theme.fg;
+        ctx.fillText(truncate(node.name, compact ? 12 : 18), x, y + r + fontSize);
       }
-    });
-    nodes.current = next;
-    kick();
-  }, [entities, size.w, size.h, kick]);
-
-  useEffect(() => () => { if (sim.current.raf) cancelAnimationFrame(sim.current.raf); }, []);
-
-  // Zoom: Shift + scroll only (plain scroll lets the page scroll normally). Native
-  // non-passive listener so we can preventDefault without React's passive default.
-  useEffect(() => {
-    const svg = svgRef.current;
-    if (!svg || compact) return;
-    const handler = (e: WheelEvent) => {
-      if (!e.ctrlKey && !e.metaKey) return; // no modifier → page scrolls, graph stays put
-      e.preventDefault(); // also suppresses the browser's ctrl+scroll zoom
-      const delta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
-      const factor = delta < 0 ? 1.12 : 1 / 1.12;
-      const rect = svg.getBoundingClientRect();
-      const ux = ((e.clientX - rect.left) / rect.width) * sizeRef.current.w;
-      const uy = ((e.clientY - rect.top) / rect.height) * sizeRef.current.h;
-      setView((v) => {
-        const k = Math.max(0.4, Math.min(3, v.k * factor));
-        return { k, x: ux - ((ux - v.x) / v.k) * k, y: uy - ((uy - v.y) / v.k) * k };
-      });
-    };
-    svg.addEventListener('wheel', handler, { passive: false });
-    return () => svg.removeEventListener('wheel', handler);
-  }, [compact]);
-
-  const toGraph = useCallback((clientX: number, clientY: number) => {
-    const svg = svgRef.current;
-    if (!svg) return { x: 0, y: 0 };
-    const rect = svg.getBoundingClientRect();
-    const ux = ((clientX - rect.left) / rect.width) * size.w;
-    const uy = ((clientY - rect.top) / rect.height) * size.h;
-    return { x: (ux - view.x) / view.k, y: (uy - view.y) / view.k };
-  }, [size.w, size.h, view]);
-
-  const drag = useRef<{ id: number | null; moved: boolean; panX: number; panY: number; startX: number; startY: number; panning: boolean }>(
-    { id: null, moved: false, panX: 0, panY: 0, startX: 0, startY: 0, panning: false },
+      ctx.globalAlpha = 1;
+    },
+    [isLit, hoverId, nodeR, theme, compact],
   );
 
-  const onNodePointerDown = (id: number) => (e: React.PointerEvent) => {
-    e.stopPropagation();
-    (e.target as Element).setPointerCapture?.(e.pointerId);
-    drag.current = { ...drag.current, id, moved: false, startX: e.clientX, startY: e.clientY };
-    sim.current.dragId = id;
-    kick();
-  };
-  const onPointerMove = (e: React.PointerEvent) => {
-    const d = drag.current;
-    if (d.id !== null) {
-      if (Math.hypot(e.clientX - d.startX, e.clientY - d.startY) > 3) d.moved = true;
-      const g = toGraph(e.clientX, e.clientY);
-      const node = nodes.current.get(d.id);
-      if (node) { node.x = g.x; node.y = g.y; node.vx = 0; node.vy = 0; }
-      kick();
-    } else if (d.panning && !compact) {
-      setView((v) => ({ ...v, x: d.panX + (e.clientX - d.startX), y: d.panY + (e.clientY - d.startY) }));
-    }
-  };
-  const endPointer = () => {
-    const d = drag.current;
-    if (d.id !== null && !d.moved && onSelect) onSelect(d.id);
-    drag.current = { ...d, id: null, panning: false };
-    sim.current.dragId = null;
-    kick();
-  };
-  // Pan: Shift + drag the background (prevents accidental "surfing" on a normal click-drag).
-  const onBgPointerDown = (e: React.PointerEvent) => {
-    if (compact || (!e.ctrlKey && !e.metaKey)) return;
-    drag.current = { ...drag.current, panning: true, startX: e.clientX, startY: e.clientY, panX: view.x, panY: view.y };
-  };
+  // Bigger invisible hit area so custom-drawn nodes are easy to click/hover.
+  const drawNodePointerArea = useCallback(
+    (node: GNode, color: string, ctx: CanvasRenderingContext2D) => {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(node.x ?? 0, node.y ?? 0, nodeR * 1.6, 0, Math.PI * 2);
+      ctx.fill();
+    },
+    [nodeR],
+  );
+
+  const linkColor = useCallback(
+    (link: GLink) => {
+      const s = typeof link.source === 'object' ? link.source.id : link.source;
+      const t = typeof link.target === 'object' ? link.target.id : link.target;
+      if (hoverId !== null && (s === hoverId || t === hoverId)) return theme.primary;
+      return theme.border;
+    },
+    [hoverId, theme],
+  );
 
   if (entities.length === 0) {
     return (
-      <div className="flex items-center justify-center text-xs text-muted-foreground rounded-lg"
-        style={{ minHeight: compact ? 220 : 360, border: '1px dashed var(--border)' }}>
+      <div
+        className="flex items-center justify-center text-xs text-muted-foreground rounded-lg"
+        style={{ minHeight: compact ? 220 : 360, border: '1px dashed var(--border)' }}
+      >
         No graph yet
       </div>
     );
   }
 
-  const nodeR = compact ? 9 : 13;
-  const hoverR = compact ? 12 : 17;
-
   return (
     <div ref={containerRef} style={{ width: '100%', position: 'relative' }}>
-      <svg
-        ref={svgRef}
-        width="100%"
-        height={size.h}
-        viewBox={`0 0 ${size.w} ${size.h}`}
-        onPointerDown={onBgPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={endPointer}
-        onPointerLeave={endPointer}
-        style={{
-          display: 'block', background: 'var(--card)', borderRadius: 'var(--radius)',
-          border: '1px solid var(--border)', touchAction: 'none',
-          cursor: drag.current.panning ? 'grabbing' : 'default',
-        }}
-      >
-        <g transform={`translate(${view.x},${view.y}) scale(${view.k})`}>
-          {validRelations.map((r, i) => {
-            const a = nodes.current.get(r.from_id), b = nodes.current.get(r.to_id);
-            if (!a || !b) return null;
-            const active = connectedIds !== null && connectedIds.has(r.from_id) && connectedIds.has(r.to_id);
-            const dimmed = connectedIds !== null && !active;
-            return (
-              <g key={`e-${i}`} opacity={dimmed ? 0.12 : 1}>
-                <line x1={a.x} y1={a.y} x2={b.x} y2={b.y}
-                  stroke={active ? 'var(--primary)' : 'var(--border)'} strokeWidth={active ? 2.5 : 1.4} />
-                {!compact && (
-                  <text x={(a.x + b.x) / 2} y={(a.y + b.y) / 2 - 3} textAnchor="middle"
-                    fill="var(--muted-foreground)" fontSize={9} style={{ pointerEvents: 'none' }}>
-                    {truncate(r.label, 16)}
-                  </text>
-                )}
-              </g>
-            );
-          })}
-          {entities.map((e) => {
-            const p = nodes.current.get(e.id);
-            if (!p) return null;
-            const color = colorForKind(e.kind);
-            const isHover = hoverId === e.id;
-            const dimmed = connectedIds !== null && !connectedIds.has(e.id);
-            const r = isHover ? hoverR : nodeR;
-            return (
-              <g key={`n-${e.id}`} opacity={dimmed ? 0.28 : 1}
-                style={{ cursor: 'grab' }}
-                onPointerDown={onNodePointerDown(e.id)}
-                onPointerEnter={() => setHoverId(e.id)}
-                onPointerLeave={() => setHoverId((h) => (h === e.id ? null : h))}
-              >
-                <circle cx={p.x} cy={p.y} r={r * 2.1} fill={color} opacity={isHover ? 0.28 : 0.16} />
-                <circle cx={p.x} cy={p.y} r={r} fill={color}
-                  stroke={isHover ? 'var(--foreground)' : 'var(--card)'} strokeWidth={isHover ? 2.5 : 2} />
-                <text x={p.x} y={p.y} textAnchor="middle" dominantBaseline="central"
-                  fill="#fff" fontSize={r} fontWeight={700} style={{ pointerEvents: 'none' }}>
-                  {e.name.charAt(0).toUpperCase()}
-                </text>
-                <text x={p.x} y={p.y + r + 12} textAnchor="middle"
-                  fill="var(--foreground)" fontSize={compact ? 10 : 12} fontWeight={isHover ? 600 : 400}
-                  style={{ pointerEvents: 'none' }}>
-                  {truncate(e.name, compact ? 12 : 18)}
-                </text>
-              </g>
-            );
-          })}
-        </g>
-      </svg>
+      <div style={{ borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--card)', overflow: 'hidden' }}>
+        <ForceGraph2D
+          ref={fgRef}
+          graphData={graphData}
+          width={width}
+          height={height}
+          backgroundColor="rgba(0,0,0,0)"
+          nodeRelSize={nodeR}
+          nodeCanvasObject={drawNode}
+          nodePointerAreaPaint={drawNodePointerArea}
+          linkColor={linkColor}
+          linkWidth={(l: GLink) => {
+            const s = typeof l.source === 'object' ? l.source.id : l.source;
+            const t = typeof l.target === 'object' ? l.target.id : l.target;
+            return hoverId !== null && (s === hoverId || t === hoverId) ? 2.2 : 1.2;
+          }}
+          linkLabel={(l: GLink) => l.label}
+          linkDirectionalParticles={0}
+          cooldownTicks={compact ? 60 : 120}
+          onEngineStop={onEngineStop}
+          onNodeHover={(n: GNode | null) => setHoverId(n ? n.id : null)}
+          onNodeClick={(n: GNode) => onSelect?.(n.id)}
+          enableZoomInteraction={!compact}
+          enablePanInteraction={!compact}
+          enableNodeDrag={!compact}
+        />
+      </div>
 
       {!compact && (
         <>
-          {/* Controls legend */}
           <div className="absolute top-2 left-2 rounded-lg bg-[var(--card)]/90 border border-[var(--border)] px-2.5 py-2 text-[10px] leading-relaxed text-muted-foreground backdrop-blur-sm pointer-events-none select-none">
             <div className="font-semibold text-[var(--foreground)] mb-1">Graph controls</div>
             <div><b className="text-[var(--foreground)]">Drag</b> a node — reposition it</div>
-            <div><Kbd>Ctrl</Kbd> + drag — pan around</div>
-            <div><Kbd>Ctrl</Kbd> + scroll — zoom in/out</div>
+            <div><b className="text-[var(--foreground)]">Drag</b> background — pan · <b className="text-[var(--foreground)]">Scroll</b> — zoom</div>
             <div><b className="text-[var(--foreground)]">Hover</b> — highlight links · <b className="text-[var(--foreground)]">Click</b> — details</div>
           </div>
-          {/* Reset view */}
           <button
-            onClick={() => setView({ x: 0, y: 0, k: 1 })}
+            onClick={() => fgRef.current?.zoomToFit(400, 40)}
             className="absolute top-2 right-2 rounded-md bg-[var(--card)]/90 border border-[var(--border)] px-2 py-1 text-[10px] font-medium text-muted-foreground hover:text-[var(--foreground)] backdrop-blur-sm"
           >
             Reset view
@@ -347,13 +265,5 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
         </>
       )}
     </div>
-  );
-}
-
-function Kbd({ children }: { children: React.ReactNode }) {
-  return (
-    <kbd className="inline-block rounded border border-[var(--border)] bg-[var(--muted)] px-1 font-mono text-[9px] text-[var(--foreground)]">
-      {children}
-    </kbd>
   );
 }
