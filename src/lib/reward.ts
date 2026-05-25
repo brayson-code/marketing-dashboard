@@ -16,6 +16,7 @@
 
 import { sql, jsonb, DEFAULT_TENANT_ID } from './db/client';
 import { roleFor } from './constraints';
+import { rewardGenes, proposeGenesFromPolicy, genesEnabled } from './genes';
 
 export interface RewardWeights { approval: number; outcome: number; reliability: number }
 
@@ -70,7 +71,7 @@ function reliabilityOf(status: string): number | null {
   return null; // running / unknown — not terminal, don't score
 }
 
-interface UnscoredTask { id: number; agent_id: string; status: string; completed_at: Date; metadata: { variant?: string } | null }
+interface UnscoredTask { id: number; agent_id: string; status: string; completed_at: Date; metadata: { variant?: string; genes?: number[] } | null }
 
 function variantOf(meta: { variant?: string } | null): string {
   const v = meta?.variant;
@@ -166,10 +167,21 @@ export async function scoreUnscoredTasks(opts: { limit?: number; dryRun?: boolea
               updated_at = now()
       `;
       counts.set(t.agent_id, (counts.get(t.agent_id) ?? 0) + 1);
+      // Credit any strategy genes that were injected into this run.
+      const geneIds = Array.isArray(t.metadata?.genes) ? t.metadata!.genes : [];
+      if (geneIds.length > 0) await rewardGenes(geneIds, reward).catch(() => {});
     }
 
     const a = (agg[t.agent_id] ??= { n: 0, sum: 0 });
     a.n += 1; a.sum += reward;
+  }
+
+  // After scoring, let proven variants propose new genes (inert until approved).
+  // Gated by the kill switch; never breaks scoring.
+  if (!dryRun) {
+    try {
+      if (await genesEnabled()) await proposeGenesFromPolicy();
+    } catch { /* non-fatal */ }
   }
 
   const byAgent: ScoreResult['byAgent'] = {};

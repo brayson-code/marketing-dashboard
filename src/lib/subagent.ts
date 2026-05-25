@@ -6,6 +6,7 @@ import { startTask, finishTask, setTaskStream } from './agent-tasks';
 import { kgToolDefinitions, handleKgTool } from './kg-tools';
 import { chooseVariant } from './selection';
 import { constraintsForVariant, roleFor } from './constraints';
+import { selectGenesForTask, genesDirective, recordGeneApplications } from './genes';
 import { getDefPrompt, getSpawnSpec } from './agent-defs';
 
 const STATE_DIR = join(process.cwd(), 'state/keyplayer');
@@ -221,9 +222,17 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
   // Append the chosen variant's role constraints (Phase 2 + selection).
   hydratedTask = `${hydratedTask}\n\n# ${constraintsForVariant(type, variant)}`;
 
-  // Live-tasks tracking. Record the constraint variant so the reward loop can
-  // attribute this run's score to (role, agent, variant).
-  const taskId = await startTask(type, task, parentTaskId, { variant });
+  // Inject owner-approved strategy genes for this agent (self-improving loop).
+  // Returns [] when the feature is off or no active gene matches — so this is a
+  // no-op until the owner approves a gene, keeping behavior identical to before.
+  const genes = await selectGenesForTask(type).catch(() => []);
+  if (genes.length > 0) hydratedTask = `${hydratedTask}\n\n# ${genesDirective(genes)}`;
+  const geneIds = genes.map((g) => g.id);
+
+  // Live-tasks tracking. Record the constraint variant + any applied genes so the
+  // reward loop can attribute this run's score to (role, agent, variant) and genes.
+  const taskId = await startTask(type, task, parentTaskId, { variant, genes: geneIds });
+  if (geneIds.length > 0) await recordGeneApplications(geneIds, taskId).catch(() => {});
   // Log the dispatch (from keyplayer -> sub-agent)
   await logA2A('keyplayer', type, task, { phase: 'dispatch', task_id: taskId });
 
