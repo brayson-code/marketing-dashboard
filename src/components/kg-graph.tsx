@@ -133,8 +133,18 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
 
   // Fit the graph to the viewport once it settles.
   const onEngineStop = useCallback(() => {
-    fgRef.current?.zoomToFit(400, compact ? 20 : 40);
+    fgRef.current?.zoomToFit(400, compact ? 16 : 48);
   }, [compact]);
+
+  // Re-center whenever the data or the canvas size changes. A single onEngineStop
+  // fit can be stale: data arrives async, and the ResizeObserver bumps `width` after
+  // the first layout — leaving the graph off-center/clipped. This re-fits after the
+  // layout has had a moment to settle, so the WHOLE graph stays centered in view.
+  useEffect(() => {
+    if (graphData.nodes.length === 0) return;
+    const t = setTimeout(() => fgRef.current?.zoomToFit(400, compact ? 16 : 48), 400);
+    return () => clearTimeout(t);
+  }, [graphData, width, height, compact]);
 
   const nodeR = compact ? 4 : 6;
 
@@ -242,9 +252,9 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
           onEngineStop={onEngineStop}
           onNodeHover={(n: GNode | null) => setHoverId(n ? n.id : null)}
           onNodeClick={(n: GNode) => onSelect?.(n.id)}
-          enableZoomInteraction={!compact}
-          enablePanInteraction={!compact}
-          enableNodeDrag={!compact}
+          enableZoomInteraction={true}
+          enablePanInteraction={true}
+          enableNodeDrag={true}
         />
       </div>
 
