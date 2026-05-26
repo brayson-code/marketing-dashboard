@@ -146,20 +146,27 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
     return () => ro.disconnect();
   }, []);
 
-  // Fit the graph to the viewport once it settles.
-  const onEngineStop = useCallback(() => {
+  // Fit = center the whole graph in view. zoomToFit needs the live instance, which
+  // we receive via onReady (next/dynamic doesn't forward refs reliably).
+  const fit = useCallback(() => {
     fgRef.current?.zoomToFit(400, compact ? 16 : 48);
   }, [compact]);
 
-  // Re-center whenever the data or the canvas size changes. A single onEngineStop
-  // fit can be stale: data arrives async, and the ResizeObserver bumps `width` after
-  // the first layout — leaving the graph off-center/clipped. This re-fits after the
-  // layout has had a moment to settle, so the WHOLE graph stays centered in view.
+  const handleReady = useCallback((inst: ForceGraphMethods<GNode, GLink>) => {
+    fgRef.current = inst;
+    fit();
+  }, [fit]);
+
+  const onEngineStop = useCallback(() => { fit(); }, [fit]);
+
+  // The force layout settles asynchronously (and the ResizeObserver bumps width
+  // after first paint), so a single fit often lands before the nodes have spread.
+  // Re-fit on a short ramp whenever the data or canvas size changes.
   useEffect(() => {
     if (graphData.nodes.length === 0) return;
-    const t = setTimeout(() => fgRef.current?.zoomToFit(400, compact ? 16 : 48), 400);
-    return () => clearTimeout(t);
-  }, [graphData, width, height, compact]);
+    const timers = [300, 1000, 2500, 4500].map((ms) => setTimeout(fit, ms));
+    return () => timers.forEach(clearTimeout);
+  }, [graphData, width, height, fit]);
 
   const nodeR = compact ? 4 : 6;
 
@@ -247,7 +254,7 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
     <div ref={containerRef} style={{ width: '100%', position: 'relative' }}>
       <div style={{ borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--card)', overflow: 'hidden' }}>
         <ForceGraph2D
-          graphRef={fgRef}
+          onReady={handleReady}
           graphData={graphData}
           width={width}
           height={height}
