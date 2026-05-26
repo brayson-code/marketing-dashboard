@@ -25,7 +25,7 @@
 :root {
   --nav-width: 220px;
   --header-height: 48px;
-  --radius: 0.625rem;
+  --radius: 0.85rem;
 
   /* Light mode */
   --background: #ffffff;
@@ -57,31 +57,34 @@
 }
 
 .dark {
-  --background: #061810;
-  --foreground: #ecfdf5;
-  --card: #0a0e0b;
-  --card-foreground: #ecfdf5;
-  --muted: #122b1c;
-  --muted-foreground: #9ca3af;
-  --primary: #34d399;
-  --primary-foreground: #061810;
-  --accent: #122b1c;
-  --accent-foreground: #6ee7b7;
-  --border: #1a4a35;
-  --ring: #34d399;
-  --success: #4ade80;
-  --warning: #fbbf24;
-  --destructive: #ef4444;
-  --info: #3b82f6;
+  /* "Liquid Glass Command" — deep near-black + emerald accent + frosted glass.
+     Cards/surfaces are translucent white so the radial-gradient backdrop shows
+     through (see .dark body + .panel backdrop-filter). */
+  --background: #0a0a0f;
+  --foreground: #f0f0f0;
+  --card: rgba(255, 255, 255, 0.045);
+  --card-foreground: #f0f0f0;
+  --muted: rgba(255, 255, 255, 0.06);
+  --muted-foreground: #8a8a9a;
+  --primary: #10d982;
+  --primary-foreground: #04140c;
+  --accent: rgba(16, 217, 130, 0.12);
+  --accent-foreground: #5ef0b0;
+  --border: rgba(255, 255, 255, 0.10);
+  --ring: #10d982;
+  --success: #10d982;
+  --warning: #f5a623;
+  --destructive: #ff5c5c;
+  --info: #4c9fff;
 
   /* iMessage bubble (Apple blue, slightly brighter in dark) */
   --bubble-mine: #0a84ff;
   --bubble-mine-foreground: #ffffff;
 
-  --surface-0: #040a07;
-  --surface-1: #061810;
-  --surface-2: #0a0e0b;
-  --surface-3: #122b1c;
+  --surface-0: #07070b;
+  --surface-1: rgba(255, 255, 255, 0.03);
+  --surface-2: rgba(255, 255, 255, 0.055);
+  --surface-3: rgba(255, 255, 255, 0.10);
 }
 
 /* ─── Base ─────────────────────────────────────────────── */
@@ -99,6 +102,22 @@ body {
   font-feature-settings: "rlig" 1, "calt" 1;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Liquid Glass backdrop: subtle emerald/amber radial glows over near-black so the
+   frosted panels read against depth. Fixed so it doesn't scroll with content. */
+.dark body {
+  background-color: #0a0a0f;
+  background-image:
+    radial-gradient(900px circle at 12% -5%, rgba(16, 217, 130, 0.07), transparent 45%),
+    radial-gradient(1100px circle at 105% 110%, rgba(245, 166, 35, 0.045), transparent 50%);
+  background-attachment: fixed;
+}
+
+/* Headline face (Sora) for the command-center feel. */
+h1, h2, h3, .section-title {
+  font-family: var(--font-sora), var(--font-geist), system-ui, sans-serif;
+  letter-spacing: -0.01em;
 }
 
 /* ─── Scrollbar ────────────────────────────────────────── */
@@ -360,6 +379,12 @@ textarea:focus {
   background: color-mix(in srgb, var(--card) 96%, transparent);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  backdrop-filter: blur(12px) saturate(1.1);
+  -webkit-backdrop-filter: blur(12px) saturate(1.1);
+}
+.dark .panel {
+  /* lift the glass off the backdrop with a soft inner highlight + shadow */
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 24px -16px rgba(0, 0, 0, 0.7);
 }
 
 .panel-header {

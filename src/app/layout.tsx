@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Sora } from "next/font/google";
 import { LayoutContent } from "@/components/layout/layout-content";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/toast";
@@ -16,6 +16,14 @@ const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
   display: "swap",
+});
+
+// Display font for headlines — the "Liquid Glass Command" headline face.
+const sora = Sora({
+  variable: "--font-sora",
+  subsets: ["latin"],
+  display: "swap",
+  weight: ["500", "600", "700"],
 });
 
 export const metadata: Metadata = {
@@ -36,7 +44,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geist.variable} ${geistMono.variable} antialiased`}>
+      <body className={`${geist.variable} ${geistMono.variable} ${sora.variable} antialiased`}>
         <ThemeProvider>
           <ErrorReporter />
           <LayoutContent>{children}</LayoutContent>

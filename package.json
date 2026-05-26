@@ -18,6 +18,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.97.0",
+    "@nangohq/frontend": "^0.70.4",
+    "@nangohq/node": "^0.70.4",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.0",
     "better-sqlite3": "^12.6.2",
