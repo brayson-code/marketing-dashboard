@@ -10,6 +10,44 @@ interface ProviderStatus {
   connected_at: string | null;
 }
 
+// Brand marks via the simple-icons CDN (crisp SVG, brand-colored). Monochrome
+// marks (X, Threads) are forced light so they read on the dark glass tiles.
+const LOGO: Record<string, { slug: string; color?: string }> = {
+  youtube: { slug: 'youtube' },
+  linkedin: { slug: 'linkedin' },
+  instagram: { slug: 'instagram' },
+  facebook: { slug: 'facebook' },
+  x: { slug: 'x', color: 'ffffff' },
+  googleads: { slug: 'googleads' },
+  google: { slug: 'google' },
+  tiktok: { slug: 'tiktok', color: 'ffffff' },
+};
+function logoUrl(key: string): string | null {
+  const l = LOGO[key];
+  if (!l) return null;
+  return `https://cdn.simpleicons.org/${l.slug}${l.color ? `/${l.color}` : ''}`;
+}
+
+// Provider logo with a graceful fallback to the first letter if the icon fails.
+function Logo({ p }: { p: ProviderStatus }) {
+  const [failed, setFailed] = useState(false);
+  const url = logoUrl(p.key);
+  if (url && !failed) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={url}
+        alt={p.label}
+        width={18}
+        height={18}
+        className="h-[18px] w-[18px] object-contain"
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+  return <span className="text-xs font-semibold uppercase">{p.label.charAt(0)}</span>;
+}
+
 // We dynamically import @nangohq/frontend so it never loads on the server or when
 // unconfigured. The event passed to onEvent is the SDK's ConnectUIEvent union; we
 // only act on the discriminated 'connect' / 'close' members and read it loosely to
@@ -164,8 +202,8 @@ export default function ConnectPanel() {
           return (
             <div key={p.key} className="panel p-3 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 min-w-0">
-                <div className="h-8 w-8 shrink-0 rounded-lg bg-[var(--surface-2)] border border-border flex items-center justify-center text-xs font-semibold uppercase">
-                  {p.label.charAt(0)}
+                <div className="h-8 w-8 shrink-0 rounded-lg bg-[var(--surface-2)] border border-border flex items-center justify-center">
+                  <Logo p={p} />
                 </div>
                 <div className="min-w-0">
                   <div className="text-sm font-medium truncate">{p.label}</div>

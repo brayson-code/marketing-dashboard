@@ -19,6 +19,7 @@ import { AgentSessions } from '@/components/sessions/agent-sessions';
 import { ContentCalendar } from '@/components/content/content-calendar';
 import KnowledgeGraph, { type KgGraphEntity, type KgGraphRelation } from '@/components/kg-graph';
 import { UsageWidget } from '@/components/usage-widget';
+import OnboardingGate from '@/components/onboarding/onboarding-gate';
 
 interface AgentBrief {
   id: string;
@@ -131,6 +132,8 @@ export default function OverviewPage() {
 
   return (
     <div className="space-y-6 animate-in">
+      {/* New workspaces see the onboarding wizard here until setup is complete. */}
+      <OnboardingGate />
       <div className="panel">
         <div className="panel-header">
           <h1 className="text-xl font-semibold">Overview</h1>

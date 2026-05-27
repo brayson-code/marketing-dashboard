@@ -78,7 +78,9 @@ const STEPS = [
 const WEEKS = 52;
 const fmtUsd = (n: number | null) => (n == null ? '—' : `$${Math.round(n).toLocaleString()}`);
 
-export default function OnboardingPage() {
+// `onDone` lets the wizard run embedded (e.g. as the overview-page gate): instead of
+// navigating, it tells the host to hide. Falls back to router navigation as a route.
+export default function OnboardingPage({ onDone }: { onDone?: () => void } = {}) {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
@@ -100,7 +102,7 @@ export default function OnboardingPage() {
         const json = await res.json();
         if (cancelled) return;
         if (json.onboarding_complete) {
-          router.replace('/');
+          if (onDone) onDone(); else router.replace('/');
           return;
         }
         const bp = json.business_profile;
@@ -126,7 +128,7 @@ export default function OnboardingPage() {
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [router, onDone]);
 
   const isLast = step === STEPS.length - 1;
   const meta = STEPS[step];
@@ -208,12 +210,12 @@ export default function OnboardingPage() {
         const j = await res.json().catch(() => ({}));
         throw new Error(j.error || 'Could not save your setup');
       }
-      router.push('/');
+      if (onDone) onDone(); else router.push('/');
     } catch (e) {
       setError((e as Error).message);
       setSubmitting(false);
     }
-  }, [data, router]);
+  }, [data, router, onDone]);
 
   const progress = (step / (STEPS.length - 1)) * 100;
   const HeroIcon = meta.icon;

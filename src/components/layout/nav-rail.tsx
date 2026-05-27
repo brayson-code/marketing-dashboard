@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   Gauge, Bot, PenLine, MessageCircle, Mail, Contact, Zap,
   Search, BarChart3, LineChart, BrainCircuit, Rocket, Clock, List, Settings,
-  FolderOpen, MessagesSquare, Activity, Target, Inbox, Network, DollarSign, Plug, Bug, Waves, TrendingUp, Dna, Timer,
+  FolderOpen, MessagesSquare, Activity, Target, Inbox, Network, DollarSign, Plug, Bug, Waves, TrendingUp, Dna, Timer, Link2,
 } from 'lucide-react';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { useDashboard } from '@/store';
@@ -74,6 +74,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/cron', label: 'Cron', icon: Clock },
       { href: '/activity', label: 'Activity', icon: List },
       { href: '/integrations-setup', label: 'Connect', icon: Plug },
+      { href: '/connections', label: 'Connections', icon: Link2 },
     ],
   },
 ];
