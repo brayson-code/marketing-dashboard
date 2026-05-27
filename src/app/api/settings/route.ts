@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, tenantId } from '@/lib/db/client';
 import { requireApiUser } from '@/lib/api-auth';
 
 const TABLE_NAMES = [
@@ -36,7 +36,7 @@ export async function GET(request: Request) {
       TABLE_NAMES.map(async (name) => {
         try {
           const rows = await s`
-            SELECT COUNT(*) as c FROM ${s(name)} WHERE tenant_id = ${DEFAULT_TENANT_ID}
+            SELECT COUNT(*) as c FROM ${s(name)} WHERE tenant_id = ${tenantId()}
           `;
           return { name, count: Number(rows[0]?.c ?? 0) };
         } catch {

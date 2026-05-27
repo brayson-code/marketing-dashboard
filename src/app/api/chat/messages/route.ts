@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, tenantId } from '@/lib/db/client';
 import { sendAgentMessage } from '@/lib/command';
 import { requireApiEditor, requireApiUser } from '@/lib/api-auth';
 import { getAgentIds } from '@/lib/agent-config';
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
       SELECT id, conversation_id, from_agent, to_agent, content, message_type, metadata, read_at,
              EXTRACT(EPOCH FROM created_at)::bigint as created_at
       FROM messages
-      WHERE tenant_id = ${DEFAULT_TENANT_ID}
+      WHERE tenant_id = ${tenantId()}
       ${conversation_id ? s`AND conversation_id = ${conversation_id}` : s``}
       ${since ? s`AND created_at > to_timestamp(${Number(since)})` : s``}
       ORDER BY created_at ASC
@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
     // Save the human message
     const insertRows = await s`
       INSERT INTO messages (tenant_id, conversation_id, from_agent, to_agent, content, message_type)
-      VALUES (${DEFAULT_TENANT_ID}, ${conversation_id}, ${from}, ${to}, ${content}, ${message_type})
+      VALUES (${tenantId()}, ${conversation_id}, ${from}, ${to}, ${content}, ${message_type})
       RETURNING id, conversation_id, from_agent, to_agent, content, message_type, metadata,
                 EXTRACT(EPOCH FROM created_at)::bigint as created_at
     ` as unknown as MessageRow[];
@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
         // Save error as system message
         s`
           INSERT INTO messages (tenant_id, conversation_id, from_agent, to_agent, content, message_type)
-          VALUES (${DEFAULT_TENANT_ID}, ${conversation_id}, 'system', ${from}, ${`Failed to reach ${to}: ${(err as Error).message?.slice(0, 200)}`}, 'system')
+          VALUES (${tenantId()}, ${conversation_id}, 'system', ${from}, ${`Failed to reach ${to}: ${(err as Error).message?.slice(0, 200)}`}, 'system')
         `.catch(() => {});
       });
     }
@@ -124,7 +124,7 @@ async function forwardToAgent(
   if (response) {
     await sql()`
       INSERT INTO messages (tenant_id, conversation_id, from_agent, to_agent, content, message_type)
-      VALUES (${DEFAULT_TENANT_ID}, ${conversationId}, ${agentId}, ${from}, ${response}, 'text')
+      VALUES (${tenantId()}, ${conversationId}, ${agentId}, ${from}, ${response}, 'text')
     `;
   }
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createNotification } from '@/lib/notifications';
-import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, tenantId } from '@/lib/db/client';
 import { getConfiguredApiKey } from '@/lib/auth';
 
 const VALID_TYPES = ['daily_report', 'alert', 'lead_reply', 'bounce_spike', 'experiment_result', 'custom'];
@@ -51,7 +51,7 @@ export async function POST(request: Request) {
   await sql()`
     INSERT INTO activity_log (tenant_id, ts, action, detail, result)
     VALUES (
-      ${DEFAULT_TENANT_ID}, now(), 'alert',
+      ${tenantId()}, now(), 'alert',
       ${title ? `${title}: ${String(message).slice(0, 200)}` : String(message).slice(0, 200)},
       ${notifSeverity}
     )

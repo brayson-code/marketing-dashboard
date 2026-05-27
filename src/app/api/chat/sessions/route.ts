@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, tenantId } from '@/lib/db/client';
 import { requireApiUser } from '@/lib/api-auth';
 
 /**
@@ -19,7 +19,7 @@ export async function GET(request: Request) {
       EXTRACT(EPOCH FROM MAX(created_at))::bigint as last_message_at,
       EXTRACT(EPOCH FROM MIN(created_at))::bigint as first_message_at
     FROM messages
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND conversation_id LIKE 'session:%'
+    WHERE tenant_id = ${tenantId()} AND conversation_id LIKE 'session:%'
     GROUP BY conversation_id
     ORDER BY last_message_at DESC
   ` as unknown as Array<{
@@ -40,7 +40,7 @@ export async function GET(request: Request) {
     // Get first user message as preview
     const firstRows = await s`
       SELECT content FROM messages
-      WHERE conversation_id = ${row.conversation_id} AND tenant_id = ${DEFAULT_TENANT_ID}
+      WHERE conversation_id = ${row.conversation_id} AND tenant_id = ${tenantId()}
         AND from_agent = 'operator'
       ORDER BY created_at ASC LIMIT 1
     ` as unknown as { content: string }[];

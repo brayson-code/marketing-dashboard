@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, tenantId } from '@/lib/db/client';
 import { requireApiUser } from '@/lib/api-auth';
 
 export async function GET(req: NextRequest) {
@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
       SELECT id, platform, format, pillar, text_preview, full_content, status,
              scheduled_for, published_at, created_at, NULL AS image_url
       FROM content_posts
-      WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'pending_approval'
+      WHERE tenant_id = ${tenantId()} AND status = 'pending_approval'
       ORDER BY created_at ASC
     ` as unknown as {
       id: string;
@@ -34,8 +34,8 @@ export async function GET(req: NextRequest) {
       SELECT s.id, s.lead_id, s.sequence_name, s.step, s.subject, s.body, s.status,
              s.tier, s.created_at, l.first_name, l.last_name, l.company
       FROM sequences s
-      LEFT JOIN leads l ON s.lead_id = l.id AND l.tenant_id = ${DEFAULT_TENANT_ID}
-      WHERE s.tenant_id = ${DEFAULT_TENANT_ID} AND s.status = 'pending_approval'
+      LEFT JOIN leads l ON s.lead_id = l.id AND l.tenant_id = ${tenantId()}
+      WHERE s.tenant_id = ${tenantId()} AND s.status = 'pending_approval'
       ORDER BY s.created_at ASC
     ` as unknown as {
       id: string;

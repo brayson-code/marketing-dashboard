@@ -8,7 +8,7 @@
 // produces is sent without owner approval (the approval gate doubles as the
 // safety net), so trying a variant only ever yields a draft to review.
 
-import { sql, DEFAULT_TENANT_ID } from './db/client';
+import { sql, tenantId } from './db/client';
 import { variantNames, type AgentRole } from './constraints';
 
 const EXPLORE_EPS = 0.15; // 15% of the time, try a non-best variant to keep learning
@@ -22,7 +22,7 @@ function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length
 async function variantsFor(role: string, agentId: string): Promise<VariantStat[]> {
   const rows = (await sql()`
     SELECT variant, n, reward_mean FROM public.agent_policy
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND role = ${role} AND agent_id = ${agentId}
+    WHERE tenant_id = ${tenantId()} AND role = ${role} AND agent_id = ${agentId}
   `) as unknown as Array<{ variant: string; n: number; reward_mean: string | number }>;
   return rows.map((r) => ({ variant: r.variant, n: r.n, reward_mean: Number(r.reward_mean) }));
 }
@@ -60,7 +60,7 @@ export async function chooseVariant(role: string, agentId: string): Promise<stri
 export async function policyForRole(role: string): Promise<VariantStat[]> {
   const rows = (await sql()`
     SELECT variant, n, reward_mean FROM public.agent_policy
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND role = ${role}
+    WHERE tenant_id = ${tenantId()} AND role = ${role}
     ORDER BY reward_mean DESC
   `) as unknown as Array<{ variant: string; n: number; reward_mean: string | number }>;
   return rows.map((r) => ({ variant: r.variant, n: r.n, reward_mean: Number(r.reward_mean) }));

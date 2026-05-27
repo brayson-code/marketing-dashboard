@@ -1,4 +1,4 @@
-import { sql, jsonb, DEFAULT_TENANT_ID } from './db/client';
+import { sql, jsonb, tenantId } from './db/client';
 
 export type DraftType = 'content_post' | 'email' | 'meeting' | 'campaign' | 'other';
 export type DraftStatus = 'pending' | 'approved' | 'rejected' | 'published' | 'sent' | 'confirmed' | 'expired';
@@ -44,7 +44,7 @@ export async function createDraft(input: {
   const rows = await sql()`
     INSERT INTO agent_drafts (tenant_id, type, title, payload, status, created_by, metadata)
     VALUES (
-      ${DEFAULT_TENANT_ID}, ${input.type}, ${input.title}, ${input.payload}, 'pending',
+      ${tenantId()}, ${input.type}, ${input.title}, ${input.payload}, 'pending',
       ${input.createdBy ?? null}, ${input.metadata ? jsonb(input.metadata) : null}
     )
     RETURNING *
@@ -54,7 +54,7 @@ export async function createDraft(input: {
 
 export async function getDraft(id: number): Promise<DraftRow | undefined> {
   const rows = await sql()`
-    SELECT * FROM agent_drafts WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    SELECT * FROM agent_drafts WHERE id = ${id} AND tenant_id = ${tenantId()}
   `;
   return rows[0] as unknown as DraftRow | undefined;
 }
@@ -64,14 +64,14 @@ export async function listDrafts(filters: { status?: DraftStatus | 'all'; limit?
   if (filters.status && filters.status !== 'all') {
     const rows = await sql()`
       SELECT * FROM agent_drafts
-      WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = ${filters.status}
+      WHERE tenant_id = ${tenantId()} AND status = ${filters.status}
       ORDER BY created_at DESC LIMIT ${limit}
     `;
     return rows as unknown as DraftRow[];
   }
   const rows = await sql()`
     SELECT * FROM agent_drafts
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     ORDER BY created_at DESC LIMIT ${limit}
   `;
   return rows as unknown as DraftRow[];
@@ -82,7 +82,7 @@ export async function saveDraftRevalidation(id: number, verdict: DraftRevalidati
   await sql()`
     UPDATE agent_drafts
     SET revalidation = ${jsonb(verdict)}, revalidated_at = now()
-    WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE id = ${id} AND tenant_id = ${tenantId()}
   `;
 }
 
@@ -93,7 +93,7 @@ export async function saveDraftRevalidation(id: number, verdict: DraftRevalidati
 export async function listDraftsForTriage(limit = 5): Promise<DraftRow[]> {
   const rows = await sql()`
     SELECT * FROM agent_drafts
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
       AND status IN ('pending', 'approved')
     ORDER BY (revalidated_at IS NOT NULL), revalidated_at ASC NULLS FIRST, created_at ASC
     LIMIT ${limit}
@@ -105,7 +105,7 @@ export async function approveDraft(id: number, note?: string): Promise<DraftRow 
   await sql()`
     UPDATE agent_drafts
     SET status = 'approved', reviewed_at = now(), execution_note = COALESCE(${note ?? null}, execution_note)
-    WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID} AND status = 'pending'
+    WHERE id = ${id} AND tenant_id = ${tenantId()} AND status = 'pending'
   `;
   return getDraft(id);
 }
@@ -114,7 +114,7 @@ export async function rejectDraft(id: number, note?: string): Promise<DraftRow |
   await sql()`
     UPDATE agent_drafts
     SET status = 'rejected', reviewed_at = now(), execution_note = COALESCE(${note ?? null}, execution_note)
-    WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID} AND status = 'pending'
+    WHERE id = ${id} AND tenant_id = ${tenantId()} AND status = 'pending'
   `;
   return getDraft(id);
 }
@@ -139,7 +139,7 @@ async function executeApproved(id: number, executedStatus: DraftStatus, note?: s
   await sql()`
     UPDATE agent_drafts
     SET status = ${executedStatus}, executed_at = now(), execution_note = COALESCE(${note ?? null}, execution_note)
-    WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE id = ${id} AND tenant_id = ${tenantId()}
   `;
   return { ok: true, draft: await getDraft(id) };
 }

@@ -8,7 +8,7 @@
 // wave-by-wave, which also controls cost.
 
 import Anthropic from '@anthropic-ai/sdk';
-import { sql, jsonb, DEFAULT_TENANT_ID } from './db/client';
+import { sql, jsonb, tenantId } from './db/client';
 import { spawnSubAgent } from './subagent';
 import { appendKnowledgeSection } from './documents';
 import { appendProgress } from './goals';
@@ -95,7 +95,7 @@ async function synthesizeWave(label: string, brief: CampaignBrief, results: Agen
 async function loadCampaign(id: string): Promise<CampaignRow | null> {
   const rows = (await sql()`
     SELECT id, title, brief, goal_id, waves, status, current_wave, total_waves
-    FROM public.wave_runs WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    FROM public.wave_runs WHERE id = ${id} AND tenant_id = ${tenantId()}
   `) as unknown as CampaignRow[];
   return rows[0] ?? null;
 }
@@ -103,7 +103,7 @@ async function loadCampaign(id: string): Promise<CampaignRow | null> {
 async function lastSynthesis(campaignId: string, waveIndex: number): Promise<string | null> {
   const rows = (await sql()`
     SELECT synthesis FROM public.wave_step_runs
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND wave_run_id = ${campaignId} AND wave_index = ${waveIndex}
+    WHERE tenant_id = ${tenantId()} AND wave_run_id = ${campaignId} AND wave_index = ${waveIndex}
     ORDER BY id DESC LIMIT 1
   `) as unknown as Array<{ synthesis: string | null }>;
   return rows[0]?.synthesis ?? null;
@@ -112,7 +112,7 @@ async function lastSynthesis(campaignId: string, waveIndex: number): Promise<str
 async function finalize(c: CampaignRow): Promise<void> {
   const stepRows = (await sql()`
     SELECT label, synthesis FROM public.wave_step_runs
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND wave_run_id = ${c.id} AND status = 'done'
+    WHERE tenant_id = ${tenantId()} AND wave_run_id = ${c.id} AND status = 'done'
     ORDER BY wave_index ASC
   `) as unknown as Array<{ label: string | null; synthesis: string | null }>;
 
@@ -141,7 +141,7 @@ async function finalize(c: CampaignRow): Promise<void> {
   await sql()`
     UPDATE public.wave_runs
     SET status = 'done', final_report = ${report}, current_wave = ${c.total_waves}, updated_at = now()
-    WHERE id = ${c.id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE id = ${c.id} AND tenant_id = ${tenantId()}
   `;
 }
 
@@ -163,7 +163,7 @@ export async function runNextWave(campaignId: string): Promise<{ done: boolean; 
 
   const stepRows = (await sql()`
     INSERT INTO public.wave_step_runs (tenant_id, wave_run_id, wave_index, label, status)
-    VALUES (${DEFAULT_TENANT_ID}, ${campaignId}, ${idx}, ${wave.label}, 'running')
+    VALUES (${tenantId()}, ${campaignId}, ${idx}, ${wave.label}, 'running')
     RETURNING id
   `) as unknown as Array<{ id: number }>;
   const stepId = Number(stepRows[0].id);
@@ -182,13 +182,13 @@ export async function runNextWave(campaignId: string): Promise<{ done: boolean; 
     await sql()`
       UPDATE public.wave_step_runs
       SET status = 'done', synthesis = ${synthesis}, agent_results = ${jsonb(results)}, finished_at = now()
-      WHERE id = ${stepId} AND tenant_id = ${DEFAULT_TENANT_ID}
+      WHERE id = ${stepId} AND tenant_id = ${tenantId()}
     `;
 
     const nextIdx = idx + 1;
     await sql()`
       UPDATE public.wave_runs SET current_wave = ${nextIdx}, updated_at = now()
-      WHERE id = ${campaignId} AND tenant_id = ${DEFAULT_TENANT_ID}
+      WHERE id = ${campaignId} AND tenant_id = ${tenantId()}
     `;
 
     if (nextIdx >= c.waves.length) {
@@ -200,11 +200,11 @@ export async function runNextWave(campaignId: string): Promise<{ done: boolean; 
     const msg = (err as Error).message;
     await sql()`
       UPDATE public.wave_step_runs SET status = 'error', finished_at = now()
-      WHERE id = ${stepId} AND tenant_id = ${DEFAULT_TENANT_ID}
+      WHERE id = ${stepId} AND tenant_id = ${tenantId()}
     `.catch(() => {});
     await sql()`
       UPDATE public.wave_runs SET status = 'error', error = ${msg}, updated_at = now()
-      WHERE id = ${campaignId} AND tenant_id = ${DEFAULT_TENANT_ID}
+      WHERE id = ${campaignId} AND tenant_id = ${tenantId()}
     `;
     return { done: true, error: msg };
   }
@@ -222,7 +222,7 @@ export async function createCampaign(input: CreateCampaignInput): Promise<string
   const rows = (await sql()`
     INSERT INTO public.wave_runs (tenant_id, title, request, brief, goal_id, waves, status, current_wave, total_waves)
     VALUES (
-      ${DEFAULT_TENANT_ID}, ${input.title}, ${input.request ?? null}, ${jsonb(input.brief)},
+      ${tenantId()}, ${input.title}, ${input.request ?? null}, ${jsonb(input.brief)},
       ${input.goalId ?? null}, ${jsonb(input.waves)}, 'running', 0, ${input.waves.length}
     )
     RETURNING id
@@ -243,7 +243,7 @@ export interface CampaignListItem {
 export async function listCampaigns(): Promise<CampaignListItem[]> {
   const rows = (await sql()`
     SELECT id, title, status, current_wave, total_waves, goal_id, updated_at
-    FROM public.wave_runs WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    FROM public.wave_runs WHERE tenant_id = ${tenantId()}
     ORDER BY updated_at DESC LIMIT 50
   `) as unknown as Array<Omit<CampaignListItem, 'updated_at'> & { updated_at: Date }>;
   return rows.map((r) => ({ ...r, updated_at: new Date(r.updated_at).toISOString() }));
@@ -262,13 +262,13 @@ export interface CampaignStep {
 export async function getCampaignDetail(id: string): Promise<{ campaign: Record<string, unknown>; steps: CampaignStep[] } | null> {
   const rows = (await sql()`
     SELECT id, title, request, brief, goal_id, waves, status, current_wave, total_waves, final_report, error, created_at, updated_at
-    FROM public.wave_runs WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    FROM public.wave_runs WHERE id = ${id} AND tenant_id = ${tenantId()}
   `) as unknown as Array<Record<string, unknown>>;
   if (rows.length === 0) return null;
   const stepRows = (await sql()`
     SELECT wave_index, label, status, synthesis, agent_results, started_at, finished_at
     FROM public.wave_step_runs
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND wave_run_id = ${id}
+    WHERE tenant_id = ${tenantId()} AND wave_run_id = ${id}
     ORDER BY wave_index ASC, id ASC
   `) as unknown as Array<{ wave_index: number; label: string | null; status: string; synthesis: string | null; agent_results: AgentResult[] | null; started_at: Date; finished_at: Date | null }>;
   const steps: CampaignStep[] = stepRows.map((s) => ({

@@ -4,7 +4,7 @@
 // agents/** files as fallback). Backend uses the RLS-bypassing postgres role, so
 // every query scopes tenant_id explicitly.
 
-import { sql, DEFAULT_TENANT_ID } from './db/client';
+import { sql, tenantId } from './db/client';
 
 export interface AgentDef {
   id: string;
@@ -35,7 +35,7 @@ function iso(d: Date): string { return new Date(d).toISOString(); }
 export async function listAgentDefs(): Promise<AgentDefListItem[]> {
   const rows = (await sql()`
     SELECT id, name, role, model, max_tokens, rate_per_hour, description, spawnable, enabled, source, updated_at
-    FROM public.agent_defs WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    FROM public.agent_defs WHERE tenant_id = ${tenantId()}
     ORDER BY spawnable DESC, name ASC
   `) as unknown as Array<AgentDefListItem & { updated_at: Date }>;
   return rows.map((r) => ({ ...r, updated_at: iso(r.updated_at) }));
@@ -43,7 +43,7 @@ export async function listAgentDefs(): Promise<AgentDefListItem[]> {
 
 export async function getAgentDef(id: string): Promise<AgentDef | null> {
   const rows = (await sql()`
-    SELECT * FROM public.agent_defs WHERE tenant_id = ${DEFAULT_TENANT_ID} AND id = ${id}
+    SELECT * FROM public.agent_defs WHERE tenant_id = ${tenantId()} AND id = ${id}
   `) as unknown as Array<AgentDef & Raw>;
   const r = rows[0];
   if (!r) return null;
@@ -58,7 +58,7 @@ export interface AgentSpecLite { id: string; model: string; maxTokens: number; r
 export async function listSpawnableSpecs(): Promise<AgentSpecLite[]> {
   const rows = (await sql()`
     SELECT id, model, max_tokens, rate_per_hour, description FROM public.agent_defs
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND spawnable = true AND enabled = true
+    WHERE tenant_id = ${tenantId()} AND spawnable = true AND enabled = true
     ORDER BY id
   `) as unknown as Array<{ id: string; model: string; max_tokens: number; rate_per_hour: number; description: string }>;
   return rows.map((r) => ({ id: r.id, model: r.model, maxTokens: r.max_tokens, ratePerHour: r.rate_per_hour, description: r.description }));
@@ -68,7 +68,7 @@ export async function listSpawnableSpecs(): Promise<AgentSpecLite[]> {
 export async function getSpawnSpec(id: string): Promise<AgentSpecLite | null> {
   const rows = (await sql()`
     SELECT id, model, max_tokens, rate_per_hour, description, spawnable, enabled
-    FROM public.agent_defs WHERE tenant_id = ${DEFAULT_TENANT_ID} AND id = ${id}
+    FROM public.agent_defs WHERE tenant_id = ${tenantId()} AND id = ${id}
   `) as unknown as Array<{ id: string; model: string; max_tokens: number; rate_per_hour: number; description: string; spawnable: boolean; enabled: boolean }>;
   const r = rows[0];
   if (!r || !r.spawnable || !r.enabled) return null;
@@ -78,7 +78,7 @@ export async function getSpawnSpec(id: string): Promise<AgentSpecLite | null> {
 /** Combined raw system prompt (soul + agent + skills) from the DB def, or null. */
 export async function getDefPrompt(id: string): Promise<string | null> {
   const rows = (await sql()`
-    SELECT soul, agent_md, skills FROM public.agent_defs WHERE tenant_id = ${DEFAULT_TENANT_ID} AND id = ${id}
+    SELECT soul, agent_md, skills FROM public.agent_defs WHERE tenant_id = ${tenantId()} AND id = ${id}
   `) as unknown as Array<{ soul: string; agent_md: string; skills: string }>;
   const r = rows[0];
   if (!r) return null;
@@ -118,7 +118,7 @@ export async function createAgentDef(input: AgentDefInput): Promise<AgentDef> {
   const role = ROLES.includes(String(input.role)) ? String(input.role) : 'general';
   await sql()`
     INSERT INTO public.agent_defs (tenant_id, id, name, role, model, max_tokens, rate_per_hour, description, soul, agent_md, skills, spawnable, enabled, source)
-    VALUES (${DEFAULT_TENANT_ID}, ${id}, ${name}, ${role},
+    VALUES (${tenantId()}, ${id}, ${name}, ${role},
             ${String(input.model ?? 'claude-sonnet-4-6')}, ${clampInt(input.max_tokens, 256, 200000, 4096)},
             ${clampInt(input.rate_per_hour, 1, 1000, 30)}, ${String(input.description ?? '')},
             ${String(input.soul ?? '')}, ${String(input.agent_md ?? '')}, ${String(input.skills ?? '')},
@@ -145,7 +145,7 @@ export async function updateAgentDef(id: string, fields: AgentDefInput): Promise
       spawnable     = COALESCE(${fields.spawnable ?? null}, spawnable),
       enabled       = COALESCE(${fields.enabled ?? null}, enabled),
       updated_at    = now()
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND id = ${id}
+    WHERE tenant_id = ${tenantId()} AND id = ${id}
     RETURNING id
   `) as unknown as Array<{ id: string }>;
   if (rows.length === 0) return null;
@@ -157,7 +157,7 @@ export async function deleteAgentDef(id: string): Promise<boolean> {
   // referenced by the registry); only custom agents can be removed.
   const rows = (await sql()`
     DELETE FROM public.agent_defs
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND id = ${id} AND source = 'custom'
+    WHERE tenant_id = ${tenantId()} AND id = ${id} AND source = 'custom'
     RETURNING id
   `) as unknown as Array<{ id: string }>;
   return rows.length > 0;
@@ -168,7 +168,7 @@ export async function upsertAgentDef(input: Required<Pick<AgentDefInput, 'id'>> 
   const id = String(input.id).trim().toLowerCase();
   await sql()`
     INSERT INTO public.agent_defs (tenant_id, id, name, role, model, max_tokens, rate_per_hour, description, soul, agent_md, skills, spawnable, enabled, source)
-    VALUES (${DEFAULT_TENANT_ID}, ${id}, ${input.name ?? id}, ${input.role ?? 'general'},
+    VALUES (${tenantId()}, ${id}, ${input.name ?? id}, ${input.role ?? 'general'},
             ${input.model ?? 'claude-sonnet-4-6'}, ${clampInt(input.max_tokens, 256, 200000, 4096)},
             ${clampInt(input.rate_per_hour, 1, 1000, 30)}, ${input.description ?? ''},
             ${input.soul ?? ''}, ${input.agent_md ?? ''}, ${input.skills ?? ''},

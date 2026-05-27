@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { sql, jsonb, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, jsonb, tenantId } from '@/lib/db/client';
 
 export type CronTemplate = {
   id: string;
@@ -86,7 +86,7 @@ export async function listCronTemplates(limit = 50): Promise<CronTemplateRow[]> 
   const rows = await sql()`
     SELECT id, name, description, job_json, updated_at
     FROM cron_templates
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     ORDER BY updated_at DESC
     LIMIT ${n}
   ` as unknown as RawTemplateRow[];
@@ -111,7 +111,7 @@ export async function createCronTemplate(input: { name: unknown; description?: u
     await sql()`
       INSERT INTO cron_templates (tenant_id, id, name, description, job_json, created_at, updated_at)
       VALUES (
-        ${DEFAULT_TENANT_ID}, ${id}, ${name}, ${description},
+        ${tenantId()}, ${id}, ${name}, ${description},
         ${jsonb(input.job)}, now(), now()
       )
     `;
@@ -138,7 +138,7 @@ export async function updateCronTemplate(input: { id: unknown; name?: unknown; d
   const existingRows = await s`
     SELECT id, name, description, job_json, created_at, updated_at
     FROM cron_templates
-    WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE id = ${id} AND tenant_id = ${tenantId()}
   ` as unknown as RawTemplateRow[];
   const existing = existingRows[0];
   if (!existing) throw new Error('Not found');
@@ -155,7 +155,7 @@ export async function updateCronTemplate(input: { id: unknown; name?: unknown; d
     await s`
       UPDATE cron_templates
       SET name = ${name}, description = ${description}, job_json = ${jsonb(jobValue)}, updated_at = now()
-      WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+      WHERE id = ${id} AND tenant_id = ${tenantId()}
     `;
   } catch (e) {
     if (isUniqueViolation(e)) throw new Error('Template name already exists');
@@ -177,7 +177,7 @@ export async function deleteCronTemplate(idInput: unknown): Promise<void> {
   if (!id) throw new Error('Invalid id');
   const result = await sql()`
     DELETE FROM cron_templates
-    WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE id = ${id} AND tenant_id = ${tenantId()}
   `;
   if (result.count === 0) throw new Error('Not found');
 }

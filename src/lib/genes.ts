@@ -11,7 +11,7 @@
 //     and only after the owner approves them — so behavior == today until you opt in.
 //   • A single global kill switch (gene_config.enabled) turns injection off instantly.
 
-import { sql, jsonb, DEFAULT_TENANT_ID } from './db/client';
+import { sql, jsonb, tenantId } from './db/client';
 import { roleFor, constraintsForVariant, type AgentRole } from './constraints';
 
 export type GeneStatus = 'proposed' | 'active' | 'retired';
@@ -58,7 +58,7 @@ function slugify(s: string): string {
 export async function genesEnabled(): Promise<boolean> {
   try {
     const rows = (await sql()`
-      SELECT enabled FROM public.gene_config WHERE tenant_id = ${DEFAULT_TENANT_ID}
+      SELECT enabled FROM public.gene_config WHERE tenant_id = ${tenantId()}
     `) as unknown as Array<{ enabled: boolean }>;
     return rows[0]?.enabled ?? true;
   } catch {
@@ -69,7 +69,7 @@ export async function genesEnabled(): Promise<boolean> {
 export async function setGenesEnabled(on: boolean): Promise<void> {
   await sql()`
     INSERT INTO public.gene_config (tenant_id, enabled, updated_at)
-    VALUES (${DEFAULT_TENANT_ID}, ${on}, now())
+    VALUES (${tenantId()}, ${on}, now())
     ON CONFLICT (tenant_id) DO UPDATE SET enabled = ${on}, updated_at = now()
   `;
 }
@@ -79,14 +79,14 @@ export async function setGenesEnabled(on: boolean): Promise<void> {
 async function logGeneEvent(geneId: number, kind: string, detail?: Record<string, unknown>): Promise<void> {
   await sql()`
     INSERT INTO public.gene_events (tenant_id, gene_id, kind, detail)
-    VALUES (${DEFAULT_TENANT_ID}, ${geneId}, ${kind}, ${detail ? jsonb(detail) : null})
+    VALUES (${tenantId()}, ${geneId}, ${kind}, ${detail ? jsonb(detail) : null})
   `.catch(() => {});
 }
 
 export async function listGeneEvents(geneId: number, limit = 30): Promise<GeneEvent[]> {
   const rows = (await sql()`
     SELECT id, gene_id, kind, detail, created_at FROM public.gene_events
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND gene_id = ${geneId}
+    WHERE tenant_id = ${tenantId()} AND gene_id = ${geneId}
     ORDER BY created_at DESC LIMIT ${limit}
   `) as unknown as Array<Omit<GeneEvent, 'created_at'> & { created_at: Date }>;
   return rows.map((r) => ({ ...r, created_at: new Date(r.created_at).toISOString() }));
@@ -109,7 +109,7 @@ function rowToGene(r: Record<string, unknown>): StrategyGene {
 export async function listGenes(filters: { status?: GeneStatus; role?: string } = {}): Promise<StrategyGene[]> {
   const rows = (await sql()`
     SELECT * FROM public.strategy_genes
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
       AND (${filters.status ?? null}::text IS NULL OR status = ${filters.status ?? null})
       AND (${filters.role ?? null}::text IS NULL OR role = ${filters.role ?? null})
     ORDER BY (status = 'active') DESC, reward_mean DESC, updated_at DESC
@@ -119,7 +119,7 @@ export async function listGenes(filters: { status?: GeneStatus; role?: string } 
 
 export async function getGene(id: number): Promise<StrategyGene | null> {
   const rows = (await sql()`
-    SELECT * FROM public.strategy_genes WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    SELECT * FROM public.strategy_genes WHERE id = ${id} AND tenant_id = ${tenantId()}
   `) as unknown as Array<Record<string, unknown>>;
   return rows[0] ? rowToGene(rows[0]) : null;
 }
@@ -141,7 +141,7 @@ export async function createGene(input: CreateGeneInput): Promise<StrategyGene |
   const status = input.status ?? 'active';
   const rows = (await sql()`
     INSERT INTO public.strategy_genes (tenant_id, name, title, body, role, agent_id, status, source, created_by)
-    VALUES (${DEFAULT_TENANT_ID}, ${name}, ${input.title}, ${input.body}, ${input.role},
+    VALUES (${tenantId()}, ${name}, ${input.title}, ${input.body}, ${input.role},
             ${input.agentId ?? null}, ${status}, ${input.source ?? null}, ${input.createdBy ?? null})
     ON CONFLICT (tenant_id, name) DO NOTHING
     RETURNING *
@@ -159,13 +159,13 @@ export async function updateGene(id: number, fields: { title?: string; body?: st
       body  = COALESCE(${fields.body ?? null}, body),
       version = version + 1,
       updated_at = now()
-    WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE id = ${id} AND tenant_id = ${tenantId()}
   `;
   // agent_id is nullable, so COALESCE can't express "set to null" vs "leave alone" — update it explicitly only when provided.
   if (fields.agentId !== undefined) {
     await sql()`
       UPDATE public.strategy_genes SET agent_id = ${fields.agentId}
-      WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+      WHERE id = ${id} AND tenant_id = ${tenantId()}
     `;
   }
   await logGeneEvent(id, 'edited', { fields });
@@ -175,7 +175,7 @@ export async function updateGene(id: number, fields: { title?: string; body?: st
 export async function setGeneStatus(id: number, status: GeneStatus): Promise<StrategyGene | null> {
   await sql()`
     UPDATE public.strategy_genes SET status = ${status}, updated_at = now()
-    WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE id = ${id} AND tenant_id = ${tenantId()}
   `;
   await logGeneEvent(id, status === 'active' ? 'approved' : status === 'retired' ? 'retired' : status, {});
   return getGene(id);
@@ -189,7 +189,7 @@ export async function selectGenesForTask(agentId: string): Promise<StrategyGene[
   const role = roleFor(agentId);
   const rows = (await sql()`
     SELECT * FROM public.strategy_genes
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'active' AND role = ${role}
+    WHERE tenant_id = ${tenantId()} AND status = 'active' AND role = ${role}
       AND (agent_id IS NULL OR agent_id = ${agentId})
     ORDER BY reward_mean DESC, wins DESC, updated_at DESC
     LIMIT ${SELECT_LIMIT}
@@ -222,7 +222,7 @@ export async function rewardGenes(geneIds: number[], reward: number): Promise<vo
         reward_sum = reward_sum + ${reward},
         reward_mean = (reward_sum + ${reward}) / (tries + 1),
         updated_at = now()
-      WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+      WHERE id = ${id} AND tenant_id = ${tenantId()}
     `;
     await logGeneEvent(id, 'rewarded', { reward, win: !!win });
   }
@@ -238,7 +238,7 @@ export async function proposeGenesFromPolicy(): Promise<number> {
   const rows = (await sql()`
     SELECT DISTINCT ON (agent_id) agent_id, role, variant, n, reward_mean
     FROM public.agent_policy
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND n >= ${PROPOSE_MIN_TRIES} AND reward_mean >= ${PROPOSE_MIN_MEAN}
+    WHERE tenant_id = ${tenantId()} AND n >= ${PROPOSE_MIN_TRIES} AND reward_mean >= ${PROPOSE_MIN_MEAN}
     ORDER BY agent_id, reward_mean DESC
   `) as unknown as Array<{ agent_id: string; role: string; variant: string; n: number; reward_mean: number }>;
 

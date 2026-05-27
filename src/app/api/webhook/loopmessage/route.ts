@@ -1,5 +1,5 @@
 import { NextResponse, after } from 'next/server';
-import { sql, jsonb, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, jsonb, tenantId } from '@/lib/db/client';
 import { createNotification } from '@/lib/notifications';
 import { runOrchestrator } from '@/lib/orchestrator';
 import { sendIMessage } from '@/lib/loopmessage';
@@ -75,7 +75,7 @@ export async function POST(request: Request) {
     // header is wrong" apart from "LoopMessage never called us at all".
     await sql()`
       INSERT INTO activity_log (tenant_id, ts, action, detail, result)
-      VALUES (${DEFAULT_TENANT_ID}, now(), 'loopmessage_rejected', 'inbound webhook rejected (missing/incorrect secret header)', 'warn')
+      VALUES (${tenantId()}, now(), 'loopmessage_rejected', 'inbound webhook rejected (missing/incorrect secret header)', 'warn')
     `.catch(() => {});
     return NextResponse.json({ error: 'Unauthorized webhook' }, { status: 401 });
   }
@@ -99,7 +99,7 @@ export async function POST(request: Request) {
     await sql()`
       INSERT INTO boardroom_messages (tenant_id, direction, sender, recipient, text, loop_message_id, status, metadata, attachments)
       VALUES (
-        ${DEFAULT_TENANT_ID}, 'in', ${contact ?? 'owner'},
+        ${tenantId()}, 'in', ${contact ?? 'owner'},
         ${process.env.LOOPMESSAGE_SENDER_NAME ?? 'keyplayers'}, ${String(text ?? '')},
         ${messageId ?? null}, 'received', ${jsonb(body)},
         ${attachments.length > 0 ? jsonb(attachments) : null}
@@ -165,7 +165,7 @@ export async function POST(request: Request) {
       await sql()`
         UPDATE boardroom_messages
         SET status = ${eventType === 'message_sent' ? 'delivered' : 'failed'}
-        WHERE loop_message_id = ${messageId} AND tenant_id = ${DEFAULT_TENANT_ID}
+        WHERE loop_message_id = ${messageId} AND tenant_id = ${tenantId()}
       `;
     }
     return NextResponse.json({ ok: true, status_updated: true });
@@ -174,7 +174,7 @@ export async function POST(request: Request) {
   // Anything else: log raw payload so we can see field shape.
   await sql()`
     INSERT INTO activity_log (tenant_id, ts, action, detail, result)
-    VALUES (${DEFAULT_TENANT_ID}, now(), 'loopmessage_event', ${JSON.stringify(body).slice(0, 1900)}, 'info')
+    VALUES (${tenantId()}, now(), 'loopmessage_event', ${JSON.stringify(body).slice(0, 1900)}, 'info')
   `;
 
   return NextResponse.json({ ok: true, ignored: eventType });

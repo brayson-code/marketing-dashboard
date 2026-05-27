@@ -2,7 +2,7 @@ import { runOrchestrator } from './orchestrator';
 import { sendIMessage } from './loopmessage';
 import { listActiveGoals, type Goal } from './goals';
 import { listDrafts } from './drafts';
-import { sql, jsonb, DEFAULT_TENANT_ID } from './db/client';
+import { sql, jsonb, tenantId } from './db/client';
 
 interface Signal {
   type: 'stalled_goal' | 'due_goal' | 'pending_draft' | 'long_task';
@@ -57,7 +57,7 @@ export async function gatherSignals(): Promise<Signal[]> {
 
   const longTasks = (await sql()`
     SELECT id, agent_id, task, started_at FROM agent_tasks
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
       AND status = 'running'
       AND started_at < now() - make_interval(secs => ${LONG_TASK_SEC})
   `) as unknown as Array<{ id: number; agent_id: string; task: string; started_at: Date }>;
@@ -101,7 +101,7 @@ export async function runProactiveSweep(): Promise<SweepResult> {
   await sql()`
     INSERT INTO boardroom_messages (tenant_id, direction, sender, text, status, metadata)
     VALUES (
-      ${DEFAULT_TENANT_ID}, 'in', 'system', ${promptText}, 'proactive',
+      ${tenantId()}, 'in', 'system', ${promptText}, 'proactive',
       ${jsonb({ source: 'proactive_sweep', signals })}
     )
   `;

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, tenantId } from '@/lib/db/client';
 import { requireApiUser } from '@/lib/api-auth';
 
 export async function GET(request: Request) {
@@ -9,7 +9,7 @@ export async function GET(request: Request) {
     const rows = await sql()`
       SELECT id, ts, action, detail, result
       FROM activity_log
-      WHERE tenant_id = ${DEFAULT_TENANT_ID}
+      WHERE tenant_id = ${tenantId()}
         AND action IN ('content_approved', 'content_rejected', 'sequence_approved', 'sequence_rejected')
       ORDER BY ts DESC
       LIMIT 50

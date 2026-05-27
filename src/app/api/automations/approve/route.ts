@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sql, DEFAULT_TENANT_ID } from "@/lib/db/client";
+import { sql, tenantId } from "@/lib/db/client";
 import { requireApiEditor } from "@/lib/api-auth";
 import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     const newStatus = action === "approve" ? "ready" : "rejected";
     await s`
       UPDATE content_posts SET status = ${newStatus}
-      WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID} AND status = 'pending_approval'
+      WHERE id = ${id} AND tenant_id = ${tenantId()} AND status = 'pending_approval'
     `;
   } else if (type === "email") {
     const newStatus = action === "approve" ? "approved" : "cancelled";
@@ -38,8 +38,8 @@ export async function POST(req: NextRequest) {
       const rows = await s`
         SELECT l.status as lead_status
         FROM sequences seq
-        LEFT JOIN leads l ON l.id = seq.lead_id AND l.tenant_id = ${DEFAULT_TENANT_ID}
-        WHERE seq.id = ${id} AND seq.tenant_id = ${DEFAULT_TENANT_ID}
+        LEFT JOIN leads l ON l.id = seq.lead_id AND l.tenant_id = ${tenantId()}
+        WHERE seq.id = ${id} AND seq.tenant_id = ${tenantId()}
       ` as unknown as { lead_status: string | null }[];
       const lead = rows[0];
       if (!lead || lead.lead_status !== LEAD_APPROVED_STATUS) {
@@ -49,14 +49,14 @@ export async function POST(req: NextRequest) {
 
     await s`
       UPDATE sequences SET status = ${newStatus}
-      WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID} AND status = 'pending_approval'
+      WHERE id = ${id} AND tenant_id = ${tenantId()} AND status = 'pending_approval'
     `;
   }
 
   await s`
     INSERT INTO activity_log (tenant_id, ts, action, detail, result)
     VALUES (
-      ${DEFAULT_TENANT_ID}, now(),
+      ${tenantId()}, now(),
       ${action === "approve" ? "approve" : "reject"},
       ${`${action === "approve" ? "Approved" : "Rejected"} ${type}: ${id}`},
       ${action === "approve" ? "Moved to ready/approved" : "Rejected/cancelled"}

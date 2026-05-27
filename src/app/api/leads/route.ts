@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, tenantId } from '@/lib/db/client';
 import { getLeads, getLeadFunnel, updateLeadStatus } from '@/lib/queries';
 import {
   writebackLeadCreate,
@@ -174,7 +174,7 @@ export async function POST(req: NextRequest) {
       source, email, linkedin_url, status, score, tier, last_touch_at, next_action_at,
       sequence_name, reply_type, notes, created_at, pause_outreach
     ) VALUES (
-      ${DEFAULT_TENANT_ID}, ${lead.id}, ${lead.first_name}, ${lead.last_name}, ${lead.title},
+      ${tenantId()}, ${lead.id}, ${lead.first_name}, ${lead.last_name}, ${lead.title},
       ${lead.company}, ${lead.company_size}, ${lead.industry_segment}, ${lead.source}, ${lead.email},
       ${lead.linkedin_url}, ${lead.status}, ${lead.score}, ${lead.tier}, ${lead.last_touch_at},
       ${lead.next_action_at}, ${lead.sequence_name}, ${lead.reply_type}, ${lead.notes},
@@ -310,12 +310,12 @@ export async function PATCH(req: NextRequest) {
   setValues.last_touch_at = new Date().toISOString();
 
   const s = sql();
-  const beforeRows = await s`SELECT id FROM leads WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}` as unknown as { id: string }[];
+  const beforeRows = await s`SELECT id FROM leads WHERE id = ${id} AND tenant_id = ${tenantId()}` as unknown as { id: string }[];
   if (beforeRows.length === 0) {
     return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
   }
 
-  await s`UPDATE leads SET ${s(setValues)} WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}`;
+  await s`UPDATE leads SET ${s(setValues)} WHERE id = ${id} AND tenant_id = ${tenantId()}`;
 
   if (status) {
     await updateLeadStatus(id, status);
@@ -330,7 +330,7 @@ export async function PATCH(req: NextRequest) {
     detail: { updates },
   });
 
-  const leadRows = await s`SELECT * FROM leads WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}`;
+  const leadRows = await s`SELECT * FROM leads WHERE id = ${id} AND tenant_id = ${tenantId()}`;
   return NextResponse.json({ ok: true, lead: leadRows[0] });
 }
 
@@ -346,15 +346,15 @@ export async function DELETE(req: NextRequest) {
   }
 
   const s = sql();
-  const leadRows = await s`SELECT id FROM leads WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}` as unknown as { id: string }[];
+  const leadRows = await s`SELECT id FROM leads WHERE id = ${id} AND tenant_id = ${tenantId()}` as unknown as { id: string }[];
   if (leadRows.length === 0) {
     return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
   }
 
   // No seed_registry table in Supabase — just remove dependent sequences then the lead.
   await s.begin(async (tx) => {
-    await tx`DELETE FROM sequences WHERE lead_id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}`;
-    await tx`DELETE FROM leads WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}`;
+    await tx`DELETE FROM sequences WHERE lead_id = ${id} AND tenant_id = ${tenantId()}`;
+    await tx`DELETE FROM leads WHERE id = ${id} AND tenant_id = ${tenantId()}`;
   });
 
   writebackLeadDelete(id);

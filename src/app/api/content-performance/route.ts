@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, tenantId } from '@/lib/db/client';
 import { requireApiUser } from '@/lib/api-auth';
 
 export async function GET(request: Request) {
@@ -12,19 +12,19 @@ export async function GET(request: Request) {
       totalRow, draftRow, pendingRow, readyRow, publishedRow,
       published30Row, impressions30Row, avgEngagementRow,
     ] = await Promise.all([
-      s`SELECT COUNT(*) as c FROM content_posts WHERE tenant_id = ${DEFAULT_TENANT_ID}`,
-      s`SELECT COUNT(*) as c FROM content_posts WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'draft'`,
-      s`SELECT COUNT(*) as c FROM content_posts WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'pending_approval'`,
-      s`SELECT COUNT(*) as c FROM content_posts WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'ready'`,
-      s`SELECT COUNT(*) as c FROM content_posts WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'published'`,
+      s`SELECT COUNT(*) as c FROM content_posts WHERE tenant_id = ${tenantId()}`,
+      s`SELECT COUNT(*) as c FROM content_posts WHERE tenant_id = ${tenantId()} AND status = 'draft'`,
+      s`SELECT COUNT(*) as c FROM content_posts WHERE tenant_id = ${tenantId()} AND status = 'pending_approval'`,
+      s`SELECT COUNT(*) as c FROM content_posts WHERE tenant_id = ${tenantId()} AND status = 'ready'`,
+      s`SELECT COUNT(*) as c FROM content_posts WHERE tenant_id = ${tenantId()} AND status = 'published'`,
       s`SELECT COUNT(*) as c FROM content_posts
-        WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'published'
+        WHERE tenant_id = ${tenantId()} AND status = 'published'
           AND published_at::date >= (now() - interval '30 days')::date`,
       s`SELECT SUM(impressions) as v FROM content_posts
-        WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'published'
+        WHERE tenant_id = ${tenantId()} AND status = 'published'
           AND published_at::date >= (now() - interval '30 days')::date`,
       s`SELECT AVG(engagement_rate) as v FROM content_posts
-        WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'published'
+        WHERE tenant_id = ${tenantId()} AND status = 'published'
           AND published_at::date >= (now() - interval '30 days')::date`,
     ]);
 

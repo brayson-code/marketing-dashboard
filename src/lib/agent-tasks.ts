@@ -1,4 +1,4 @@
-import { sql, jsonb, DEFAULT_TENANT_ID } from './db/client';
+import { sql, jsonb, tenantId } from './db/client';
 
 export type TaskStatus = 'running' | 'done' | 'error' | 'cancelled';
 
@@ -22,14 +22,14 @@ export interface AgentTaskRow {
 export async function setTaskStream(taskId: number, text: string): Promise<void> {
   await sql()`
     UPDATE agent_tasks SET stream_text = ${text}
-    WHERE id = ${taskId} AND tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE id = ${taskId} AND tenant_id = ${tenantId()}
   `;
 }
 
 export async function startTask(agentId: string, task: string, parentId?: number, meta?: Record<string, unknown>): Promise<number> {
   const rows = await sql()`
     INSERT INTO agent_tasks (tenant_id, agent_id, parent_id, status, task, metadata)
-    VALUES (${DEFAULT_TENANT_ID}, ${agentId}, ${parentId ?? null}, 'running', ${task}, ${meta ? jsonb(meta) : null})
+    VALUES (${tenantId()}, ${agentId}, ${parentId ?? null}, 'running', ${task}, ${meta ? jsonb(meta) : null})
     RETURNING id
   `;
   return Number(rows[0].id);
@@ -49,7 +49,7 @@ export async function finishTask(
         output_tokens = COALESCE(${fields.outputTokens ?? null}, output_tokens),
         stream_text = null,
         completed_at = now()
-    WHERE id = ${taskId} AND tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE id = ${taskId} AND tenant_id = ${tenantId()}
   `;
 }
 
@@ -67,7 +67,7 @@ export async function reapStaleTasks(graceMinutes = 12): Promise<number> {
         error = COALESCE(error, 'Timed out — exceeded the 300s serverless limit and was killed before finishing (orphaned). No tokens consumed after termination.'),
         stream_text = null,
         completed_at = now()
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
       AND status = 'running'
       AND started_at < now() - (${graceMinutes} * interval '1 minute')
     RETURNING id
@@ -79,7 +79,7 @@ export async function listTasks(limit = 50): Promise<AgentTaskRow[]> {
   await reapStaleTasks(); // clear zombies so the board never shows phantom "running" work
   const rows = await sql()`
     SELECT * FROM agent_tasks
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     ORDER BY started_at DESC, id DESC
     LIMIT ${limit}
   `;

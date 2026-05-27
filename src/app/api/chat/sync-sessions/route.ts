@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { sql, jsonb, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, jsonb, tenantId } from '@/lib/db/client';
 import fs from 'fs';
 import path from 'path';
 import { requireApiUser } from '@/lib/api-auth';
@@ -67,7 +67,7 @@ export async function POST(request: Request) {
 
         const existingRows = await s`
           SELECT COUNT(*) as c FROM messages
-          WHERE conversation_id = ${conversationId} AND tenant_id = ${DEFAULT_TENANT_ID}
+          WHERE conversation_id = ${conversationId} AND tenant_id = ${tenantId()}
         ` as unknown as { c: string }[];
         const existingCount = Number(existingRows[0]?.c ?? 0);
 
@@ -124,7 +124,7 @@ export async function POST(request: Request) {
           await s`
             INSERT INTO messages (tenant_id, conversation_id, from_agent, to_agent, content, message_type, metadata, created_at)
             VALUES (
-              ${DEFAULT_TENANT_ID}, ${conversationId}, ${fromAgent}, ${toAgent}, ${entry.text}, 'text',
+              ${tenantId()}, ${conversationId}, ${fromAgent}, ${toAgent}, ${entry.text}, 'text',
               ${jsonb({ source: 'session_sync', session_id: sessionId, instance: instance.id })},
               ${ts}::timestamptz
             )
@@ -149,7 +149,7 @@ export async function POST(request: Request) {
         await s`
           INSERT INTO notifications (tenant_id, type, severity, title, message, data)
           VALUES (
-            ${DEFAULT_TENANT_ID}, 'session', 'info', ${title}, ${preview},
+            ${tenantId()}, 'session', 'info', ${title}, ${preview},
             ${jsonb({ conversation_id: conversationId, agent_id: agentId, count: toImport.length, instance: instance.id })}
           )
         `;

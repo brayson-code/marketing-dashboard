@@ -7,7 +7,7 @@
 // It runs entirely from serverless (no checkout) using the GitHub REST API.
 
 import Anthropic from '@anthropic-ai/sdk';
-import { sql, DEFAULT_TENANT_ID } from './db/client';
+import { sql, tenantId } from './db/client';
 import { getIssue, getIssueEvents, updateIssue, saveProposedPatch } from './observability';
 import { startTask, finishTask } from './agent-tasks';
 import { sendSlack, isSlackConfigured } from './alerts';

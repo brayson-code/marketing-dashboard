@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, tenantId } from '@/lib/db/client';
 import { requireApiUser } from '@/lib/api-auth';
 
 // Lightweight endpoint — returns pending counts for nav badges
@@ -11,11 +11,11 @@ export async function GET(req: NextRequest) {
     const s = sql();
 
     const [contentRows, outreachRows, signalsRows, notifRows, leadsRows] = await Promise.all([
-      s`SELECT COUNT(*) as c FROM content_posts WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'pending_approval'`,
-      s`SELECT COUNT(*) as c FROM sequences WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'pending_approval'`,
-      s`SELECT COUNT(*) as c FROM signals WHERE tenant_id = ${DEFAULT_TENANT_ID} AND date = now()::date::text`,
-      s`SELECT COUNT(*) as c FROM notifications WHERE tenant_id = ${DEFAULT_TENANT_ID} AND read = false`,
-      s`SELECT COUNT(*) as c FROM leads WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'new'`,
+      s`SELECT COUNT(*) as c FROM content_posts WHERE tenant_id = ${tenantId()} AND status = 'pending_approval'`,
+      s`SELECT COUNT(*) as c FROM sequences WHERE tenant_id = ${tenantId()} AND status = 'pending_approval'`,
+      s`SELECT COUNT(*) as c FROM signals WHERE tenant_id = ${tenantId()} AND date = now()::date::text`,
+      s`SELECT COUNT(*) as c FROM notifications WHERE tenant_id = ${tenantId()} AND read = false`,
+      s`SELECT COUNT(*) as c FROM leads WHERE tenant_id = ${tenantId()} AND status = 'new'`,
     ]);
 
     const content = Number(contentRows[0]?.c ?? 0);

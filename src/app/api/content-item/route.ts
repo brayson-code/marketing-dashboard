@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'node:fs';
 import path from 'node:path';
-import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, tenantId } from '@/lib/db/client';
 import { getHermesStateDir } from '@/lib/hermes-state';
 import { requireApiEditor, requireApiUser } from '@/lib/api-auth';
 
@@ -102,7 +102,7 @@ export async function GET(req: NextRequest) {
   try {
     // content_queue_items does not exist in Supabase; read from content_posts.
     const rows = await sql()`
-      SELECT * FROM content_posts WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+      SELECT * FROM content_posts WHERE id = ${id} AND tenant_id = ${tenantId()}
     ` as unknown as Record<string, unknown>[];
     const row = rows[0];
     if (row) return NextResponse.json({ item: rowToQueueItem(row) });
@@ -133,7 +133,7 @@ export async function PATCH(req: NextRequest) {
     const s = sql();
     // content_queue_items does not exist in Supabase; back the queue with content_posts.
     const rows = await s`
-      SELECT * FROM content_posts WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+      SELECT * FROM content_posts WHERE id = ${id} AND tenant_id = ${tenantId()}
     ` as unknown as Record<string, unknown>[];
     const row = rows[0];
     const current = row ? rowToQueueItem(row) : readQueueFile().find((x) => x?.id === id);
@@ -168,7 +168,7 @@ export async function PATCH(req: NextRequest) {
       INSERT INTO content_posts (
         id, tenant_id, platform, format, pillar, text_preview, full_content, status, scheduled_for
       ) VALUES (
-        ${id}, ${DEFAULT_TENANT_ID}, ${platform}, ${format}, ${pillar},
+        ${id}, ${tenantId()}, ${platform}, ${format}, ${pillar},
         ${parsed.preview}, ${parsed.full}, ${status}, ${scheduledFor}
       )
       ON CONFLICT (id) DO UPDATE SET

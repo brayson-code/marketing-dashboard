@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { sql, jsonb, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, jsonb, tenantId } from '@/lib/db/client';
 import { runOrchestrator } from '@/lib/orchestrator';
 import { parseAttachments } from '@/lib/vision';
 
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
   await sql()`
     INSERT INTO boardroom_messages (tenant_id, direction, sender, recipient, text, status, attachments)
     VALUES (
-      ${DEFAULT_TENANT_ID}, 'in', 'owner',
+      ${tenantId()}, 'in', 'owner',
       ${process.env.LOOPMESSAGE_SENDER_NAME ?? 'keyplayers'}, ${text},
       'received', ${attachments.length > 0 ? jsonb(attachments) : null}
     )
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     // Surface the failure as an assistant message so the thread isn't left hanging.
     await sql()`
       INSERT INTO boardroom_messages (tenant_id, direction, sender, recipient, text, status)
-      VALUES (${DEFAULT_TENANT_ID}, 'out', 'keyplayer', 'owner',
+      VALUES (${tenantId()}, 'out', 'keyplayer', 'owner',
         ${`I hit a snag: ${result.error.slice(0, 300)}`}, 'error')
     `;
     return NextResponse.json({ ok: false, error: result.error }, { status: 502 });
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
 
   await sql()`
     INSERT INTO boardroom_messages (tenant_id, direction, sender, recipient, text, status, metadata)
-    VALUES (${DEFAULT_TENANT_ID}, 'out', 'keyplayer', 'owner', ${result.text}, 'delivered', ${jsonb({ usage: result.usage })})
+    VALUES (${tenantId()}, 'out', 'keyplayer', 'owner', ${result.text}, 'delivered', ${jsonb({ usage: result.usage })})
   `;
 
   return NextResponse.json({ ok: true, reply: result.text, usage: result.usage });

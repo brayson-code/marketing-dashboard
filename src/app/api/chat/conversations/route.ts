@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, tenantId } from '@/lib/db/client';
 import { requireApiUser } from '@/lib/api-auth';
 import { requireUser } from '@/lib/auth';
 
@@ -41,7 +41,7 @@ export async function GET(request: Request) {
         COUNT(*) as message_count,
         SUM(CASE WHEN m.read_at IS NULL AND m.from_agent != ${username} THEN 1 ELSE 0 END) as unread_count
       FROM messages m
-      WHERE m.tenant_id = ${DEFAULT_TENANT_ID}
+      WHERE m.tenant_id = ${tenantId()}
       GROUP BY m.conversation_id
       ORDER BY last_message_at DESC
     ` as unknown as ConversationRow[];
@@ -52,7 +52,7 @@ export async function GET(request: Request) {
           SELECT id, conversation_id, from_agent, to_agent, content, message_type, metadata, read_at,
                  EXTRACT(EPOCH FROM created_at)::bigint as created_at
           FROM messages
-          WHERE conversation_id = ${conv.conversation_id} AND tenant_id = ${DEFAULT_TENANT_ID}
+          WHERE conversation_id = ${conv.conversation_id} AND tenant_id = ${tenantId()}
           ORDER BY created_at DESC
           LIMIT 1
         ` as unknown as MessageRow[];

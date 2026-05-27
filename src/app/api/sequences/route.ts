@@ -4,7 +4,7 @@ import { writebackSequenceStatus } from "@/lib/writeback";
 import { requireApiEditor, requireApiUser } from "@/lib/api-auth";
 import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
-import { sql, DEFAULT_TENANT_ID } from "@/lib/db/client";
+import { sql, tenantId } from "@/lib/db/client";
 
 const LEAD_APPROVED_STATUS = "approved";
 const ALLOWED_SEQUENCE_STATUSES = new Set(["approved", "cancelled", "queued", "sent", "pending_approval"]);
@@ -39,8 +39,8 @@ export async function PATCH(req: NextRequest) {
     const rows = await sql()`
       SELECT l.status as lead_status
       FROM sequences s
-      LEFT JOIN leads l ON l.id = s.lead_id AND l.tenant_id = ${DEFAULT_TENANT_ID}
-      WHERE s.id = ${id} AND s.tenant_id = ${DEFAULT_TENANT_ID}
+      LEFT JOIN leads l ON l.id = s.lead_id AND l.tenant_id = ${tenantId()}
+      WHERE s.id = ${id} AND s.tenant_id = ${tenantId()}
     ` as unknown as { lead_status: string | null }[];
     const lead = rows[0];
     if (!lead || lead.lead_status !== LEAD_APPROVED_STATUS) {

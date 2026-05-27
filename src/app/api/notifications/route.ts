@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, tenantId } from '@/lib/db/client';
 import { requireApiEditor, requireApiUser } from '@/lib/api-auth';
 import { requireUser } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
 
   const rows = await s`
     SELECT * FROM notifications
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     ${unreadOnly ? s`AND read = false` : s``}
     ${type ? s`AND type = ${type}` : s``}
     ORDER BY created_at DESC LIMIT ${limit}
@@ -52,7 +52,7 @@ export async function PATCH(req: NextRequest) {
   const s = sql();
 
   if (body.mark_all_read) {
-    await s`UPDATE notifications SET read = true WHERE tenant_id = ${DEFAULT_TENANT_ID} AND read = false`;
+    await s`UPDATE notifications SET read = true WHERE tenant_id = ${tenantId()} AND read = false`;
     await logAudit({
       actor,
       action: 'notifications.mark_all_read',
@@ -63,7 +63,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   if (body.id) {
-    await s`UPDATE notifications SET read = true WHERE id = ${body.id} AND tenant_id = ${DEFAULT_TENANT_ID}`;
+    await s`UPDATE notifications SET read = true WHERE id = ${body.id} AND tenant_id = ${tenantId()}`;
     await logAudit({
       actor,
       action: 'notifications.mark_read',

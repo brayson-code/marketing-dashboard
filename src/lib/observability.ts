@@ -10,7 +10,7 @@
 // tenant_id explicitly.
 
 import { createHash } from 'node:crypto';
-import { sql, jsonb, DEFAULT_TENANT_ID } from './db/client';
+import { sql, jsonb, tenantId } from './db/client';
 import { notifyIssue } from './alerts';
 
 export type IssueLevel = 'error' | 'warning' | 'fatal';
@@ -125,12 +125,12 @@ export async function captureError(input: CaptureInput): Promise<CaptureResult |
     const rows = (await sql()`
       WITH prev AS (
         SELECT status FROM public.issues
-        WHERE tenant_id = ${DEFAULT_TENANT_ID} AND fingerprint = ${fp}
+        WHERE tenant_id = ${tenantId()} AND fingerprint = ${fp}
       ), ins AS (
         INSERT INTO public.issues
           (tenant_id, fingerprint, title, level, source, route, sample_message, sample_stack)
         VALUES
-          (${DEFAULT_TENANT_ID}, ${fp}, ${title}, ${level}, ${input.source},
+          (${tenantId()}, ${fp}, ${title}, ${level}, ${input.source},
            ${input.route ?? null}, ${input.message.slice(0, 2000)}, ${input.stack?.slice(0, 6000) ?? null})
         ON CONFLICT (tenant_id, fingerprint) DO UPDATE
           SET count = public.issues.count + 1,
@@ -153,7 +153,7 @@ export async function captureError(input: CaptureInput): Promise<CaptureResult |
       INSERT INTO public.error_events
         (tenant_id, issue_id, level, source, message, stack, component_stack, url, route, method, user_agent, release, context)
       VALUES
-        (${DEFAULT_TENANT_ID}, ${issueId}, ${level}, ${input.source},
+        (${tenantId()}, ${issueId}, ${level}, ${input.source},
          ${input.message.slice(0, 4000)}, ${input.stack?.slice(0, 8000) ?? null},
          ${input.componentStack?.slice(0, 4000) ?? null}, ${input.url ?? null}, ${input.route ?? null},
          ${input.method ?? null}, ${input.userAgent?.slice(0, 400) ?? null}, ${input.release ?? null},
@@ -190,18 +190,18 @@ export async function listIssues(opts: ListIssuesOpts = {}): Promise<IssueRow[]>
   const rows = opts.status
     ? await sql()`
         SELECT * FROM public.issues
-        WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = ${opts.status}
+        WHERE tenant_id = ${tenantId()} AND status = ${opts.status}
         ORDER BY last_seen DESC LIMIT ${limit}`
     : await sql()`
         SELECT * FROM public.issues
-        WHERE tenant_id = ${DEFAULT_TENANT_ID}
+        WHERE tenant_id = ${tenantId()}
         ORDER BY last_seen DESC LIMIT ${limit}`;
   return rows as unknown as IssueRow[];
 }
 
 export async function getIssue(id: string): Promise<IssueRow | null> {
   const rows = (await sql()`
-    SELECT * FROM public.issues WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    SELECT * FROM public.issues WHERE id = ${id} AND tenant_id = ${tenantId()}
   `) as unknown as IssueRow[];
   return rows[0] ?? null;
 }
@@ -225,7 +225,7 @@ export async function getIssueEvents(id: string, limit = 20): Promise<ErrorEvent
   const rows = (await sql()`
     SELECT id, level, source, message, stack, component_stack, url, route, method, user_agent, context, created_at
     FROM public.error_events
-    WHERE issue_id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE issue_id = ${id} AND tenant_id = ${tenantId()}
     ORDER BY created_at DESC LIMIT ${limit}
   `) as unknown as ErrorEventRow[];
   return rows;
@@ -239,7 +239,7 @@ export async function getIssueEvents(id: string, limit = 20): Promise<ErrorEvent
 export async function listIssuesForTriage(limit = 3): Promise<IssueRow[]> {
   const rows = (await sql()`
     SELECT * FROM public.issues
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
       AND status IN ('triage', 'assigned', 'fix_proposed', 'in_review')
     ORDER BY (revalidated_at IS NOT NULL), revalidated_at ASC NULLS FIRST, last_seen DESC
     LIMIT ${limit}
@@ -251,7 +251,7 @@ export async function saveRevalidation(id: string, verdict: RevalidationVerdict)
   await sql()`
     UPDATE public.issues
     SET revalidation = ${jsonb(verdict)}, revalidated_at = now(), updated_at = now()
-    WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE id = ${id} AND tenant_id = ${tenantId()}
   `;
 }
 
@@ -259,7 +259,7 @@ export async function saveRevalidation(id: string, verdict: RevalidationVerdict)
 export async function saveProposedPatch(id: string, files: Array<{ path: string; new_content: string }>): Promise<void> {
   await sql()`
     UPDATE public.issues SET proposed_patch = ${jsonb(files)}, updated_at = now()
-    WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE id = ${id} AND tenant_id = ${tenantId()}
   `;
 }
 
@@ -269,7 +269,7 @@ export interface LinkedTask { id: number; agent_id: string; status: string; erro
 export async function getIssueTask(taskId: number): Promise<LinkedTask | null> {
   const rows = (await sql()`
     SELECT id, agent_id, status, error, result, started_at, completed_at
-    FROM public.agent_tasks WHERE id = ${taskId} AND tenant_id = ${DEFAULT_TENANT_ID}
+    FROM public.agent_tasks WHERE id = ${taskId} AND tenant_id = ${tenantId()}
   `) as unknown as LinkedTask[];
   return rows[0] ?? null;
 }
@@ -290,7 +290,7 @@ export async function updateIssue(
       task_id       = COALESCE(${fields.task_id ?? null}, task_id),
       resolved_at   = CASE WHEN ${fields.status ?? null} = 'resolved' THEN ${resolvedAt}::timestamptz ELSE resolved_at END,
       updated_at    = now()
-    WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE id = ${id} AND tenant_id = ${tenantId()}
     RETURNING *
   `) as unknown as IssueRow[];
   return rows[0] ?? null;

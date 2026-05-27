@@ -15,10 +15,12 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 let _sql: ReturnType<typeof postgres> | null = null;
 let _db: ReturnType<typeof drizzle> | null = null;
 
-// V1 is single-tenant. Every backend query MUST scope to this tenant_id, since
-// the `postgres` role bypasses RLS (see header note). Override via env if needed.
-export const DEFAULT_TENANT_ID =
-  process.env.DEFAULT_TENANT_ID ?? 'fff35ccb-d1da-4fef-b8cb-e363fe1b8e14';
+// Tenant scoping is now REQUEST-SCOPED (multi-tenant). `tenantId()` returns the
+// active request's workspace, or the system default outside a request (cron, jobs).
+// Re-exported here so the many call sites that import the tenant from this module
+// keep working after the flip from the old constant. Every backend query MUST still
+// scope to tenantId(), since the postgres role bypasses RLS (see header note).
+export { DEFAULT_TENANT_ID, tenantId } from '../tenant';
 
 function connectionString(): string {
   const url = process.env.SUPABASE_DB_URL;

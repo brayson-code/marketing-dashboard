@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, tenantId } from '@/lib/db/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 // graph + agent_memory rollups. Surfaces volume, low-confidence facts, and
 // duplicate candidates (the cloud version of the old OpenClaw memory health).
 export async function GET() {
-  const t = DEFAULT_TENANT_ID;
+  const t = tenantId();
   try {
     const [docsByStatus, docDupes, kg, kgRelations, kgDupes, kgBySource, mem] = await Promise.all([
       sql()`SELECT status, count(*)::int AS c FROM public.documents WHERE tenant_id = ${t} GROUP BY status`,

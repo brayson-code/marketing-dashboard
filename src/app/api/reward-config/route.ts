@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, tenantId } from '@/lib/db/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +18,7 @@ export async function GET() {
     const rows = (await sql()`
       SELECT w_approval, w_outcome, w_reliability
       FROM public.reward_config
-      WHERE tenant_id = ${DEFAULT_TENANT_ID}
+      WHERE tenant_id = ${tenantId()}
     `) as unknown as RewardRow[];
 
     const row = rows[0];
@@ -85,7 +85,7 @@ export async function PUT(request: Request) {
         w_outcome = ${weights.outcome},
         w_reliability = ${weights.reliability},
         updated_at = now()
-      WHERE tenant_id = ${DEFAULT_TENANT_ID}
+      WHERE tenant_id = ${tenantId()}
     `;
     return NextResponse.json({ weights });
   } catch (err) {

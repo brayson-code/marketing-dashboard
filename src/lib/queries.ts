@@ -1,4 +1,4 @@
-import { sql, DEFAULT_TENANT_ID } from './db/client';
+import { sql, tenantId } from './db/client';
 // createNotification lives in ./notifications (Supabase-backed, no better-sqlite3)
 // and is re-exported here for existing callers.
 export { createNotification } from './notifications';
@@ -15,14 +15,14 @@ export async function getOverviewStats(_filters?: { excludeSeed?: boolean }): Pr
 
   const [postsRow, engRow, emailsRow, pipelineRow] = await Promise.all([
     s`SELECT COUNT(*) AS c FROM content_posts
-        WHERE tenant_id = ${DEFAULT_TENANT_ID}
+        WHERE tenant_id = ${tenantId()}
         AND (published_at::date = ${today}::date OR created_at::date = ${today}::date)`,
     s`SELECT COUNT(*) AS c FROM engagements
-        WHERE tenant_id = ${DEFAULT_TENANT_ID} AND created_at::date = ${today}::date`,
+        WHERE tenant_id = ${tenantId()} AND created_at::date = ${today}::date`,
     s`SELECT COUNT(*) AS c FROM sequences
-        WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'sent' AND sent_at::date = ${today}::date`,
+        WHERE tenant_id = ${tenantId()} AND status = 'sent' AND sent_at::date = ${today}::date`,
     s`SELECT COUNT(*) AS c FROM leads
-        WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status IN ('interested', 'booked')`,
+        WHERE tenant_id = ${tenantId()} AND status IN ('interested', 'booked')`,
   ]);
 
   return {
@@ -40,7 +40,7 @@ export async function getAlerts(_filters?: { excludeSeed?: boolean }): Promise<A
   // Bounce rate check
   const metricsRows = await s`
     SELECT sends, bounces FROM daily_metrics
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     ORDER BY date DESC LIMIT 1
   ` as unknown as { sends: number; bounces: number }[];
   const metrics = metricsRows[0];
@@ -56,7 +56,7 @@ export async function getAlerts(_filters?: { excludeSeed?: boolean }): Promise<A
   // Pending approvals > 24h
   const staleRows = await s`
     SELECT COUNT(*) AS c FROM content_posts
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     AND status = 'pending_approval'
     AND created_at < now() - interval '24 hours'
   `;
@@ -73,7 +73,7 @@ export async function getAlerts(_filters?: { excludeSeed?: boolean }): Promise<A
   // Stale email approvals
   const staleEmailRows = await s`
     SELECT COUNT(*) AS c FROM sequences
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     AND status = 'pending_approval'
     AND created_at < now() - interval '24 hours'
   `;
@@ -90,7 +90,7 @@ export async function getAlerts(_filters?: { excludeSeed?: boolean }): Promise<A
   // High engagement signal (viral)
   const viralRows = await s`
     SELECT summary FROM signals
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     AND relevance = 'high' AND created_at::date = now()::date
     ORDER BY created_at DESC LIMIT 1
   ` as unknown as { summary: string }[];
@@ -107,7 +107,7 @@ export async function getAlerts(_filters?: { excludeSeed?: boolean }): Promise<A
   // Webhook-pushed notifications (unread, last 24h)
   const notifications = await s`
     SELECT id, severity, title, message, created_at FROM notifications
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     AND read = false AND created_at > now() - interval '24 hours'
     ORDER BY created_at DESC LIMIT 10
   ` as unknown as { id: number; severity: string; title: string | null; message: string; created_at: Date }[];
@@ -133,7 +133,7 @@ export async function getContentPosts(filters?: {
   const s = sql();
   const rows = await s`
     SELECT * FROM content_posts
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     ${filters?.status ? s`AND status = ${filters.status}` : s``}
     ${filters?.platform ? s`AND platform = ${filters.platform}` : s``}
     ${filters?.pillar ? s`AND pillar = ${filters.pillar}` : s``}
@@ -145,7 +145,7 @@ export async function getContentPosts(filters?: {
 export async function updateContentStatus(id: string, status: string): Promise<void> {
   await sql()`
     UPDATE content_posts SET status = ${status}
-    WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE id = ${id} AND tenant_id = ${tenantId()}
   `;
 }
 
@@ -168,7 +168,7 @@ export async function getLeads(filters?: {
 
   const rows = await s`
     SELECT * FROM leads
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     ${filters?.status ? s`AND status = ${filters.status}` : s``}
     ${filters?.tier ? s`AND tier = ${filters.tier}` : s``}
     ${filters?.segment ? s`AND industry_segment = ${filters.segment}` : s``}
@@ -180,7 +180,7 @@ export async function getLeads(filters?: {
 export async function updateLeadStatus(id: string, status: string): Promise<void> {
   await sql()`
     UPDATE leads SET status = ${status}, last_touch_at = now()
-    WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE id = ${id} AND tenant_id = ${tenantId()}
   `;
 }
 
@@ -189,7 +189,7 @@ export async function getLeadFunnel(_filters?: { excludeSeed?: boolean }): Promi
   const steps = ["new", "validated", "approved", "contacted", "replied", "interested", "booked", "qualified", "rejected", "disqualified"];
   const rows = await s`
     SELECT status, COUNT(*) AS c FROM leads
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     GROUP BY status
   ` as unknown as { status: string; c: string }[];
   const counts = new Map(rows.map(r => [r.status, Number(r.c)]));
@@ -201,7 +201,7 @@ export async function getSequences(filters?: { status?: string; lead_id?: string
   const s = sql();
   const rows = await s`
     SELECT * FROM sequences
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     ${filters?.status ? s`AND status = ${filters.status}` : s``}
     ${filters?.lead_id ? s`AND lead_id = ${filters.lead_id}` : s``}
     ORDER BY created_at DESC
@@ -212,7 +212,7 @@ export async function getSequences(filters?: { status?: string; lead_id?: string
 export async function updateSequenceStatus(id: string, status: string): Promise<void> {
   await sql()`
     UPDATE sequences SET status = ${status}
-    WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE id = ${id} AND tenant_id = ${tenantId()}
   `;
 }
 
@@ -220,7 +220,7 @@ export async function updateSequenceStatus(id: string, status: string): Promise<
 export async function getSuppression(_filters?: { excludeSeed?: boolean }): Promise<Suppression[]> {
   const rows = await sql()`
     SELECT * FROM suppression
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     ORDER BY added_at DESC
   `;
   return rows as unknown as Suppression[];
@@ -236,7 +236,7 @@ export async function getEngagements(filters?: {
   const s = sql();
   const rows = await s`
     SELECT * FROM engagements
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     ${filters?.platform ? s`AND platform = ${filters.platform}` : s``}
     ${filters?.action_type ? s`AND action_type = ${filters.action_type}` : s``}
     ${filters?.date ? s`AND created_at::date = ${filters.date}::date` : s``}
@@ -255,7 +255,7 @@ export async function getSignals(filters?: {
   const s = sql();
   const rows = await s`
     SELECT * FROM signals
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     ${filters?.type ? s`AND type = ${filters.type}` : s``}
     ${filters?.relevance ? s`AND relevance = ${filters.relevance}` : s``}
     ${filters?.date ? s`AND date = ${filters.date}` : s``}
@@ -269,7 +269,7 @@ export async function getExperiments(filters?: { status?: string; excludeSeed?: 
   const s = sql();
   const rows = await s`
     SELECT * FROM experiments
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     ${filters?.status ? s`AND status = ${filters.status}` : s``}
     ORDER BY week DESC, id DESC
   `;
@@ -279,7 +279,7 @@ export async function getExperiments(filters?: { status?: string; excludeSeed?: 
 export async function getLearnings(_filters?: { excludeSeed?: boolean }): Promise<Learning[]> {
   const rows = await sql()`
     SELECT * FROM learnings
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     ORDER BY validated_week DESC, id DESC
   `;
   return rows as unknown as Learning[];
@@ -289,7 +289,7 @@ export async function getLearnings(_filters?: { excludeSeed?: boolean }): Promis
 export async function getDailyMetrics(days: number = 90, _filters?: { excludeSeed?: boolean }): Promise<DailyMetrics[]> {
   const rows = await sql()`
     SELECT * FROM daily_metrics
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     ORDER BY date DESC LIMIT ${days}
   `;
   return rows as unknown as DailyMetrics[];
@@ -298,7 +298,7 @@ export async function getDailyMetrics(days: number = 90, _filters?: { excludeSee
 export async function getWeeklyKPIs(weeks: number = 12, _filters?: { excludeSeed?: boolean }): Promise<WeeklyKPI[]> {
   const metrics = await sql()`
     SELECT * FROM daily_metrics
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     ORDER BY date DESC LIMIT ${weeks * 7}
   ` as unknown as DailyMetrics[];
 
@@ -350,7 +350,7 @@ export async function getActivityLog(filters?: {
   const limit = filters?.limit ?? 100;
   const rows = await s`
     SELECT * FROM activity_log
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     ${filters?.action ? s`AND action = ${filters.action}` : s``}
     ORDER BY ts DESC LIMIT ${limit}
   `;
@@ -370,7 +370,7 @@ export async function getNotifications(filters?: {
   const limit = filters?.limit ?? 50;
   const rows = await s`
     SELECT * FROM notifications
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     ${filters?.unread_only ? s`AND read = false` : s``}
     ${filters?.type ? s`AND type = ${filters.type}` : s``}
     ORDER BY created_at DESC LIMIT ${limit}
@@ -386,14 +386,14 @@ export async function getNotifications(filters?: {
 export async function markNotificationRead(id: number): Promise<void> {
   await sql()`
     UPDATE notifications SET read = true
-    WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE id = ${id} AND tenant_id = ${tenantId()}
   `;
 }
 
 export async function markAllNotificationsRead(): Promise<void> {
   await sql()`
     UPDATE notifications SET read = true
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND read = false
+    WHERE tenant_id = ${tenantId()} AND read = false
   `;
 }
 

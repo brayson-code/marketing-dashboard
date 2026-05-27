@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { listEntities, neighborsOf, remember } from '@/lib/kg';
-import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, tenantId } from '@/lib/db/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +13,7 @@ export async function GET(request: Request) {
   if (entityId) {
     const id = Number(entityId);
     const rows = await sql()`
-      SELECT * FROM kg_entities WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+      SELECT * FROM kg_entities WHERE id = ${id} AND tenant_id = ${tenantId()}
     `;
     const ent = rows[0];
     if (!ent) return NextResponse.json({ error: 'Entity not found' }, { status: 404 });
@@ -23,15 +23,15 @@ export async function GET(request: Request) {
   const entities = await listEntities({ kind, search });
   const counts = await sql()`
     SELECT kind, COUNT(*) as n FROM kg_entities
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     GROUP BY kind ORDER BY n DESC
   `;
   const relRows = await sql()`
-    SELECT COUNT(*) as n FROM kg_relations WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    SELECT COUNT(*) as n FROM kg_relations WHERE tenant_id = ${tenantId()}
   `;
   const relationCount = Number(relRows[0].n);
   const relations = await sql()`
-    SELECT from_id, to_id, label FROM kg_relations WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    SELECT from_id, to_id, label FROM kg_relations WHERE tenant_id = ${tenantId()}
   `;
   return NextResponse.json({ entities, counts, relationCount, relations });
 }

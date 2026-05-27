@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, tenantId } from '@/lib/db/client';
 import { requireApiUser } from '@/lib/api-auth';
 
 const STAGE_ORDER = ['new', 'enriched', 'scored', 'sequenced', 'contacted', 'replied', 'interested', 'booked'];
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
   // Note: seed filtering is a no-op (no seed_registry table in Supabase).
   const rows = await sql()`
     SELECT status, COUNT(*) as count FROM leads
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     GROUP BY status
   ` as unknown as Array<{ status: string; count: string }>;
 

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, tenantId } from '@/lib/db/client';
 import { sendIMessage, getOwnerPhone, isLoopMessageConfigured } from '@/lib/loopmessage';
 
 interface BoardroomRow {
@@ -21,7 +21,7 @@ export async function GET(request: Request) {
 
   const rows = (await sql()`
     SELECT * FROM boardroom_messages
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     ORDER BY created_at DESC, id DESC
     LIMIT ${limit}
   `) as unknown as BoardroomRow[];

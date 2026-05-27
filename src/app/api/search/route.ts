@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, tenantId } from '@/lib/db/client';
 import { requireApiUser } from '@/lib/api-auth';
 
 export async function GET(req: NextRequest) {
@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
       SELECT id, first_name || ' ' || last_name AS title, company AS subtitle,
              'lead' AS category, status, tier
       FROM leads
-      WHERE tenant_id = ${DEFAULT_TENANT_ID}
+      WHERE tenant_id = ${tenantId()}
         AND (first_name || ' ' || last_name ILIKE ${like} OR company ILIKE ${like} OR email ILIKE ${like})
       LIMIT 5
     `,
@@ -26,14 +26,14 @@ export async function GET(req: NextRequest) {
       SELECT id, text_preview AS title, platform || ' · ' || format AS subtitle,
              'content' AS category, status
       FROM content_posts
-      WHERE tenant_id = ${DEFAULT_TENANT_ID} AND text_preview ILIKE ${like}
+      WHERE tenant_id = ${tenantId()} AND text_preview ILIKE ${like}
       LIMIT 5
     `,
     s`
       SELECT id, summary AS title, username AS subtitle,
              'signal' AS category, type AS status, relevance AS tier
       FROM signals
-      WHERE tenant_id = ${DEFAULT_TENANT_ID}
+      WHERE tenant_id = ${tenantId()}
         AND (summary ILIKE ${like} OR username ILIKE ${like})
       LIMIT 5
     `,
@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
       SELECT id, hypothesis AS title, 'Week ' || week AS subtitle,
              'experiment' AS category, status
       FROM experiments
-      WHERE tenant_id = ${DEFAULT_TENANT_ID}
+      WHERE tenant_id = ${tenantId()}
         AND (hypothesis ILIKE ${like} OR action ILIKE ${like})
       LIMIT 3
     `,
@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
       SELECT id, detail AS title, action AS subtitle,
              'activity' AS category, action AS status
       FROM activity_log
-      WHERE tenant_id = ${DEFAULT_TENANT_ID}
+      WHERE tenant_id = ${tenantId()}
         AND (detail ILIKE ${like} OR result ILIKE ${like})
       ORDER BY ts DESC
       LIMIT 3

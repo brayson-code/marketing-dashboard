@@ -1,4 +1,4 @@
-import { sql, jsonb, DEFAULT_TENANT_ID } from './db/client';
+import { sql, jsonb, tenantId } from './db/client';
 
 // Supabase-backed notification creator. Kept in its own module (free of any
 // better-sqlite3 import) so serverless functions like the LoopMessage/Telegram
@@ -13,7 +13,7 @@ export async function createNotification(data: {
   const rows = await sql()`
     INSERT INTO notifications (tenant_id, type, severity, title, message, data)
     VALUES (
-      ${DEFAULT_TENANT_ID}, ${data.type}, ${data.severity || 'info'},
+      ${tenantId()}, ${data.type}, ${data.severity || 'info'},
       ${data.title || null}, ${data.message}, ${data.data ? jsonb(data.data) : null}
     )
     RETURNING id

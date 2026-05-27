@@ -1,4 +1,4 @@
-import { sql, DEFAULT_TENANT_ID } from './db/client';
+import { sql, tenantId } from './db/client';
 
 // Anthropic pricing per 1M tokens (cached 2026-04-15 — refresh from platform.claude.com)
 const PRICING: Record<string, { input: number; output: number }> = {
@@ -105,7 +105,7 @@ export async function getUsageSummary(days = 14): Promise<UsageSummary> {
   const rows = await sql()`
     SELECT agent_id, input_tokens, output_tokens, started_at, completed_at, status
     FROM agent_tasks
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
       AND started_at >= ${cutoff}
       AND status IN ('done', 'error')
   ` as unknown as Array<{

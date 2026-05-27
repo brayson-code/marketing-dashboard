@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { after } from 'next/server';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { sql, DEFAULT_TENANT_ID } from './db/client';
+import { sql, tenantId } from './db/client';
 import { sendIMessage } from './loopmessage';
 import { spawnSubAgent, SUBAGENT_REGISTRY } from './subagent';
 import { startTask, finishTask } from './agent-tasks';
@@ -56,7 +56,7 @@ async function loadCurrentMemory(): Promise<string | null> {
   try {
     const rows = (await sql()`
       SELECT rollup, created_at FROM agent_memory
-      WHERE tenant_id = ${DEFAULT_TENANT_ID}
+      WHERE tenant_id = ${tenantId()}
       ORDER BY created_at DESC, id DESC
       LIMIT 3
     `) as unknown as Array<{ rollup: string; created_at: Date }>;
@@ -75,7 +75,7 @@ async function loadCurrentMemory(): Promise<string | null> {
 async function loadRecentHistory(limit = HISTORY_LIMIT): Promise<Anthropic.MessageParam[]> {
   const rows = (await sql()`
     SELECT direction, text, attachments FROM boardroom_messages
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     ORDER BY id DESC LIMIT ${limit}
   `) as unknown as Array<{ direction: 'in' | 'out'; text: string; attachments: unknown }>;
 

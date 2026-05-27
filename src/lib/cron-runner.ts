@@ -3,7 +3,7 @@
 // state, reschedules next_run_at, and drops a notification. Shared by the Vercel
 // Cron dispatcher (/api/cron/dispatch) and the "Run now" button (/api/cron PUT).
 
-import { sql, jsonb, DEFAULT_TENANT_ID } from './db/client';
+import { sql, jsonb, tenantId } from './db/client';
 import { spawnSubAgent } from './subagent';
 import { computeNextRun } from './cron-expr';
 import { appendKnowledgeSection } from './documents';
@@ -30,7 +30,7 @@ async function notify(title: string, message: string, severity: 'info' | 'warnin
   try {
     await sql()`
       INSERT INTO public.notifications (tenant_id, type, severity, title, message, data)
-      VALUES (${DEFAULT_TENANT_ID}, 'cron', ${severity}, ${title}, ${message}, ${jsonb({})})
+      VALUES (${tenantId()}, 'cron', ${severity}, ${title}, ${message}, ${jsonb({})})
     `;
   } catch (err) {
     console.error('[cron-runner] notify failed:', (err as Error).message);
@@ -45,7 +45,7 @@ async function runOne(job: DueJobRow): Promise<{ id: string; status: 'ok' | 'err
   // Mark running so the board reflects it during the (slow) agent call.
   await sql()`
     UPDATE public.cron_jobs SET last_status = 'running', updated_at = now()
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND id = ${job.id}
+    WHERE tenant_id = ${tenantId()} AND id = ${job.id}
   `;
 
   // Knowledge-base wiring: on by default so cron output is reusable by the rest
@@ -107,12 +107,12 @@ async function runOne(job: DueJobRow): Promise<{ id: string; status: 'ok' | 'err
       last_run_at = now(), last_status = ${status}, last_duration_ms = ${durationMs},
       last_error = ${errorText}, last_result = ${fullResult},
       next_run_at = ${nextIso}, updated_at = now()
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND id = ${job.id}
+    WHERE tenant_id = ${tenantId()} AND id = ${job.id}
   `;
 
   await sql()`
     INSERT INTO public.cron_runs (tenant_id, job_id, status, duration_ms, summary, error, next_run_at)
-    VALUES (${DEFAULT_TENANT_ID}, ${job.id}, ${status}, ${durationMs}, ${summary}, ${errorText}, ${nextIso})
+    VALUES (${tenantId()}, ${job.id}, ${status}, ${durationMs}, ${summary}, ${errorText}, ${nextIso})
   `;
 
   const secs = Math.round(durationMs / 1000);
@@ -130,7 +130,7 @@ async function loadJob(id: string): Promise<DueJobRow | null> {
   const rows = (await sql()`
     SELECT id, name, agent_id, enabled, schedule_expr, schedule_tz, payload
     FROM public.cron_jobs
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND id = ${id}
+    WHERE tenant_id = ${tenantId()} AND id = ${id}
   `) as unknown as DueJobRow[];
   return rows[0] ?? null;
 }
@@ -152,7 +152,7 @@ export async function runDueJobs(): Promise<{ ran: number; results: Array<{ id: 
   const due = (await sql()`
     SELECT id, name, agent_id, enabled, schedule_expr, schedule_tz, payload
     FROM public.cron_jobs
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
       AND enabled = true
       AND next_run_at IS NOT NULL
       AND next_run_at <= now()

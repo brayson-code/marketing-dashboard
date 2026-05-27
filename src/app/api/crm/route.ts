@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, tenantId } from '@/lib/db/client';
 import { writebackLeadUpdate, writebackSequenceStatus } from '@/lib/writeback';
 import type { Lead, Sequence, FunnelStep } from '@/types';
 import { requireApiEditor, requireApiUser } from '@/lib/api-auth';
@@ -31,14 +31,14 @@ export async function GET(request: Request) {
 
   // Single lead detail
   if (id) {
-    const leadRows = await s`SELECT * FROM leads WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}` as unknown as Lead[];
+    const leadRows = await s`SELECT * FROM leads WHERE id = ${id} AND tenant_id = ${tenantId()}` as unknown as Lead[];
     const lead = leadRows[0];
     if (!lead) {
       return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
     }
 
     const sequences = await s`
-      SELECT * FROM sequences WHERE lead_id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+      SELECT * FROM sequences WHERE lead_id = ${id} AND tenant_id = ${tenantId()}
       ORDER BY step ASC, created_at DESC
     ` as unknown as Sequence[];
 
@@ -101,7 +101,7 @@ export async function GET(request: Request) {
     // CRM activity log entries (status/notes updates, etc.)
     const activityRows = await s`
       SELECT ts, detail FROM activity_log
-      WHERE tenant_id = ${DEFAULT_TENANT_ID} AND action = 'crm' AND detail LIKE ${`lead:${id}%`}
+      WHERE tenant_id = ${tenantId()} AND action = 'crm' AND detail LIKE ${`lead:${id}%`}
       ORDER BY ts DESC LIMIT 50
     ` as unknown as { ts: string | Date; detail: string }[];
     for (const row of activityRows) {
@@ -127,7 +127,7 @@ export async function GET(request: Request) {
 
   const leads = await s`
     SELECT * FROM leads
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     ${status ? s`AND status = ${status}` : s``}
     ${tier ? s`AND tier = ${tier}` : s``}
     ${like ? s`AND (first_name ILIKE ${like} OR last_name ILIKE ${like} OR company ILIKE ${like} OR email ILIKE ${like})` : s``}
@@ -137,20 +137,20 @@ export async function GET(request: Request) {
   const stages = ["new", "validated", "approved", "contacted", "replied", "interested", "booked", "qualified", "rejected", "disqualified"];
   const funnelRows = await s`
     SELECT status, COUNT(*) as c FROM leads
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     GROUP BY status
   ` as unknown as { status: string; c: string }[];
   const funnelMap = new Map(funnelRows.map(r => [r.status, Number(r.c)]));
   const funnel: FunnelStep[] = stages.map(name => ({ name, value: funnelMap.get(name) ?? 0 }));
 
   const [totalRows, avgScoreRows, tierBreakdownRows, pendingApprovalsRows, emailsSentRows, contactedRows, repliedRows] = await Promise.all([
-    s`SELECT COUNT(*) as c FROM leads WHERE tenant_id = ${DEFAULT_TENANT_ID}`,
-    s`SELECT AVG(score) as avg FROM leads WHERE tenant_id = ${DEFAULT_TENANT_ID} AND score IS NOT NULL`,
-    s`SELECT tier, COUNT(*) as c FROM leads WHERE tenant_id = ${DEFAULT_TENANT_ID} AND tier IS NOT NULL GROUP BY tier ORDER BY tier`,
-    s`SELECT COUNT(*) as c FROM sequences WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'pending_approval'`,
-    s`SELECT COUNT(*) as c FROM sequences WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'sent'`,
-    s`SELECT COUNT(*) as c FROM leads WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status IN ('contacted','replied','interested','booked','qualified')`,
-    s`SELECT COUNT(*) as c FROM leads WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status IN ('replied','interested','booked','qualified')`,
+    s`SELECT COUNT(*) as c FROM leads WHERE tenant_id = ${tenantId()}`,
+    s`SELECT AVG(score) as avg FROM leads WHERE tenant_id = ${tenantId()} AND score IS NOT NULL`,
+    s`SELECT tier, COUNT(*) as c FROM leads WHERE tenant_id = ${tenantId()} AND tier IS NOT NULL GROUP BY tier ORDER BY tier`,
+    s`SELECT COUNT(*) as c FROM sequences WHERE tenant_id = ${tenantId()} AND status = 'pending_approval'`,
+    s`SELECT COUNT(*) as c FROM sequences WHERE tenant_id = ${tenantId()} AND status = 'sent'`,
+    s`SELECT COUNT(*) as c FROM leads WHERE tenant_id = ${tenantId()} AND status IN ('contacted','replied','interested','booked','qualified')`,
+    s`SELECT COUNT(*) as c FROM leads WHERE tenant_id = ${tenantId()} AND status IN ('replied','interested','booked','qualified')`,
   ]);
 
   const totalLeads = Number(totalRows[0]?.c ?? 0);
@@ -202,8 +202,8 @@ export async function PATCH(request: Request) {
         const rows = await s`
           SELECT l.status as lead_status
           FROM sequences seq
-          LEFT JOIN leads l ON l.id = seq.lead_id AND l.tenant_id = ${DEFAULT_TENANT_ID}
-          WHERE seq.id = ${id} AND seq.tenant_id = ${DEFAULT_TENANT_ID}
+          LEFT JOIN leads l ON l.id = seq.lead_id AND l.tenant_id = ${tenantId()}
+          WHERE seq.id = ${id} AND seq.tenant_id = ${tenantId()}
         ` as unknown as { lead_status: string | null }[];
         const lead = rows[0];
         if (!lead || lead.lead_status !== LEAD_APPROVED_STATUS) {
@@ -211,7 +211,7 @@ export async function PATCH(request: Request) {
         }
       }
 
-      await s`UPDATE sequences SET status = ${nextStatus} WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}`;
+      await s`UPDATE sequences SET status = ${nextStatus} WHERE id = ${id} AND tenant_id = ${tenantId()}`;
       writebackSequenceStatus(id, nextStatus);
       await logAudit({
         actor,
@@ -227,7 +227,7 @@ export async function PATCH(request: Request) {
     const setValues: Record<string, unknown> = {};
     const beforeRows = await s`
       SELECT status, tier, notes, pause_outreach, next_action_at FROM leads
-      WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+      WHERE id = ${id} AND tenant_id = ${tenantId()}
     ` as unknown as Lead[];
     const before = beforeRows[0];
 
@@ -254,7 +254,7 @@ export async function PATCH(request: Request) {
 
     await s`
       UPDATE leads SET ${s(setValues)}
-      WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+      WHERE id = ${id} AND tenant_id = ${tenantId()}
     `;
 
     // Writeback to state file
@@ -264,7 +264,7 @@ export async function PATCH(request: Request) {
     }
     writebackLeadUpdate(id, writebackUpdates);
 
-    const leadRows = await s`SELECT * FROM leads WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}`;
+    const leadRows = await s`SELECT * FROM leads WHERE id = ${id} AND tenant_id = ${tenantId()}`;
     const lead = leadRows[0];
     if (before) {
       const changes: string[] = [];
@@ -283,7 +283,7 @@ export async function PATCH(request: Request) {
       if (changes.length > 0) {
         await s`
           INSERT INTO activity_log (tenant_id, ts, action, detail, result)
-          VALUES (${DEFAULT_TENANT_ID}, now(), 'crm', ${`lead:${id} ${changes.join(', ')}`}, NULL)
+          VALUES (${tenantId()}, now(), 'crm', ${`lead:${id} ${changes.join(', ')}`}, NULL)
         `;
       }
     }

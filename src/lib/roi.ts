@@ -2,9 +2,9 @@
 // The Key Audit (revenue/profit/hours/admin%) yields the owner's $/hr; every agent
 // action logs an estimated minutes-saved (from editable presets) → hours + dollars
 // reclaimed. Numbers start as "projected" (audit only) and become "actual" as the
-// time_savings_log fills. Single-tenant (DEFAULT_TENANT_ID), additive tables only.
+// time_savings_log fills. Single-tenant (tenantId()), additive tables only.
 
-import { sql, jsonb, DEFAULT_TENANT_ID } from './db/client';
+import { sql, jsonb, tenantId } from './db/client';
 import { roleFor } from './constraints';
 
 // Default minutes saved per action type (PRD §8.3). Editable per tenant via key_audit.presets.
@@ -68,7 +68,7 @@ export function newDollarPerHour(a: KeyAudit, recoveredHrsPerYear: number): numb
 export async function getKeyAudit(): Promise<KeyAudit> {
   const rows = (await sql()`
     SELECT annual_revenue, annual_profit, hours_per_week, admin_percentage, presets, updated_at
-    FROM public.key_audit WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    FROM public.key_audit WHERE tenant_id = ${tenantId()}
   `) as unknown as Array<Record<string, unknown>>;
   const r = rows[0];
   return {
@@ -84,7 +84,7 @@ export async function getKeyAudit(): Promise<KeyAudit> {
 export async function saveKeyAudit(input: Partial<Omit<KeyAudit, 'updated_at'>>): Promise<KeyAudit> {
   await sql()`
     INSERT INTO public.key_audit (tenant_id, annual_revenue, annual_profit, hours_per_week, admin_percentage, presets, updated_at)
-    VALUES (${DEFAULT_TENANT_ID}, ${input.annual_revenue ?? null}, ${input.annual_profit ?? null},
+    VALUES (${tenantId()}, ${input.annual_revenue ?? null}, ${input.annual_profit ?? null},
             ${input.hours_per_week ?? null}, ${input.admin_percentage ?? null},
             ${input.presets ? jsonb(input.presets) : null}, now())
     ON CONFLICT (tenant_id) DO UPDATE SET
@@ -127,7 +127,7 @@ export async function logTimeSaving(input: {
   const dollars = (minutes / 60) * rate;
   await sql()`
     INSERT INTO public.time_savings_log (tenant_id, agent_id, action_type, minutes_saved, dollar_value_saved, source, task_id)
-    VALUES (${DEFAULT_TENANT_ID}, ${input.agentId ?? null}, ${input.actionType}, ${minutes}, ${dollars},
+    VALUES (${tenantId()}, ${input.agentId ?? null}, ${input.actionType}, ${minutes}, ${dollars},
             ${input.source ?? 'agent'}, ${input.taskId ?? null})
     ON CONFLICT (tenant_id, task_id) WHERE task_id IS NOT NULL DO NOTHING
   `;
@@ -142,7 +142,7 @@ export async function getRoiSummary(): Promise<RoiSummary> {
       COALESCE(SUM(minutes_saved) FILTER (WHERE logged_at >= date_trunc('month', now())), 0) AS month_min,
       COALESCE(SUM(dollar_value_saved), 0) AS value,
       COUNT(*) AS n
-    FROM public.time_savings_log WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    FROM public.time_savings_log WHERE tenant_id = ${tenantId()}
   `) as unknown as Array<{ all_min: string; month_min: string; value: string; n: string }>;
   const allMin = Number(totals[0]?.all_min ?? 0);
   const monthMin = Number(totals[0]?.month_min ?? 0);
@@ -159,14 +159,14 @@ export async function getRoiSummary(): Promise<RoiSummary> {
 
   const agents = (await sql()`
     SELECT agent_id, COALESCE(SUM(minutes_saved),0) AS min, COALESCE(SUM(dollar_value_saved),0) AS value
-    FROM public.time_savings_log WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    FROM public.time_savings_log WHERE tenant_id = ${tenantId()}
     GROUP BY agent_id ORDER BY min DESC LIMIT 12
   `) as unknown as Array<{ agent_id: string | null; min: string; value: string }>;
 
   const months = (await sql()`
     SELECT to_char(date_trunc('month', logged_at), 'YYYY-MM') AS month,
            COALESCE(SUM(minutes_saved),0) AS min, COALESCE(SUM(dollar_value_saved),0) AS value
-    FROM public.time_savings_log WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    FROM public.time_savings_log WHERE tenant_id = ${tenantId()}
       AND logged_at >= date_trunc('month', now()) - interval '5 months'
     GROUP BY 1 ORDER BY 1
   `) as unknown as Array<{ month: string; min: string; value: string }>;

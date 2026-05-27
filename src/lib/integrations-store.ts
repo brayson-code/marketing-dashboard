@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
-import { sql, jsonb, DEFAULT_TENANT_ID } from './db/client';
+import { sql, jsonb, tenantId } from './db/client';
 
 /**
  * Per-client integration credentials. Secrets are encrypted at rest with
@@ -140,7 +140,7 @@ function hydrate(row: RawRow): IntegrationRow {
 export async function listIntegrations(): Promise<IntegrationRow[]> {
   const rows = await sql()`
     SELECT * FROM client_integrations
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     ORDER BY provider
   ` as unknown as RawRow[];
   return rows.map(hydrate);
@@ -149,7 +149,7 @@ export async function listIntegrations(): Promise<IntegrationRow[]> {
 export async function getIntegration(provider: string): Promise<IntegrationRow | undefined> {
   const rows = await sql()`
     SELECT * FROM client_integrations
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND provider = ${provider}
+    WHERE tenant_id = ${tenantId()} AND provider = ${provider}
   ` as unknown as RawRow[];
   return rows[0] ? hydrate(rows[0]) : undefined;
 }
@@ -157,7 +157,7 @@ export async function getIntegration(provider: string): Promise<IntegrationRow |
 export async function getDecryptedSecret(provider: string): Promise<Record<string, string> | null> {
   const rows = await sql()`
     SELECT secret_encrypted FROM client_integrations
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND provider = ${provider}
+    WHERE tenant_id = ${tenantId()} AND provider = ${provider}
   ` as unknown as { secret_encrypted: string | null }[];
   const secret = rows[0]?.secret_encrypted;
   if (!secret) return null;
@@ -179,7 +179,7 @@ export async function upsertIntegration(input: {
   const s = sql();
   const existingRows = await s`
     SELECT * FROM client_integrations
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND provider = ${input.provider}
+    WHERE tenant_id = ${tenantId()} AND provider = ${input.provider}
   ` as unknown as RawRow[];
   const existing = existingRows[0];
 
@@ -208,14 +208,14 @@ export async function upsertIntegration(input: {
              expires_at = COALESCE(${expiresAt}, expires_at),
              updated_at = now(),
              last_error = NULL
-       WHERE id = ${existing.id} AND tenant_id = ${DEFAULT_TENANT_ID}
+       WHERE id = ${existing.id} AND tenant_id = ${tenantId()}
     `;
     return (await getIntegration(input.provider))!;
   }
   await s`
     INSERT INTO client_integrations (tenant_id, provider, label, status, config, secret_encrypted, scopes, expires_at)
     VALUES (
-      ${DEFAULT_TENANT_ID}, ${input.provider}, ${input.label ?? null}, ${status},
+      ${tenantId()}, ${input.provider}, ${input.label ?? null}, ${status},
       ${jsonb(mergedConfig)}, ${encryptedBlob}, ${input.scopes ?? null}, ${expiresAt}
     )
   `;
@@ -225,6 +225,6 @@ export async function upsertIntegration(input: {
 export async function clearIntegration(provider: string): Promise<void> {
   await sql()`
     DELETE FROM client_integrations
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND provider = ${provider}
+    WHERE tenant_id = ${tenantId()} AND provider = ${provider}
   `;
 }

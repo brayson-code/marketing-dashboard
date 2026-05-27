@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { sql, jsonb, DEFAULT_TENANT_ID } from './db/client';
+import { sql, jsonb, tenantId } from './db/client';
 import { startTask, finishTask, setTaskStream } from './agent-tasks';
 import { kgToolDefinitions, handleKgTool } from './kg-tools';
 import { chooseVariant } from './selection';
@@ -131,7 +131,7 @@ async function logA2A(from: string, to: string, content: string, metadata: Recor
   await sql()`
     INSERT INTO messages (tenant_id, conversation_id, from_agent, to_agent, content, message_type, metadata)
     VALUES (
-      ${DEFAULT_TENANT_ID}, ${conversationId}, ${from}, ${to}, ${content}, 'text',
+      ${tenantId()}, ${conversationId}, ${from}, ${to}, ${content}, 'text',
       ${jsonb({ source: 'subagent', ...metadata })}
     )
   `;
@@ -153,12 +153,12 @@ function fmtTs(ts: Date): string { return new Date(ts).toISOString().replace('T'
 async function buildMemoryCompactorPayload(originalInstruction: string): Promise<string> {
   const boardroom = (await sql()`
     SELECT direction, sender, text, created_at FROM boardroom_messages
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     ORDER BY created_at DESC LIMIT 50
   `) as unknown as BoardroomRow[];
   const tasks = (await sql()`
     SELECT agent_id, status, task, result, started_at FROM agent_tasks
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     ORDER BY started_at DESC LIMIT 30
   `) as unknown as TaskHistoryRow[];
 
@@ -188,7 +188,7 @@ async function persistMemoryRollup(rollupText: string): Promise<void> {
   try {
     await sql()`
       INSERT INTO agent_memory (tenant_id, rollup)
-      VALUES (${DEFAULT_TENANT_ID}, ${rollupText.trim()})
+      VALUES (${tenantId()}, ${rollupText.trim()})
     `;
   } catch (err) {
     console.error('[memory-compactor] failed to persist rollup:', (err as Error).message);

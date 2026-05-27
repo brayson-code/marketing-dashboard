@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireApiUser } from '@/lib/api-auth';
-import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, tenantId } from '@/lib/db/client';
 import { clampDays } from '@/lib/analytics';
 import { summarizeCycleTimes, percentImprovement } from '@/lib/benchmarks';
 
@@ -30,8 +30,8 @@ async function queryCycleTimes(
   const rows = await sql()`
     SELECT (EXTRACT(EPOCH FROM (MIN(s.created_at) - l.created_at)) / 3600.0) AS cycle_hours
     FROM leads l
-    JOIN sequences s ON s.lead_id = l.id AND s.tenant_id = ${DEFAULT_TENANT_ID}
-    WHERE l.tenant_id = ${DEFAULT_TENANT_ID}
+    JOIN sequences s ON s.lead_id = l.id AND s.tenant_id = ${tenantId()}
+    WHERE l.tenant_id = ${tenantId()}
       AND s.status IN ('approved', 'queued')
       AND l.created_at >= ${startIso}::timestamptz
       AND l.created_at < ${endIso}::timestamptz

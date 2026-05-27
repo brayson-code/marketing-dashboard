@@ -1,4 +1,4 @@
-import { sql, DEFAULT_TENANT_ID } from './db/client';
+import { sql, tenantId } from './db/client';
 import type { User } from './auth';
 
 export interface AuditEntry {
@@ -16,7 +16,7 @@ export async function logAudit(entry: AuditEntry): Promise<void> {
   await sql()`
     INSERT INTO audit_log (tenant_id, actor_id, actor_username, action, target, detail)
     VALUES (
-      ${DEFAULT_TENANT_ID}, ${null}, ${entry.actor?.username ?? null},
+      ${tenantId()}, ${null}, ${entry.actor?.username ?? null},
       ${entry.action}, ${entry.target ?? null},
       ${entry.detail ? JSON.stringify(entry.detail) : null}
     )

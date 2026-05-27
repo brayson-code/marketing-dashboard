@@ -1,4 +1,4 @@
-import { sql, jsonb, DEFAULT_TENANT_ID } from './db/client';
+import { sql, jsonb, tenantId } from './db/client';
 
 const SEND_URL = 'https://a.loopmessage.com/api/v1/message/send/';
 
@@ -59,7 +59,7 @@ export async function sendIMessage(text: string, opts: SendIMessageOptions = {})
   await sql()`
     INSERT INTO boardroom_messages (tenant_id, direction, sender, recipient, text, loop_message_id, status, metadata)
     VALUES (
-      ${DEFAULT_TENANT_ID}, 'out', ${opts.agent ?? 'system'}, ${recipient}, ${text},
+      ${tenantId()}, 'out', ${opts.agent ?? 'system'}, ${recipient}, ${text},
       ${messageId}, ${status ?? 'sent'}, ${opts.metadata ? jsonb(opts.metadata) : null}
     )
   `;

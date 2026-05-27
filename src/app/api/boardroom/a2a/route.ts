@@ -1,5 +1,5 @@
 import { NextResponse, after } from 'next/server';
-import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, tenantId } from '@/lib/db/client';
 import { squadRoster } from '@/lib/squad';
 import { spawnSubAgent, SUBAGENT_REGISTRY } from '@/lib/subagent';
 
@@ -28,7 +28,7 @@ export async function GET(request: Request) {
     SELECT id, conversation_id, from_agent, to_agent, content, message_type,
            metadata, EXTRACT(EPOCH FROM created_at)::bigint AS created_at
     FROM messages
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND conversation_id LIKE 'mc:a2a:%'
+    WHERE tenant_id = ${tenantId()} AND conversation_id LIKE 'mc:a2a:%'
     ORDER BY created_at ASC
     LIMIT ${limit}
   `) as unknown as Row[];

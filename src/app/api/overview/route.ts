@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOverviewStats, getAlerts, getActivityLog, getDailyMetrics } from '@/lib/queries';
-import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, tenantId } from '@/lib/db/client';
 import { getAgents, ACTION_TO_AGENT } from '@/lib/agent-config';
 import { requireApiUser } from '@/lib/api-auth';
 
@@ -44,10 +44,10 @@ async function getAgentBriefs(): Promise<AgentBrief[]> {
       if (agentActions.length > 0) {
         const [countRows, lastRows] = await Promise.all([
           s`SELECT COUNT(*) as c FROM activity_log
-            WHERE tenant_id = ${DEFAULT_TENANT_ID}
+            WHERE tenant_id = ${tenantId()}
               AND action IN ${s(agentActions)} AND ts::date = now()::date`,
           s`SELECT action, detail, ts FROM activity_log
-            WHERE tenant_id = ${DEFAULT_TENANT_ID}
+            WHERE tenant_id = ${tenantId()}
               AND action IN ${s(agentActions)} ORDER BY ts DESC LIMIT 1`,
         ]);
         actionsToday = Number(countRows[0]?.c ?? 0);
@@ -117,7 +117,7 @@ async function getActionItems(): Promise<ActionItem[]> {
   // Pending content approvals
   const contentPending = await s`
     SELECT id, platform, text_preview, pillar, created_at FROM content_posts
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'pending_approval'
+    WHERE tenant_id = ${tenantId()} AND status = 'pending_approval'
     ORDER BY created_at ASC
   ` as unknown as { id: string; platform: string; text_preview: string | null; pillar: number | null; created_at: string }[];
 
@@ -136,8 +136,8 @@ async function getActionItems(): Promise<ActionItem[]> {
     SELECT seq.id, seq.subject, seq.step, seq.sequence_name, seq.tier, seq.created_at,
            l.first_name, l.last_name, l.company
     FROM sequences seq
-    LEFT JOIN leads l ON seq.lead_id = l.id AND l.tenant_id = ${DEFAULT_TENANT_ID}
-    WHERE seq.tenant_id = ${DEFAULT_TENANT_ID} AND seq.status = 'pending_approval'
+    LEFT JOIN leads l ON seq.lead_id = l.id AND l.tenant_id = ${tenantId()}
+    WHERE seq.tenant_id = ${tenantId()} AND seq.status = 'pending_approval'
     ORDER BY seq.created_at ASC
   ` as unknown as {
     id: string; subject: string | null; step: number; sequence_name: string | null;

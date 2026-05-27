@@ -4,7 +4,7 @@
 // so the front end is unchanged. All queries scope tenant_id explicitly because
 // the backend connects as the RLS-bypassing `postgres` role.
 
-import { sql, jsonb, DEFAULT_TENANT_ID } from './db/client';
+import { sql, jsonb, tenantId } from './db/client';
 import { SUBAGENT_REGISTRY } from './subagent';
 import { computeNextRun, isValidCron } from './cron-expr';
 
@@ -88,7 +88,7 @@ export async function listCronJobs(): Promise<CronJobView[]> {
            payload, delivery, last_run_at, last_status, last_duration_ms,
            last_error, last_result, next_run_at
     FROM public.cron_jobs
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     ORDER BY created_at ASC
   `) as unknown as CronJobRow[];
   return rows.map(rowToView);
@@ -152,7 +152,7 @@ function normalizeEditorJob(job: EditorJob): NormalizedJob {
 
 export async function jobExists(id: string): Promise<boolean> {
   const rows = await sql()`
-    SELECT 1 FROM public.cron_jobs WHERE tenant_id = ${DEFAULT_TENANT_ID} AND id = ${id} LIMIT 1
+    SELECT 1 FROM public.cron_jobs WHERE tenant_id = ${tenantId()} AND id = ${id} LIMIT 1
   `;
   return rows.length > 0;
 }
@@ -165,7 +165,7 @@ export async function createCronJob(job: EditorJob): Promise<void> {
     INSERT INTO public.cron_jobs
       (tenant_id, id, name, agent_id, skill, enabled, schedule_expr, schedule_tz, payload, delivery, next_run_at)
     VALUES
-      (${DEFAULT_TENANT_ID}, ${n.id}, ${n.name}, ${n.agentId}, ${n.skill}, ${n.enabled},
+      (${tenantId()}, ${n.id}, ${n.name}, ${n.agentId}, ${n.skill}, ${n.enabled},
        ${n.expr}, ${n.tz}, ${jsonb(n.payload)}, ${jsonb(n.delivery)}, ${next ? next.toISOString() : null})
   `;
 }
@@ -180,7 +180,7 @@ export async function updateCronJob(job: EditorJob): Promise<void> {
       schedule_expr = ${n.expr}, schedule_tz = ${n.tz},
       payload = ${jsonb(n.payload)}, delivery = ${jsonb(n.delivery)},
       next_run_at = ${next ? next.toISOString() : null}, updated_at = now()
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND id = ${n.id}
+    WHERE tenant_id = ${tenantId()} AND id = ${n.id}
   `;
 }
 
@@ -188,7 +188,7 @@ export async function deleteCronJob(idInput: unknown): Promise<void> {
   const id = normalizeJobId(idInput);
   if (!id) throw new Error('Invalid id');
   const res = await sql()`
-    DELETE FROM public.cron_jobs WHERE tenant_id = ${DEFAULT_TENANT_ID} AND id = ${id}
+    DELETE FROM public.cron_jobs WHERE tenant_id = ${tenantId()} AND id = ${id}
   `;
   if (res.count === 0) throw new Error('Not found');
 }
@@ -199,7 +199,7 @@ export async function toggleCronJob(idInput: unknown): Promise<void> {
   if (!id) throw new Error('Invalid id');
   const rows = (await sql()`
     SELECT enabled, schedule_expr, schedule_tz FROM public.cron_jobs
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND id = ${id}
+    WHERE tenant_id = ${tenantId()} AND id = ${id}
   `) as unknown as Array<{ enabled: boolean; schedule_expr: string; schedule_tz: string }>;
   if (rows.length === 0) throw new Error('Not found');
   const nowEnabled = !rows[0].enabled;
@@ -207,7 +207,7 @@ export async function toggleCronJob(idInput: unknown): Promise<void> {
   await sql()`
     UPDATE public.cron_jobs
     SET enabled = ${nowEnabled}, next_run_at = ${next ? next.toISOString() : null}, updated_at = now()
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND id = ${id}
+    WHERE tenant_id = ${tenantId()} AND id = ${id}
   `;
 }
 
@@ -217,7 +217,7 @@ export async function markDue(idInput: unknown): Promise<void> {
   if (!id) throw new Error('Invalid id');
   const res = await sql()`
     UPDATE public.cron_jobs SET next_run_at = now(), updated_at = now()
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND id = ${id}
+    WHERE tenant_id = ${tenantId()} AND id = ${id}
   `;
   if (res.count === 0) throw new Error('Not found');
 }
@@ -240,7 +240,7 @@ export async function listRuns(jobIdInput: unknown, limit = 10): Promise<CronRun
   const rows = (await sql()`
     SELECT started_at, status, duration_ms, summary, error, next_run_at
     FROM public.cron_runs
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND job_id = ${id}
+    WHERE tenant_id = ${tenantId()} AND job_id = ${id}
     ORDER BY started_at DESC
     LIMIT ${n}
   `) as unknown as Array<{

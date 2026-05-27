@@ -2,7 +2,7 @@
 // metadata + live stats from agent_tasks. Replaces the legacy OpenClaw-config
 // agent list. Keep the sub-agent ids in sync with subagent.ts SUBAGENT_REGISTRY.
 
-import { sql, DEFAULT_TENANT_ID } from './db/client';
+import { sql, tenantId } from './db/client';
 import { SUBAGENT_REGISTRY } from './subagent';
 
 export interface SquadAgentMeta {
@@ -88,7 +88,7 @@ export async function getSquad(): Promise<SquadAgent[]> {
       COALESCE(SUM(COALESCE(input_tokens,0) + COALESCE(output_tokens,0)),0)::bigint AS total_tokens,
       (ARRAY_AGG(status ORDER BY started_at DESC))[1] AS last_status
     FROM agent_tasks
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     GROUP BY agent_id
   `) as unknown as Array<{ agent_id: string; runs: number; running: number; last_active: number | null; total_tokens: number; last_status: string | null }>;
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sql, jsonb, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, jsonb, tenantId } from '@/lib/db/client';
 import { runOrchestrator } from '@/lib/orchestrator';
 import { spawnSubAgent } from '@/lib/subagent';
 import { requireApiAdmin } from '@/lib/api-auth';
@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
       const rows = await s`
         SELECT conversation_id, EXTRACT(EPOCH FROM MAX(created_at))::bigint as last_message_at, COUNT(*) as message_count
         FROM messages
-        WHERE tenant_id = ${DEFAULT_TENANT_ID} AND conversation_id LIKE ${pattern}
+        WHERE tenant_id = ${tenantId()} AND conversation_id LIKE ${pattern}
         GROUP BY conversation_id
         ORDER BY last_message_at DESC
         LIMIT 100
@@ -86,7 +86,7 @@ export async function GET(request: NextRequest) {
       SELECT id, conversation_id, from_agent, to_agent, content, message_type, metadata, read_at,
              EXTRACT(EPOCH FROM created_at)::bigint as created_at
       FROM messages
-      WHERE conversation_id = ${conversationId} AND tenant_id = ${DEFAULT_TENANT_ID}
+      WHERE conversation_id = ${conversationId} AND tenant_id = ${tenantId()}
       ORDER BY created_at ASC
       LIMIT ${limit}
     ` as unknown as MessageRow[];
@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
     const lastRows = await s`
       SELECT EXTRACT(EPOCH FROM created_at)::bigint as created_at
       FROM messages
-      WHERE tenant_id = ${DEFAULT_TENANT_ID} AND from_agent = ${actor.username}
+      WHERE tenant_id = ${tenantId()} AND from_agent = ${actor.username}
         AND metadata->>'source' = 'mission-control'
       ORDER BY created_at DESC
       LIMIT 1
@@ -160,7 +160,7 @@ export async function POST(request: NextRequest) {
     const recentCountRows = await s`
       SELECT COUNT(*) as c
       FROM messages
-      WHERE tenant_id = ${DEFAULT_TENANT_ID} AND from_agent = ${actor.username}
+      WHERE tenant_id = ${tenantId()} AND from_agent = ${actor.username}
         AND metadata->>'source' = 'mission-control'
         AND created_at >= to_timestamp(${now - windowSec})
     ` as unknown as { c?: string }[];
@@ -183,7 +183,7 @@ export async function POST(request: NextRequest) {
     await s`
       INSERT INTO messages (tenant_id, conversation_id, from_agent, to_agent, content, message_type, metadata)
       VALUES (
-        ${DEFAULT_TENANT_ID}, ${conversationId}, ${actor.username},
+        ${tenantId()}, ${conversationId}, ${actor.username},
         ${mode === 'agent_bridge' ? (toAgent ?? null) : 'orchestrator'}, ${content}, 'text', ${jsonb(metadata)}
       )
     `;
@@ -196,14 +196,14 @@ export async function POST(request: NextRequest) {
     if (mode === 'orchestrator') {
       await s`
         INSERT INTO boardroom_messages (tenant_id, direction, sender, recipient, text, status)
-        VALUES (${DEFAULT_TENANT_ID}, 'in', 'operator', ${process.env.LOOPMESSAGE_SENDER_NAME ?? 'keyplayers'}, ${content}, 'received')
+        VALUES (${tenantId()}, 'in', 'operator', ${process.env.LOOPMESSAGE_SENDER_NAME ?? 'keyplayers'}, ${content}, 'received')
       `;
       const result = await runOrchestrator();
       if (result.ok) {
         responseText = result.text;
         await s`
           INSERT INTO boardroom_messages (tenant_id, direction, sender, recipient, text, status, metadata)
-          VALUES (${DEFAULT_TENANT_ID}, 'out', 'keyplayer', 'operator', ${result.text}, 'delivered', ${jsonb({ usage: result.usage })})
+          VALUES (${tenantId()}, 'out', 'keyplayer', 'operator', ${result.text}, 'delivered', ${jsonb({ usage: result.usage })})
         `;
       } else {
         responseText = `(orchestrator error: ${result.error})`;
@@ -217,7 +217,7 @@ export async function POST(request: NextRequest) {
       await s`
         INSERT INTO messages (tenant_id, conversation_id, from_agent, to_agent, content, message_type, metadata)
         VALUES (
-          ${DEFAULT_TENANT_ID}, ${conversationId},
+          ${tenantId()}, ${conversationId},
           ${mode === 'orchestrator' ? 'orchestrator' : (toAgent as string)}, ${actor.username},
           ${responseText}, 'text', ${jsonb(metadata)}
         )

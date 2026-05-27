@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, tenantId } from '@/lib/db/client';
 import { getAgents, ACTION_TO_AGENT } from '@/lib/agent-config';
 import type { ApprovalItem, SkillExecution } from '@/types';
 import { requireApiUser } from '@/lib/api-auth';
@@ -128,8 +128,8 @@ export async function GET(request: Request) {
   const pendingEmails = await s`
     SELECT seq.id, seq.subject, seq.tier, seq.status, seq.created_at, l.first_name, l.last_name, l.company
     FROM sequences seq
-    LEFT JOIN leads l ON seq.lead_id = l.id AND l.tenant_id = ${DEFAULT_TENANT_ID}
-    WHERE seq.tenant_id = ${DEFAULT_TENANT_ID} AND seq.status = 'pending_approval'
+    LEFT JOIN leads l ON seq.lead_id = l.id AND l.tenant_id = ${tenantId()}
+    WHERE seq.tenant_id = ${tenantId()} AND seq.status = 'pending_approval'
     ORDER BY seq.created_at DESC LIMIT 20
   ` as unknown as { id: string; subject: string | null; tier: string | null; status: string; created_at: string; first_name: string | null; last_name: string | null; company: string | null }[];
 
@@ -148,7 +148,7 @@ export async function GET(request: Request) {
   const actionCounts = await s`
     SELECT action, COUNT(*) as c, MAX(ts) as last_run
     FROM activity_log
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
       AND ts > now() - interval '30 days' AND action IS NOT NULL
     GROUP BY action ORDER BY c DESC
   ` as unknown as { action: string; c: string; last_run: string }[];
@@ -179,7 +179,7 @@ export async function GET(request: Request) {
   const hourlyActivityRows = await s`
     SELECT CAST(EXTRACT(HOUR FROM ts) AS INTEGER) as hour, COUNT(*) as c
     FROM activity_log
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND ts::date = now()::date
+    WHERE tenant_id = ${tenantId()} AND ts::date = now()::date
     GROUP BY hour ORDER BY hour
   ` as unknown as { hour: number; c: string }[];
   const hourlyActivity = hourlyActivityRows.map((r) => ({ hour: Number(r.hour), c: Number(r.c) }));

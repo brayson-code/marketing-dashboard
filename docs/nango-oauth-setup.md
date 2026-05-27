@@ -6,8 +6,10 @@ client id/secret. This is that checklist. Do these once per platform.
 
 ## 0. Nango (do first)
 1. Create a **Nango Cloud** account → https://app.nango.dev
-2. Grab two keys (Environment Settings): **Secret Key** (backend) and **Public Key** (frontend).
-   - Give these to Brayson/dev to set as `NANGO_SECRET_KEY` and `NEXT_PUBLIC_NANGO_PUBLIC_KEY` in Vercel.
+2. Grab the **Secret Key** (Environment Settings). Newer Nango uses the **Connect
+   session-token** flow — the backend mints a short-lived token with the Secret Key
+   and the frontend uses that token. **There is NO public key anymore.**
+   - Only one env var is needed: `NANGO_SECRET_KEY` (server-side). ✅ Already set in Vercel.
 3. The OAuth **redirect/callback URL** to register in every provider below is Nango's:
    ```
    https://api.nango.dev/oauth/callback
@@ -58,7 +60,7 @@ client id/secret. This is that checklist. Do these once per platform.
 1. **Google/YouTube** (test users, fast) 2. **LinkedIn** 3. **Meta IG/FB** (review + business verification) 4. **X** (paid).
 
 ## What the dev does after (Track C build)
-- Set `NANGO_SECRET_KEY` + `NEXT_PUBLIC_NANGO_PUBLIC_KEY` in Vercel.
+- `NANGO_SECRET_KEY` is set in Vercel (server-side). No public key needed.
 - Frontend: `nango.openConnectUI()` "Connect" buttons + a Connections screen.
 - Backend: `new Nango()` → `nango.proxy()` for publish/read; brand-voice pull → knowledge base.
 - SDKs already installed: `@nangohq/node`, `@nangohq/frontend`.

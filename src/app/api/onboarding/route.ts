@@ -19,7 +19,7 @@ export async function GET() {
   try {
     const rows = await sql()`
       SELECT onboarding_complete, business_profile
-      FROM public.workspaces
+      FROM public.tenants
       WHERE id = ${tenantId()}
       LIMIT 1
     `;
@@ -44,10 +44,9 @@ export async function POST(request: Request) {
       ...(body.businessProfile ?? {}),
     };
     await sql()`
-      UPDATE public.workspaces
+      UPDATE public.tenants
       SET business_profile = ${jsonb(profile)},
-          onboarding_complete = true,
-          updated_at = now()
+          onboarding_complete = true
       WHERE id = ${tenantId()}
     `;
     return NextResponse.json({ ok: true });

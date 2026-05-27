@@ -5,7 +5,7 @@
 //
 // SAFETY: real isolation depends on (a) resolving the correct tenant here and
 // (b) every query scoping to tenantId(). The app-wide flip of legacy queries from
-// DEFAULT_TENANT_ID → tenantId() + an isolation test is the gate before a real
+// tenantId() → tenantId() + an isolation test is the gate before a real
 // client's data goes live (see src/lib/tenant.ts header).
 
 import { sql, jsonb } from './db/client';
@@ -29,7 +29,7 @@ export async function workspacesForUser(userId: string): Promise<WorkspaceMember
   const rows = (await sql()`
     SELECT w.id, w.name, w.onboarding_complete, w.business_profile, m.role
     FROM public.workspace_members m
-    JOIN public.workspaces w ON w.id = m.workspace_id
+    JOIN public.tenants w ON w.id = m.workspace_id
     WHERE m.user_id = ${userId}
     ORDER BY w.created_at DESC
   `) as unknown as Array<Record<string, unknown>>;
@@ -51,7 +51,7 @@ export async function primaryWorkspaceId(userId: string): Promise<string | null>
 /** Create a workspace and make `ownerUserId` its owner. Returns the new tenant id. */
 export async function createWorkspace(name: string, ownerUserId: string): Promise<string> {
   const rows = (await sql()`
-    INSERT INTO public.workspaces (name) VALUES (${name}) RETURNING id
+    INSERT INTO public.tenants (name, plan) VALUES (${name}, 'starter') RETURNING id
   `) as unknown as Array<{ id: string }>;
   const id = String(rows[0].id);
   await sql()`
@@ -70,8 +70,8 @@ export async function ensureWorkspaceForUser(userId: string, name = 'My Workspac
 /** Persist onboarding result onto a workspace. */
 export async function completeOnboarding(workspaceId: string, profile: Record<string, unknown>): Promise<void> {
   await sql()`
-    UPDATE public.workspaces
-    SET business_profile = ${jsonb(profile)}, onboarding_complete = true, updated_at = now()
+    UPDATE public.tenants
+    SET business_profile = ${jsonb(profile)}, onboarding_complete = true
     WHERE id = ${workspaceId}
   `;
 }

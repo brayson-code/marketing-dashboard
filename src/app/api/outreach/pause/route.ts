@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'node:fs';
 import path from 'node:path';
 import { getUserFromRequest } from '@/lib/auth';
-import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, tenantId } from '@/lib/db/client';
 import { getHermesStateDir } from '@/lib/hermes-state';
 
 const STATE_DIR = getHermesStateDir();
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     const detail = body.paused ? (body.reason || 'Outreach paused') : 'Outreach resumed';
     await sql()`
       INSERT INTO activity_log (tenant_id, ts, action, detail, result)
-      VALUES (${DEFAULT_TENANT_ID}, ${ts}::timestamptz, ${action}, ${detail}, 'ok')
+      VALUES (${tenantId()}, ${ts}::timestamptz, ${action}, ${detail}, 'ok')
     `;
 
     return NextResponse.json({ paused: body.paused });

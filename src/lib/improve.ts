@@ -5,7 +5,7 @@
 // ecosystem from reactive into self-improving.
 
 import Anthropic from '@anthropic-ai/sdk';
-import { sql, DEFAULT_TENANT_ID } from './db/client';
+import { sql, tenantId } from './db/client';
 import { startTask, finishTask } from './agent-tasks';
 import { listActiveGoals } from './goals';
 import { listIssues } from './observability';
@@ -53,8 +53,8 @@ async function buildSnapshot(): Promise<string> {
   const [goals, openIssues, recentDrafts, recentTasks] = await Promise.all([
     listActiveGoals().catch(() => []),
     listIssues({ limit: 20 }).catch(() => []),
-    sql()`SELECT type, title, created_at FROM drafts WHERE tenant_id = ${DEFAULT_TENANT_ID} ORDER BY created_at DESC LIMIT 15`.catch(() => []) as Promise<Array<{ type: string; title: string }>>,
-    sql()`SELECT agent_id, status, task FROM agent_tasks WHERE tenant_id = ${DEFAULT_TENANT_ID} ORDER BY started_at DESC LIMIT 20`.catch(() => []) as Promise<Array<{ agent_id: string; status: string; task: string }>>,
+    sql()`SELECT type, title, created_at FROM drafts WHERE tenant_id = ${tenantId()} ORDER BY created_at DESC LIMIT 15`.catch(() => []) as Promise<Array<{ type: string; title: string }>>,
+    sql()`SELECT agent_id, status, task FROM agent_tasks WHERE tenant_id = ${tenantId()} ORDER BY started_at DESC LIMIT 20`.catch(() => []) as Promise<Array<{ agent_id: string; status: string; task: string }>>,
   ]);
 
   const lines: string[] = [];

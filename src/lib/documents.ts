@@ -1,8 +1,8 @@
 // CRUD for the `documents` table — the editable "second brain" of markdown
 // knowledge files (the cloud replacement for on-disk .md files). Backend uses
-// the postgres role (bypasses RLS) so every query scopes to DEFAULT_TENANT_ID.
+// the postgres role (bypasses RLS) so every query scopes to tenantId().
 
-import { sql, DEFAULT_TENANT_ID } from './db/client';
+import { sql, tenantId } from './db/client';
 
 export type DocStatus = 'raw' | 'wiki' | 'archived';
 
@@ -32,7 +32,7 @@ export async function listDocuments(): Promise<DocListItem[]> {
   const rows = (await sql()`
     SELECT id, type, title, status, version, updated_at, left(content, 160) AS excerpt
     FROM public.documents
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
     ORDER BY updated_at DESC
     LIMIT 500
   `) as unknown as DocListItem[];
@@ -41,7 +41,7 @@ export async function listDocuments(): Promise<DocListItem[]> {
 
 export async function getDocument(id: string): Promise<DocRow | null> {
   const rows = (await sql()`
-    SELECT * FROM public.documents WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    SELECT * FROM public.documents WHERE id = ${id} AND tenant_id = ${tenantId()}
   `) as unknown as DocRow[];
   return rows[0] ?? null;
 }
@@ -50,7 +50,7 @@ export async function createDocument(input: { title: string; content?: string; t
   const rows = (await sql()`
     INSERT INTO public.documents (tenant_id, type, title, content, status, created_by)
     VALUES (
-      ${DEFAULT_TENANT_ID}, ${input.type ?? 'note'}, ${input.title},
+      ${tenantId()}, ${input.type ?? 'note'}, ${input.title},
       ${input.content ?? ''}, ${input.status ?? 'raw'}, 'owner'
     )
     RETURNING *
@@ -70,7 +70,7 @@ export async function updateDocument(
       type    = COALESCE(${fields.type ?? null}, type),
       version = version + 1,
       updated_at = now()
-    WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE id = ${id} AND tenant_id = ${tenantId()}
     RETURNING *
   `) as unknown as DocRow[];
   return rows[0] ?? null;
@@ -78,7 +78,7 @@ export async function updateDocument(
 
 export async function deleteDocument(id: string): Promise<boolean> {
   const rows = (await sql()`
-    DELETE FROM public.documents WHERE id = ${id} AND tenant_id = ${DEFAULT_TENANT_ID} RETURNING id
+    DELETE FROM public.documents WHERE id = ${id} AND tenant_id = ${tenantId()} RETURNING id
   `) as unknown as Array<{ id: string }>;
   return rows.length > 0;
 }
@@ -86,7 +86,7 @@ export async function deleteDocument(id: string): Promise<boolean> {
 export async function findDocumentByTitle(title: string): Promise<DocRow | null> {
   const rows = (await sql()`
     SELECT * FROM public.documents
-    WHERE tenant_id = ${DEFAULT_TENANT_ID} AND lower(title) = lower(${title})
+    WHERE tenant_id = ${tenantId()} AND lower(title) = lower(${title})
     ORDER BY updated_at DESC LIMIT 1
   `) as unknown as DocRow[];
   return rows[0] ?? null;

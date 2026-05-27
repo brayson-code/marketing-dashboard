@@ -3,7 +3,7 @@ import { listCampaigns, getCampaignDetail } from '@/lib/waves';
 import { loadGoals } from '@/lib/goals';
 
 // Pipeline visualization data source. Reuses the wave_runs accessors in
-// @/lib/waves (which already scope every query to DEFAULT_TENANT_ID).
+// @/lib/waves (which already scope every query to tenantId()).
 //   GET /api/pipeline            -> { campaigns }
 //   GET /api/pipeline?id=<uuid>  -> { detail: { campaign, steps } } | 404 { error }
 export const dynamic = 'force-dynamic';

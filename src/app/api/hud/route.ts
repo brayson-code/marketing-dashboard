@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import { sql, DEFAULT_TENANT_ID } from '@/lib/db/client';
+import { sql, tenantId } from '@/lib/db/client';
 import { getHermesStateDir } from '@/lib/hermes-state';
 import { requireApiUser } from '@/lib/api-auth';
 import { getInstance, resolveOpenClawPaths } from '@/lib/instances';
@@ -47,10 +47,10 @@ export async function GET(request: Request) {
     }
 
     const [contentPendingRows, seqPendingRows, staleContentRows, staleSeqRows] = await Promise.all([
-      s`SELECT COUNT(*) as c FROM content_posts WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'pending_approval'`,
-      s`SELECT COUNT(*) as c FROM sequences WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'pending_approval'`,
-      s`SELECT COUNT(*) as c FROM content_posts WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'pending_approval' AND created_at < now() - interval '24 hours'`,
-      s`SELECT COUNT(*) as c FROM sequences WHERE tenant_id = ${DEFAULT_TENANT_ID} AND status = 'pending_approval' AND created_at < now() - interval '24 hours'`,
+      s`SELECT COUNT(*) as c FROM content_posts WHERE tenant_id = ${tenantId()} AND status = 'pending_approval'`,
+      s`SELECT COUNT(*) as c FROM sequences WHERE tenant_id = ${tenantId()} AND status = 'pending_approval'`,
+      s`SELECT COUNT(*) as c FROM content_posts WHERE tenant_id = ${tenantId()} AND status = 'pending_approval' AND created_at < now() - interval '24 hours'`,
+      s`SELECT COUNT(*) as c FROM sequences WHERE tenant_id = ${tenantId()} AND status = 'pending_approval' AND created_at < now() - interval '24 hours'`,
     ]);
 
     const content_pending = { c: Number(contentPendingRows[0]?.c ?? 0) };

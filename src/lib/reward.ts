@@ -14,7 +14,7 @@
 // (Kimi-style spawn→success) is implemented as a weight schedule keyed on the
 // agent's maturity (cold→warm), ready for Outcome to plug in.
 
-import { sql, jsonb, DEFAULT_TENANT_ID } from './db/client';
+import { sql, jsonb, tenantId } from './db/client';
 import { roleFor } from './constraints';
 import { rewardGenes, proposeGenesFromPolicy, genesEnabled } from './genes';
 
@@ -32,7 +32,7 @@ export async function getOwnerWeights(): Promise<RewardWeights> {
   try {
     const rows = (await sql()`
       SELECT w_approval, w_outcome, w_reliability FROM public.reward_config
-      WHERE tenant_id = ${DEFAULT_TENANT_ID}
+      WHERE tenant_id = ${tenantId()}
     `) as unknown as Array<{ w_approval: number; w_outcome: number; w_reliability: number }>;
     if (!rows[0]) return DEFAULT_WEIGHTS;
     return { approval: Number(rows[0].w_approval), outcome: Number(rows[0].w_outcome), reliability: Number(rows[0].w_reliability) };
@@ -85,7 +85,7 @@ async function approvalByAgent(sinceDays = 45): Promise<Map<string, number>> {
            count(*) FILTER (WHERE status = 'approved')::int AS approved,
            count(*) FILTER (WHERE status = 'rejected')::int AS rejected
     FROM public.agent_drafts
-    WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE tenant_id = ${tenantId()}
       AND created_by IS NOT NULL
       AND reviewed_at IS NOT NULL
       AND reviewed_at > now() - (${sinceDays} || ' days')::interval
@@ -116,12 +116,12 @@ export async function scoreUnscoredTasks(opts: { limit?: number; dryRun?: boolea
   const tasks = (await sql()`
     SELECT t.id, t.agent_id, t.status, t.completed_at, t.metadata
     FROM public.agent_tasks t
-    WHERE t.tenant_id = ${DEFAULT_TENANT_ID}
+    WHERE t.tenant_id = ${tenantId()}
       AND t.completed_at IS NOT NULL
       AND t.status IN ('done','error','cancelled')
       AND NOT EXISTS (
         SELECT 1 FROM public.reward_events r
-        WHERE r.tenant_id = ${DEFAULT_TENANT_ID} AND r.task_id = t.id
+        WHERE r.tenant_id = ${tenantId()} AND r.task_id = t.id
       )
     ORDER BY t.completed_at ASC
     LIMIT ${limit}
@@ -131,7 +131,7 @@ export async function scoreUnscoredTasks(opts: { limit?: number; dryRun?: boolea
   const approvals = await approvalByAgent();
   // Current per-agent run counts (for cold/warm staging).
   const policyRows = (await sql()`
-    SELECT agent_id, n FROM public.agent_policy WHERE tenant_id = ${DEFAULT_TENANT_ID} AND variant = 'base'
+    SELECT agent_id, n FROM public.agent_policy WHERE tenant_id = ${tenantId()} AND variant = 'base'
   `) as unknown as Array<{ agent_id: string; n: number }>;
   const counts = new Map(policyRows.map((r) => [r.agent_id, r.n]));
 
@@ -152,13 +152,13 @@ export async function scoreUnscoredTasks(opts: { limit?: number; dryRun?: boolea
     if (!dryRun) {
       await sql()`
         INSERT INTO public.reward_events (tenant_id, task_id, agent_id, role, variant, reward, components, weights, stage)
-        VALUES (${DEFAULT_TENANT_ID}, ${t.id}, ${t.agent_id}, ${role}, ${variant}, ${reward},
+        VALUES (${tenantId()}, ${t.id}, ${t.agent_id}, ${role}, ${variant}, ${reward},
                 ${jsonb({ approval, outcome, reliability })}, ${jsonb(weights)}, ${stage})
         ON CONFLICT (tenant_id, task_id) WHERE task_id IS NOT NULL DO NOTHING
       `;
       await sql()`
         INSERT INTO public.agent_policy (tenant_id, role, agent_id, variant, n, reward_sum, reward_mean, last_reward, updated_at)
-        VALUES (${DEFAULT_TENANT_ID}, ${role}, ${t.agent_id}, ${variant}, 1, ${reward}, ${reward}, ${reward}, now())
+        VALUES (${tenantId()}, ${role}, ${t.agent_id}, ${variant}, 1, ${reward}, ${reward}, ${reward}, now())
         ON CONFLICT (tenant_id, role, agent_id, variant) DO UPDATE
           SET n = public.agent_policy.n + 1,
               reward_sum = public.agent_policy.reward_sum + ${reward},
@@ -205,8 +205,8 @@ export async function scoreOutcomes(opts: { dryRun?: boolean } = {}): Promise<{ 
   const campaigns = (await sql()`
     SELECT w.id, w.goal_id, g.status AS goal_status
     FROM public.wave_runs w
-    LEFT JOIN public.goals g ON g.id = w.goal_id AND g.tenant_id = ${DEFAULT_TENANT_ID}
-    WHERE w.tenant_id = ${DEFAULT_TENANT_ID} AND w.status = 'done' AND w.outcome_scored_at IS NULL
+    LEFT JOIN public.goals g ON g.id = w.goal_id AND g.tenant_id = ${tenantId()}
+    WHERE w.tenant_id = ${tenantId()} AND w.status = 'done' AND w.outcome_scored_at IS NULL
     LIMIT 50
   `) as unknown as Array<{ id: string; goal_id: string | null; goal_status: string | null }>;
 
@@ -220,7 +220,7 @@ export async function scoreOutcomes(opts: { dryRun?: boolean } = {}): Promise<{ 
              count(*) FILTER (WHERE (a->>'ok') = 'true')::int AS ok
       FROM public.wave_step_runs s,
            lateral jsonb_array_elements(coalesce(s.agent_results, '[]'::jsonb)) a
-      WHERE s.tenant_id = ${DEFAULT_TENANT_ID} AND s.wave_run_id = ${c.id}
+      WHERE s.tenant_id = ${tenantId()} AND s.wave_run_id = ${c.id}
       GROUP BY (a->>'agentId'), coalesce(a->>'variant', 'base')
     `) as unknown as Array<{ agent_id: string | null; variant: string; n: number; ok: number }>;
 
@@ -236,7 +236,7 @@ export async function scoreOutcomes(opts: { dryRun?: boolean } = {}): Promise<{ 
       if (!dryRun) {
         const ins = (await sql()`
           INSERT INTO public.reward_events (tenant_id, task_id, agent_id, role, variant, reward, components, weights, stage, source, ref)
-          VALUES (${DEFAULT_TENANT_ID}, ${null}, ${ar.agent_id}, ${role}, ${ar.variant}, ${reward},
+          VALUES (${tenantId()}, ${null}, ${ar.agent_id}, ${role}, ${ar.variant}, ${reward},
                   ${jsonb({ approval, outcome: outcomeVal, reliability })}, ${jsonb(warm)}, 'warm', 'campaign', ${ref})
           ON CONFLICT (tenant_id, ref) WHERE ref IS NOT NULL DO NOTHING
           RETURNING id
@@ -244,7 +244,7 @@ export async function scoreOutcomes(opts: { dryRun?: boolean } = {}): Promise<{ 
         if (ins.length > 0) {
           await sql()`
             INSERT INTO public.agent_policy (tenant_id, role, agent_id, variant, n, reward_sum, reward_mean, last_reward, updated_at)
-            VALUES (${DEFAULT_TENANT_ID}, ${role}, ${ar.agent_id}, ${ar.variant}, 1, ${reward}, ${reward}, ${reward}, now())
+            VALUES (${tenantId()}, ${role}, ${ar.agent_id}, ${ar.variant}, 1, ${reward}, ${reward}, ${reward}, now())
             ON CONFLICT (tenant_id, role, agent_id, variant) DO UPDATE
               SET n = public.agent_policy.n + 1,
                   reward_sum = public.agent_policy.reward_sum + ${reward},
@@ -258,7 +258,7 @@ export async function scoreOutcomes(opts: { dryRun?: boolean } = {}): Promise<{ 
       }
     }
     if (!dryRun) {
-      await sql()`UPDATE public.wave_runs SET outcome_scored_at = now() WHERE id = ${c.id} AND tenant_id = ${DEFAULT_TENANT_ID}`;
+      await sql()`UPDATE public.wave_runs SET outcome_scored_at = now() WHERE id = ${c.id} AND tenant_id = ${tenantId()}`;
     }
   }
   return { scored, campaigns: campaigns.length };
@@ -271,7 +271,7 @@ export interface PolicyRow { role: string; agent_id: string; variant: string; n:
 export async function getPolicy(): Promise<PolicyRow[]> {
   const rows = (await sql()`
     SELECT role, agent_id, variant, n, reward_mean, last_reward, updated_at
-    FROM public.agent_policy WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    FROM public.agent_policy WHERE tenant_id = ${tenantId()}
     ORDER BY reward_mean DESC, n DESC
   `) as unknown as Array<Omit<PolicyRow, 'updated_at'> & { updated_at: Date }>;
   return rows.map((r) => ({ ...r, reward_mean: Number(r.reward_mean), last_reward: r.last_reward == null ? null : Number(r.last_reward), updated_at: new Date(r.updated_at).toISOString() }));
@@ -282,7 +282,7 @@ export interface RewardEventRow { task_id: number | null; agent_id: string; role
 export async function recentRewardEvents(limit = 50): Promise<RewardEventRow[]> {
   const rows = (await sql()`
     SELECT task_id, agent_id, role, variant, reward, components, stage, source, scored_at
-    FROM public.reward_events WHERE tenant_id = ${DEFAULT_TENANT_ID}
+    FROM public.reward_events WHERE tenant_id = ${tenantId()}
     ORDER BY scored_at DESC LIMIT ${Math.min(limit, 200)}
   `) as unknown as Array<Omit<RewardEventRow, 'reward' | 'scored_at'> & { reward: string | number; scored_at: Date }>;
   return rows.map((r) => ({ ...r, reward: Number(r.reward), scored_at: new Date(r.scored_at).toISOString() }));
