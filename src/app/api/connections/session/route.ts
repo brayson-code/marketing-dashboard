@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createConnectSessionToken, isNangoConfigured } from '@/lib/nango';
 import { tenantId } from '@/lib/tenant';
+import { resolveTenant } from '@/lib/with-tenant';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -12,6 +13,7 @@ export const runtime = 'nodejs';
  * (no token) — this is an expected, non-error state until the OAuth apps are linked.
  */
 export async function POST() {
+  await resolveTenant();
   try {
     if (!isNangoConfigured()) {
       return NextResponse.json({ configured: false });

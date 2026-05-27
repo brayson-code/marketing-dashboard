@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sql, jsonb } from '@/lib/db/client';
 import { tenantId } from '@/lib/tenant';
+import { resolveTenant } from '@/lib/with-tenant';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -16,6 +17,7 @@ interface OnboardingBody {
 // GET /api/onboarding → { onboarding_complete, business_profile } for the active
 // workspace, so the wizard can prefill answers / skip itself if already done.
 export async function GET() {
+  await resolveTenant();
   try {
     const rows = await sql()`
       SELECT onboarding_complete, business_profile
@@ -36,6 +38,7 @@ export async function GET() {
 // POST /api/onboarding → persist the collected wizard data onto the workspace row
 // and mark onboarding complete.
 export async function POST(request: Request) {
+  await resolveTenant();
   try {
     const body = (await request.json()) as OnboardingBody;
     const profile = {

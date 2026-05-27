@@ -5,12 +5,14 @@ import {
   recordConnection,
   disconnect,
 } from '@/lib/nango';
+import { resolveTenant } from '@/lib/with-tenant';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 /** GET /api/connections → configured flag + per-provider connection status. */
 export async function GET() {
+  await resolveTenant();
   try {
     const providers = await listProviderStatus();
     return NextResponse.json({ configured: isNangoConfigured(), providers });
@@ -25,6 +27,7 @@ export async function GET() {
  * Records a successful OAuth connection for the current tenant.
  */
 export async function POST(request: Request) {
+  await resolveTenant();
   try {
     const body = (await request.json()) as {
       provider?: string;
@@ -46,6 +49,7 @@ export async function POST(request: Request) {
 
 /** DELETE /api/connections?provider=x → disconnect a provider for the current tenant. */
 export async function DELETE(request: Request) {
+  await resolveTenant();
   try {
     const provider = new URL(request.url).searchParams.get('provider');
     if (!provider) {

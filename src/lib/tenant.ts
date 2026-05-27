@@ -30,6 +30,16 @@ export function runWithTenant<T>(ctx: TenantContext, fn: () => T): T {
   return storage.run(ctx, fn);
 }
 
+/**
+ * Set the tenant context for the REMAINDER of the current async execution (this
+ * request's handler + everything it awaits) without wrapping a callback. Each
+ * request runs in its own async context, so this does not leak across concurrent
+ * requests. Call once at the top of a route handler via resolveTenant().
+ */
+export function enterTenant(ctx: TenantContext): void {
+  storage.enterWith(ctx);
+}
+
 /** The active tenant_id for this request, or the system default outside a request. */
 export function tenantId(): string {
   return storage.getStore()?.tenantId ?? DEFAULT_TENANT_ID;
