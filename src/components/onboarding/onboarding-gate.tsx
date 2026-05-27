@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import OnboardingWizard from '@/app/onboarding/page';
+import { OnboardingWizard } from '@/components/onboarding/onboarding-wizard';
 
 // Shows the onboarding wizard as a full-screen overlay on the page it's mounted on
 // (the overview) when the current workspace hasn't finished onboarding, and hides it
