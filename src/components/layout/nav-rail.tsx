@@ -215,32 +215,61 @@ function NavLink({ item, active, count, compact }:
 // ─── User profile card at bottom — matches the reference image ────────────────
 interface UserMe { user?: { id?: string; email?: string; role?: string } }
 interface EntPayload { plan?: string; catalog?: Record<string, { label: string }> }
-interface OverviewPayload { metrics?: Array<{ total_impressions?: number }> }
+
+type AlertSeverity = 'critical' | 'warning' | 'info';
+interface HealthAlert { id: string; severity: AlertSeverity; title: string; detail?: string; href?: string }
+interface HealthPayload {
+  score: number;
+  status: 'healthy' | 'degraded' | 'down';
+  alerts: HealthAlert[];
+  trend: number[];
+  activity24h: number;
+}
+
+const SEV_RANK: Record<AlertSeverity, number> = { critical: 0, warning: 1, info: 2 };
+function sevColor(s: AlertSeverity): string {
+  return s === 'critical' ? 'var(--destructive)' : s === 'warning' ? 'var(--warning, #f59e0b)' : 'var(--info, var(--primary))';
+}
+function scoreColor(score: number | null): string {
+  if (score == null) return 'var(--muted-foreground)';
+  return score >= 90 ? 'var(--success)' : score >= 60 ? 'var(--warning, #f59e0b)' : 'var(--destructive)';
+}
 
 function UserCard() {
   const [me, setMe] = useState<UserMe | null>(null);
   const [ent, setEnt] = useState<EntPayload | null>(null);
-  const [spark, setSpark] = useState<number[]>([]);
+  const [alertsOpen, setAlertsOpen] = useState(false);
 
   useEffect(() => {
     let cancel = false;
     Promise.all([
       fetch('/api/auth/me').then((r) => r.ok ? r.json() : null).catch(() => null),
       fetch('/api/entitlements').then((r) => r.ok ? r.json() : null).catch(() => null),
-      fetch('/api/overview').then((r) => r.ok ? r.json() : null).catch(() => null),
-    ]).then(([m, e, o]: [UserMe | null, EntPayload | null, OverviewPayload | null]) => {
+    ]).then(([m, e]: [UserMe | null, EntPayload | null]) => {
       if (cancel) return;
       setMe(m); setEnt(e);
-      const points = (o?.metrics ?? []).slice(0, 14).map((d) => Number(d.total_impressions ?? 0)).reverse();
-      setSpark(points.length ? points : Array.from({ length: 8 }, (_, i) => 50 + Math.sin(i / 2) * 20));
     });
     return () => { cancel = true; };
   }, []);
 
+  // Real, live system health — polled every 30s. See /api/health.
+  const { data: health } = useSmartPoll<HealthPayload>(
+    () => fetch('/api/health').then((r) => r.json()),
+    { interval: 30_000 },
+  );
+
   const email = me?.user?.email ?? '—';
   const initial = (email?.[0] ?? 'U').toUpperCase();
   const planLabel = ent?.plan && ent.catalog?.[ent.plan]?.label ? ent.catalog[ent.plan].label : '—';
-  const health = spark.length ? 98 : 98; // until model-health is wired into this widget
+
+  const score = health?.score ?? null;
+  const alerts = health?.alerts ?? [];
+  const trend = health?.trend ?? [];
+  const color = scoreColor(score);
+  // Worst severity present drives the alert-row dot.
+  const topSeverity = alerts.reduce<AlertSeverity | null>(
+    (worst, a) => (worst == null || SEV_RANK[a.severity] < SEV_RANK[worst] ? a.severity : worst), null);
+  const idle = health != null && health.activity24h === 0 && alerts.length === 0;
 
   return (
     <div className="m-2 mt-1 rounded-xl border border-border/60 bg-[color-mix(in_srgb,var(--surface-2)_55%,transparent)] p-2.5 space-y-2">
@@ -254,18 +283,60 @@ function UserCard() {
           <div className="text-[9px] text-muted-foreground uppercase tracking-wider">{planLabel}</div>
         </div>
       </div>
+
       <div>
         <div className="flex items-center justify-between text-[10px] text-muted-foreground">
           <span>System Health</span>
-          <span className="font-mono text-foreground">{health}%</span>
+          <span className="font-mono font-semibold" style={{ color }}>
+            {score == null ? '—' : `${score}%`}{idle && <span className="ml-1 text-muted-foreground font-normal">idle</span>}
+          </span>
         </div>
-        <Sparkline values={spark} />
+        <Sparkline values={trend} color={color} />
+      </div>
+
+      {/* Alerts — collapsed by default; the dot + count is always visible so a
+          problem is glanceable without opening it. */}
+      <div className="pt-1.5 border-t border-border/40">
+        <button
+          type="button"
+          onClick={() => alerts.length && setAlertsOpen((v) => !v)}
+          className="w-full flex items-center gap-1.5 text-[10px]"
+          style={{ cursor: alerts.length ? 'pointer' : 'default' }}
+        >
+          <span
+            className="w-1.5 h-1.5 rounded-full shrink-0"
+            style={{ background: topSeverity ? sevColor(topSeverity) : 'var(--success)' }}
+          />
+          <span className="flex-1 text-left text-muted-foreground">
+            {alerts.length ? `${alerts.length} alert${alerts.length > 1 ? 's' : ''}` : 'All systems normal'}
+          </span>
+          {alerts.length > 0 && (alertsOpen ? <ChevronDown size={10} /> : <ChevronRight size={10} />)}
+        </button>
+
+        {alertsOpen && alerts.length > 0 && (
+          <div className="mt-1 space-y-1 max-h-44 overflow-y-auto" data-stagger>
+            {alerts.map((a) => (
+              <Link
+                key={a.id}
+                href={a.href ?? '#'}
+                className="block rounded-md px-1.5 py-1"
+                style={{ background: 'color-mix(in srgb, var(--surface-2) 60%, transparent)' }}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: sevColor(a.severity) }} />
+                  <span className="text-[10px] font-medium truncate flex-1">{a.title}</span>
+                </div>
+                {a.detail && <p className="text-[9px] text-muted-foreground mt-0.5 pl-3 line-clamp-2">{a.detail}</p>}
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function Sparkline({ values }: { values: number[] }) {
+function Sparkline({ values, color = 'var(--primary)' }: { values: number[]; color?: string }) {
   if (values.length < 2) return null;
   const w = 180, h = 28;
   const min = Math.min(...values), max = Math.max(...values);
@@ -276,12 +347,12 @@ function Sparkline({ values }: { values: number[] }) {
     <svg viewBox={`0 0 ${w} ${h}`} width="100%" height={h} aria-hidden style={{ display: 'block' }}>
       <defs>
         <linearGradient id="spark-fill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.35" />
-          <stop offset="100%" stopColor="var(--primary)" stopOpacity="0" />
+          <stop offset="0%" stopColor={color} stopOpacity="0.35" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
         </linearGradient>
       </defs>
       <polyline points={`0,${h} ${points} ${w},${h}`} fill="url(#spark-fill)" stroke="none" />
-      <polyline points={points} fill="none" stroke="var(--primary)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <polyline points={points} fill="none" stroke={color} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
