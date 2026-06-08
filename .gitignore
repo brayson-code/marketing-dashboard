@@ -55,6 +55,7 @@ hermes-seed-fix.bundle
 # runtime state
 /state/
 /.tmp/
+.docs-sync-last-sha
 /test-results/
 /playwright-report/
 
