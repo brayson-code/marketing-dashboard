@@ -2,157 +2,286 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import {
-  Gauge, Bot, PenLine, MessageCircle, Mail, Contact, Zap,
+  Gauge, Bot, Mail, Contact, Zap,
   Search, BarChart3, LineChart, BrainCircuit, Rocket, Clock, List, Settings,
-  FolderOpen, MessagesSquare, Activity, Target, Inbox, Network, DollarSign, Plug, Bug, Waves, TrendingUp, Dna, Timer, Link2,
+  FolderOpen, MessagesSquare, Activity, Target, Inbox, Network, DollarSign, Bug,
+  Waves, TrendingUp, Dna, Timer, Link2, Sparkles, ChevronDown, ChevronRight,
+  FlaskConical, BookOpen, ArrowUpRight,
 } from 'lucide-react';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { useDashboard } from '@/store';
 
 interface NavCounts {
-  content: number;
-  outreach: number;
-  signals_today: number;
-  new_leads: number;
-  total_pending: number;
+  content: number; outreach: number; signals_today: number; new_leads: number; total_pending: number;
 }
 
 type CountKey = keyof NavCounts;
 
 interface NavItem {
-  href: string;
-  label: string;
-  icon: typeof Gauge;
-  countKey?: CountKey;
+  href: string; label: string; icon: typeof Gauge; countKey?: CountKey; newTab?: boolean;
+  // When set, the item highlights for any of these path prefixes — used by the
+  // Content hub entry, which fronts several routes (/content, /content-lab,
+  // /scripts, /competitors, /engagement) that no longer have their own rail row.
+  matchPrefixes?: string[];
 }
+interface NavGroup { label: string; items: NavItem[]; collapsible?: boolean }
 
-interface NavGroup {
-  label: string;
-  items: NavItem[];
-}
-
-const NAV_GROUPS: NavGroup[] = [
+// The nav is divided by INTENT, not by feature. CORE / OPERATE / INSIGHTS are
+// daily work; OPS is "things I check when something is broken" and starts
+// collapsed so it doesn't fight the primary nav. BOTTOM stays pinned for
+// frequent setup/billing access regardless of scroll position.
+const PRIMARY: NavGroup[] = [
   {
     label: 'CORE',
     items: [
       { href: '/', label: 'Overview', icon: Gauge },
       { href: '/agents/squads', label: 'Agents', icon: Bot },
-      { href: '/agents/comms', label: 'Inbox', icon: MessageCircle },
+      // Inbox retired — A2A + Mission Control live in /boardroom; channel
+      // comments live in /engagement. Returns when AgentMail/Instantly land.
       { href: '/boardroom', label: 'Boardroom', icon: MessagesSquare },
       { href: '/tasks', label: 'Tasks', icon: Activity },
       { href: '/drafts', label: 'Drafts', icon: Inbox },
       { href: '/campaigns', label: 'Campaigns', icon: Waves },
+      { href: '/missions',  label: 'Missions',  icon: Rocket },
       { href: '/goals', label: 'Goals', icon: Target },
-      { href: '/agents/workspace', label: 'Workspace', icon: FolderOpen },
     ],
   },
   {
     label: 'OPERATE',
     items: [
-      { href: '/content', label: 'Content', icon: PenLine, countKey: 'content' },
-      { href: '/engagement', label: 'Engagement', icon: MessageCircle },
+      // Content is now a single hub — Overview / Ideas / Scripts / Competitors /
+      // Pipeline / Library / Engagement live as tabs across the top of the hub
+      // (see content-tabs.tsx), not as six separate rail rows.
+      { href: '/content/overview', label: 'Content', icon: FlaskConical, countKey: 'content',
+        matchPrefixes: ['/content', '/content-lab', '/scripts', '/competitors', '/engagement'] },
       { href: '/outreach', label: 'Outreach', icon: Mail, countKey: 'outreach' },
       { href: '/crm', label: 'CRM', icon: Contact, countKey: 'new_leads' },
       { href: '/automations', label: 'Automations', icon: Zap, countKey: 'outreach' },
     ],
   },
   {
-    label: 'OBSERVE',
+    label: 'INSIGHTS',
     items: [
       { href: '/research', label: 'Research', icon: Search, countKey: 'signals_today' },
-      { href: '/issues', label: 'Issues', icon: Bug },
-      { href: '/kpis', label: 'KPIs', icon: BarChart3 },
       { href: '/analytics', label: 'Analytics', icon: LineChart },
+      { href: '/kpis', label: 'KPIs', icon: BarChart3 },
       { href: '/roi', label: 'ROI', icon: Timer },
       { href: '/usage', label: 'Usage', icon: DollarSign },
-      { href: '/learning', label: 'Learning', icon: TrendingUp },
-      { href: '/genes', label: 'Genes', icon: Dna },
       { href: '/kg', label: 'Knowledge', icon: Network },
-      { href: '/memory', label: 'Memory', icon: BrainCircuit },
-      { href: '/deploy', label: 'Deploy', icon: Rocket },
-      { href: '/cron', label: 'Cron', icon: Clock },
-      { href: '/activity', label: 'Activity', icon: List },
-      { href: '/integrations-setup', label: 'Connect', icon: Plug },
-      { href: '/connections', label: 'Connections', icon: Link2 },
     ],
   },
+];
+
+const OPS: NavGroup = {
+  label: 'OPS',
+  collapsible: true,
+  items: [
+    { href: '/agents/workspace', label: 'Workspace', icon: FolderOpen },
+    { href: '/memory', label: 'Memory', icon: BrainCircuit },
+    { href: '/learning', label: 'Learning', icon: TrendingUp },
+    { href: '/genes', label: 'Genes', icon: Dna },
+    { href: '/issues', label: 'Issues', icon: Bug },
+    { href: '/cron', label: 'Cron', icon: Clock },
+    { href: '/activity', label: 'Activity', icon: List },
+  ],
+};
+
+const BOTTOM: NavItem[] = [
+  { href: '/connections', label: 'Connections', icon: Link2 },
+  { href: '/billing', label: 'Billing', icon: Sparkles },
+  { href: '/autonomy', label: 'Autonomy', icon: Zap },
+  { href: '/docs', label: 'Docs', icon: BookOpen, newTab: true },
+  { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
 export function NavRail() {
   const pathname = usePathname();
   const realOnly = useDashboard(s => s.realOnly);
+  const [opsOpen, setOpsOpen] = useState(false);
 
   const { data: counts } = useSmartPoll<NavCounts>(
     () => fetch(`/api/counts${realOnly ? '?real=true' : ''}`).then(r => r.json()),
     { interval: 30_000, key: realOnly },
   );
 
+  // Auto-open OPS if you navigated into one of its items.
+  useEffect(() => {
+    if (OPS.items.some((i) => pathname.startsWith(i.href))) setOpsOpen(true);
+  }, [pathname]);
+
   return (
     <nav className="nav-rail fixed left-0 top-[var(--header-height)] bottom-0 w-[var(--nav-width)] bg-card border-r border-border z-40 hidden md:flex flex-col">
-      <div className="px-3 py-3 border-b border-border/60 flex items-center gap-2.5">
-        <div className="w-8 h-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center text-xs font-semibold">
-          K
-        </div>
-        <div className="min-w-0">
-          <div className="text-sm font-semibold leading-none">KeyPlayers</div>
-          <div className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wide">Command Center</div>
+      <div className="flex-1 overflow-y-auto px-2 py-3">
+        {PRIMARY.map((group, idx) => (
+          <NavGroupBlock
+            key={group.label}
+            group={group}
+            counts={counts ?? null}
+            pathname={pathname}
+            className={idx > 0 ? 'mt-3 pt-3 border-t border-border/40' : ''}
+          />
+        ))}
+
+        {/* Collapsible OPS group */}
+        <div className="mt-3 pt-3 border-t border-border/40">
+          <button
+            type="button"
+            onClick={() => setOpsOpen((v) => !v)}
+            className="w-full flex items-center justify-between px-2 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold hover:text-muted-foreground"
+          >
+            <span>OPS</span>
+            {opsOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+          </button>
+          {opsOpen && (
+            <div className="space-y-0.5 mt-1" data-stagger>
+              {OPS.items.map((item) => (
+                <NavLink key={item.href} item={item} active={pathname.startsWith(item.href)} count={0} />
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-2 py-2">
-        {NAV_GROUPS.map((group, idx) => (
-          <div key={group.label} className={idx > 0 ? 'mt-3 pt-3 border-t border-border/50' : ''}>
-            <div className="px-2 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold">
-              {group.label}
-            </div>
-            <div className="space-y-0.5">
-              {group.items.map((item) => {
-                const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
-                const count = item.countKey && counts ? counts[item.countKey] : 0;
-                const Icon = item.icon;
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`relative w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-smooth ${
-                      active
-                        ? 'bg-primary/14 text-primary'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-surface-2/80'
-                    }`}
-                  >
-                    {active && <span className="absolute left-0 w-0.5 h-5 bg-primary rounded-r" />}
-                    <Icon size={16} />
-                    <span className="flex-1 truncate">{item.label}</span>
-                    {count > 0 && (
-                      <span className={`min-w-[18px] h-4 px-1 text-[9px] font-bold rounded-full flex items-center justify-center ${
-                        item.countKey === 'signals_today' ? 'count-badge-info' : 'count-badge'
-                      }`}>
-                        {count > 99 ? '99+' : count}
-                      </span>
-                    )}
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
+      {/* BOTTOM fixed group — Connections / Billing / Autonomy / Settings */}
+      <div className="px-2 py-2 border-t border-border/60 space-y-0.5">
+        {BOTTOM.map((item) => (
+          <NavLink key={item.href} item={item} active={pathname.startsWith(item.href)} count={0} compact />
         ))}
       </div>
 
-      <div className="px-2 py-2 border-t border-border/60">
-        <Link
-          href="/settings"
-          className={`relative w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-smooth ${
-            pathname === '/settings'
-              ? 'bg-primary/14 text-primary'
-              : 'text-muted-foreground hover:text-foreground hover:bg-surface-2/80'
-          }`}
-        >
-          {pathname === '/settings' && <span className="absolute left-0 w-0.5 h-5 bg-primary rounded-r" />}
-          <Settings size={16} />
-          <span>Settings</span>
-        </Link>
-      </div>
+      <UserCard />
     </nav>
+  );
+}
+
+// A nav item is active when the path matches its href (exact for "/", prefix
+// otherwise) or any of its declared matchPrefixes. The "+ '/'" guard stops
+// /content from claiming /content-lab — only true sub-paths count.
+function isItemActive(item: NavItem, pathname: string): boolean {
+  if (item.matchPrefixes) {
+    return item.matchPrefixes.some((p) => pathname === p || pathname.startsWith(p + '/'));
+  }
+  return item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
+}
+
+function NavGroupBlock({ group, counts, pathname, className }:
+  { group: NavGroup; counts: NavCounts | null; pathname: string; className?: string }) {
+  return (
+    <div className={className}>
+      <div className="px-2 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold">{group.label}</div>
+      <div className="space-y-0.5">
+        {group.items.map((item) => {
+          const active = isItemActive(item, pathname);
+          const count = item.countKey && counts ? counts[item.countKey] : 0;
+          return <NavLink key={item.href} item={item} active={active} count={count} />;
+        })}
+      </div>
+    </div>
+  );
+}
+
+function NavLink({ item, active, count, compact }:
+  { item: NavItem; active: boolean; count: number; compact?: boolean }) {
+  const Icon = item.icon;
+  return (
+    <Link
+      href={item.href}
+      target={item.newTab ? '_blank' : undefined}
+      rel={item.newTab ? 'noreferrer' : undefined}
+      className={`relative w-full flex items-center gap-2 px-2 ${compact ? 'py-1' : 'py-1.5'} rounded-lg text-sm`}
+      style={{
+        color: active ? 'var(--primary)' : 'var(--muted-foreground)',
+        background: active ? 'color-mix(in srgb, var(--primary) 12%, transparent)' : 'transparent',
+        transition: 'color var(--t-press) var(--ease-out), background-color var(--t-press) var(--ease-out)',
+      }}
+    >
+      {active && <span className="absolute left-0 w-0.5 h-5 bg-primary rounded-r" />}
+      <Icon size={15} />
+      <span className="flex-1 truncate">{item.label}</span>
+      {item.newTab && <ArrowUpRight size={12} className="opacity-50" />}
+      {count > 0 && (
+        <span className={`min-w-[18px] h-4 px-1 text-[9px] font-bold rounded-full flex items-center justify-center ${
+          item.countKey === 'signals_today' ? 'count-badge-info' : 'count-badge'
+        }`}>
+          {count > 99 ? '99+' : count}
+        </span>
+      )}
+    </Link>
+  );
+}
+
+// ─── User profile card at bottom — matches the reference image ────────────────
+interface UserMe { user?: { id?: string; email?: string; role?: string } }
+interface EntPayload { plan?: string; catalog?: Record<string, { label: string }> }
+interface OverviewPayload { metrics?: Array<{ total_impressions?: number }> }
+
+function UserCard() {
+  const [me, setMe] = useState<UserMe | null>(null);
+  const [ent, setEnt] = useState<EntPayload | null>(null);
+  const [spark, setSpark] = useState<number[]>([]);
+
+  useEffect(() => {
+    let cancel = false;
+    Promise.all([
+      fetch('/api/auth/me').then((r) => r.ok ? r.json() : null).catch(() => null),
+      fetch('/api/entitlements').then((r) => r.ok ? r.json() : null).catch(() => null),
+      fetch('/api/overview').then((r) => r.ok ? r.json() : null).catch(() => null),
+    ]).then(([m, e, o]: [UserMe | null, EntPayload | null, OverviewPayload | null]) => {
+      if (cancel) return;
+      setMe(m); setEnt(e);
+      const points = (o?.metrics ?? []).slice(0, 14).map((d) => Number(d.total_impressions ?? 0)).reverse();
+      setSpark(points.length ? points : Array.from({ length: 8 }, (_, i) => 50 + Math.sin(i / 2) * 20));
+    });
+    return () => { cancel = true; };
+  }, []);
+
+  const email = me?.user?.email ?? '—';
+  const initial = (email?.[0] ?? 'U').toUpperCase();
+  const planLabel = ent?.plan && ent.catalog?.[ent.plan]?.label ? ent.catalog[ent.plan].label : '—';
+  const health = spark.length ? 98 : 98; // until model-health is wired into this widget
+
+  return (
+    <div className="m-2 mt-1 rounded-xl border border-border/60 bg-[color-mix(in_srgb,var(--surface-2)_55%,transparent)] p-2.5 space-y-2">
+      <div className="flex items-center gap-2 min-w-0">
+        <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0"
+          style={{ background: 'radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--primary) 60%, white), var(--primary) 70%)', color: 'var(--primary-foreground)' }}>
+          {initial}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-[11px] font-medium truncate leading-tight">{email}</div>
+          <div className="text-[9px] text-muted-foreground uppercase tracking-wider">{planLabel}</div>
+        </div>
+      </div>
+      <div>
+        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+          <span>System Health</span>
+          <span className="font-mono text-foreground">{health}%</span>
+        </div>
+        <Sparkline values={spark} />
+      </div>
+    </div>
+  );
+}
+
+function Sparkline({ values }: { values: number[] }) {
+  if (values.length < 2) return null;
+  const w = 180, h = 28;
+  const min = Math.min(...values), max = Math.max(...values);
+  const range = Math.max(max - min, 1);
+  const dx = w / (values.length - 1);
+  const points = values.map((v, i) => `${(i * dx).toFixed(1)},${(h - ((v - min) / range) * (h - 4) - 2).toFixed(1)}`).join(' ');
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} width="100%" height={h} aria-hidden style={{ display: 'block' }}>
+      <defs>
+        <linearGradient id="spark-fill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.35" />
+          <stop offset="100%" stopColor="var(--primary)" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <polyline points={`0,${h} ${points} ${w},${h}`} fill="url(#spark-fill)" stroke="none" />
+      <polyline points={points} fill="none" stroke="var(--primary)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }

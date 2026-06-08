@@ -5,8 +5,10 @@ import { Badge } from '@/components/ui/badge';
 import { DataTable } from '@/components/ui/data-table';
 import { TrendChart } from '@/components/ui/trend-chart';
 import { PILLAR_LABELS, formatDateTime } from '@/lib/utils';
-import { Check, X } from 'lucide-react';
+import { Check, X, PenLine } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
+import { PageHeader } from '@/components/layout/page-header';
+import { ContentTabs } from '@/components/content/content-tabs';
 import { useDashboard } from '@/store';
 import type { ContentPost } from '@/types';
 
@@ -46,22 +48,28 @@ export default function ContentPage() {
   const published = posts.filter(p => p.status === 'published');
 
   return (
-    <div className="space-y-6 animate-in">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Content</h1>
-        <select
-          className="px-3"
-          value={filter}
-          onChange={e => setFilter(e.target.value)}
-        >
-          <option value="">All statuses</option>
-          <option value="draft">Draft</option>
-          <option value="pending_approval">Pending Approval</option>
-          <option value="ready">Ready</option>
-          <option value="published">Published</option>
-          <option value="rejected">Rejected</option>
-        </select>
-      </div>
+    <div className="space-y-5 animate-in">
+      <PageHeader
+        icon={<PenLine size={18} />}
+        title="Content"
+        subtitle="Drafted posts, the publishing calendar, and how each piece performed after it went live."
+        actions={
+          <select
+            className="px-3"
+            value={filter}
+            onChange={e => setFilter(e.target.value)}
+          >
+            <option value="">All statuses</option>
+            <option value="draft">Draft</option>
+            <option value="pending_approval">Pending Approval</option>
+            <option value="ready">Ready</option>
+            <option value="published">Published</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        }
+      />
+
+      <ContentTabs />
 
       {/* Tabs */}
       <div className="panel">

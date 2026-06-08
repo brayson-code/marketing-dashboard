@@ -8,13 +8,19 @@ import { ExternalLink, Copy, Check } from 'lucide-react';
 import { formatDateTime } from '@/lib/utils';
 import { useDashboard } from '@/store';
 import type { Engagement, Signal } from '@/types';
+import { YouTubeCommentsPanel } from '@/components/inbox/youtube-comments';
+import { InstagramCommentsPanel } from '@/components/inbox/instagram-comments';
+import { EmailInbox } from '@/components/inbox/email-inbox';
+import { ContentTabs } from '@/components/content/content-tabs';
 
-type Tab = 'x' | 'linkedin' | 'signals';
+type Tab = 'youtube' | 'instagram' | 'email' | 'x' | 'linkedin' | 'signals';
 
 export default function EngagementPage() {
   const [engagements, setEngagements] = useState<Engagement[]>([]);
   const [signals, setSignals] = useState<Signal[]>([]);
-  const [tab, setTab] = useState<Tab>('x');
+  // YouTube leads — it's the only fully-wired channel today (comments + draft reply
+  // + publish all live). Once IG comments land for a tenant, that tab activates too.
+  const [tab, setTab] = useState<Tab>('youtube');
   const [copied, setCopied] = useState<number | null>(null);
   const { realOnly } = useDashboard();
 
@@ -36,9 +42,9 @@ export default function EngagementPage() {
   return (
     <div className="space-y-6 animate-in">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-xl font-semibold">Engagement</h1>
+        <h1 className="text-h1">Engagement</h1>
         <div className="text-xs text-muted-foreground">
-          X <span className="font-mono text-foreground">{xEngagements.length}</span>
+          YouTube · Instagram · X <span className="font-mono text-foreground">{xEngagements.length}</span>
           {' · '}
           LinkedIn <span className="font-mono text-foreground">{linkedInQueue.length}</span>
           {' · '}
@@ -46,13 +52,18 @@ export default function EngagementPage() {
         </div>
       </div>
 
+      <ContentTabs />
+
       <div className="panel">
         <div className="panel-body !p-0">
-      <div className="flex gap-0 border-b border-border">
+      <div className="flex gap-0 border-b border-border overflow-x-auto">
         {([
-          { key: 'x' as Tab, label: `X Activity (${xEngagements.length})` },
-          { key: 'linkedin' as Tab, label: `LinkedIn Queue (${linkedInQueue.length})` },
-          { key: 'signals' as Tab, label: `Signals (${signals.length})` },
+          { key: 'youtube' as Tab,   label: 'YouTube comments' },
+          { key: 'instagram' as Tab, label: 'Instagram comments' },
+          { key: 'email' as Tab,     label: 'Email' },
+          { key: 'x' as Tab,         label: `X Activity (${xEngagements.length})` },
+          { key: 'linkedin' as Tab,  label: `LinkedIn Queue (${linkedInQueue.length})` },
+          { key: 'signals' as Tab,   label: `Signals (${signals.length})` },
         ]).map(t => (
           <button
             key={t.key}
@@ -65,6 +76,10 @@ export default function EngagementPage() {
       </div>
       </div>
       </div>
+
+      {tab === 'youtube' && <YouTubeCommentsPanel />}
+      {tab === 'instagram' && <InstagramCommentsPanel />}
+      {tab === 'email' && <EmailInbox />}
 
       {tab === 'x' && (
         <div className="panel">
