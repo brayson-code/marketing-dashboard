@@ -42,7 +42,7 @@ const PRIMARY: NavGroup[] = [
       // comments live in /engagement. Returns when AgentMail/Instantly land.
       { href: '/boardroom', label: 'Boardroom', icon: MessagesSquare },
       { href: '/tasks', label: 'Tasks', icon: Activity },
-      { href: '/drafts', label: 'Drafts', icon: Inbox },
+      { href: '/drafts', label: 'Approvals', icon: Inbox },
       { href: '/campaigns', label: 'Campaigns', icon: Waves },
       { href: '/missions',  label: 'Missions',  icon: Rocket },
       { href: '/goals', label: 'Goals', icon: Target },

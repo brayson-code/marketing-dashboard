@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Inbox, FileText, Mail, Calendar, Megaphone, Check, X, AlertCircle, Send, CheckCircle2, ScanSearch, Loader2, Sparkles } from 'lucide-react';
+import { PageHeader } from '@/components/layout/page-header';
+import { Explainer } from '@/components/ui/explainer';
 
 type DraftType = 'content_post' | 'email' | 'meeting' | 'campaign' | 'other';
 type DraftStatus = 'pending' | 'approved' | 'rejected' | 'published' | 'sent' | 'confirmed' | 'expired';
@@ -147,33 +149,39 @@ export default function DraftsPage() {
   const pendingCount = drafts.filter((d) => d.status === 'pending').length;
 
   return (
-    <div className="space-y-4 animate-in">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="space-y-1">
-          <h1 className="text-xl font-semibold">Drafts</h1>
-          <p className="text-xs text-muted-foreground">
-            KeyPlayer + sub-agents save drafts here. Nothing executes without your explicit approval.
-            {pendingCount > 0 && ` · ${pendingCount} awaiting you`}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={runSweep}
-            disabled={sweeping}
-            className="btn btn-ghost btn-sm"
-            title="Re-validate a batch of open drafts + issues against current goals and what's already shipped, flagging stale ones for your review"
-          >
-            {sweeping ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />} Run triage sweep
-          </button>
-          <div className="flex gap-1">
-            {(['pending', 'approved', 'all'] as const).map((f) => (
-              <button key={f} onClick={() => setFilter(f)} className={`tab ${filter === f ? 'active' : ''}`}>
-                {f}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
+    <div className="space-y-5 animate-in">
+      <PageHeader
+        icon={<Inbox size={18} />}
+        title="Approvals"
+        subtitle={`Everything your agents produce — posts, emails, meetings, campaigns — waits here for your yes/no. Nothing goes out until you approve.${pendingCount > 0 ? ` · ${pendingCount} awaiting you` : ''}`}
+        actions={
+          <>
+            <button
+              onClick={runSweep}
+              disabled={sweeping}
+              className="btn btn-ghost btn-sm"
+              title="Re-validate a batch of open drafts + issues against current goals and what's already shipped, flagging stale ones for your review"
+            >
+              {sweeping ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />} Run triage sweep
+            </button>
+            <div className="flex gap-1">
+              {(['pending', 'approved', 'all'] as const).map((f) => (
+                <button key={f} onClick={() => setFilter(f)} className={`tab ${filter === f ? 'active' : ''}`}>
+                  {f}
+                </button>
+              ))}
+            </div>
+          </>
+        }
+      />
+
+      <Explainer
+        id="approvals"
+        title="Approvals (formerly 'Drafts')"
+        what="the one place to approve or reject everything your agents make — social posts, emails, meeting invites, campaigns."
+        when="check it whenever there's a number next to it; nothing is published or sent until you say yes."
+        example="An agent drafts a LinkedIn post → it lands here → you Approve → it publishes."
+      />
 
       {error && (
         <div className="panel p-3 text-xs text-destructive flex items-center gap-1.5">
@@ -188,8 +196,12 @@ export default function DraftsPage() {
       )}
 
       {drafts.length === 0 ? (
-        <div className="panel p-4 text-xs text-muted-foreground text-center">
-          No drafts {filter !== 'all' ? `with status "${filter}"` : 'yet'}. Ask KeyPlayer to draft something — content, email, meeting — and it&apos;ll appear here.
+        <div className="panel py-12 px-6 flex flex-col items-center text-center gap-3">
+          <Inbox size={28} className="text-muted-foreground/50" />
+          <div className="text-h2">No drafts {filter !== 'all' ? `with status "${filter}"` : 'yet'}</div>
+          <p className="text-small max-w-sm">
+            Ask KeyPlayer to draft something — content, email, meeting — and it&apos;ll appear here for your one-tap approval.
+          </p>
         </div>
       ) : (
         <div className="space-y-2">

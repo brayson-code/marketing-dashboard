@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Target, CheckCircle2, Clock, AlertCircle, Plus, RotateCcw, Check } from 'lucide-react';
+import { Explainer } from '@/components/ui/explainer';
 
 type GoalStatus = 'active' | 'pending_verification' | 'done' | 'abandoned';
 
@@ -70,11 +71,19 @@ export default function GoalsPage() {
     <div className="space-y-4 animate-in">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="space-y-1">
-          <h1 className="text-xl font-semibold">Goals</h1>
+          <h1 className="text-h1">Goals</h1>
           <p className="text-xs text-muted-foreground">KeyPlayer reads + writes these via tools. You always get the final word.</p>
         </div>
         <button onClick={() => setCreating((c) => !c)} className="btn btn-ghost"><Plus size={14} /> New goal</button>
       </div>
+
+      <Explainer
+        id="goals"
+        title="Goals"
+        what="the outcome you want, written so it's verifiable."
+        when="you want the agents pointed at a concrete target you can both measure."
+        example="'Book 10 qualified sales calls by Aug 31' or 'MRR ≥ $10K in Stripe'."
+      />
 
       {error && (
         <div className="panel p-3 text-xs text-destructive flex items-center gap-1.5">

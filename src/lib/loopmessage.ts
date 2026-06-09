@@ -1,4 +1,5 @@
 import { sql, jsonb, tenantId } from './db/client';
+import { mdToPlainText } from './md-to-text';
 
 const SEND_URL = 'https://a.loopmessage.com/api/v1/message/send/';
 
@@ -22,7 +23,10 @@ export function isLoopMessageConfigured(): boolean {
   return !!process.env.LOOPMESSAGE_AUTH_KEY;
 }
 
-export async function sendIMessage(text: string, opts: SendIMessageOptions = {}): Promise<SendIMessageResult> {
+export async function sendIMessage(rawText: string, opts: SendIMessageOptions = {}): Promise<SendIMessageResult> {
+  // iMessage/SMS can't render markdown — flatten to clean plaintext here, the
+  // single chokepoint, so every caller's reply lands readable (not raw **md**).
+  const text = mdToPlainText(rawText);
   const authKey = process.env.LOOPMESSAGE_AUTH_KEY;
   const senderName = opts.sender ?? process.env.LOOPMESSAGE_SENDER_NAME;
   const recipient = opts.recipient ?? getOwnerPhone();
