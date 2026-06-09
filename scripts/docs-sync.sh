@@ -75,7 +75,9 @@ DIFF (truncated to 180k chars)
 $DIFF
 EOF
 
-if claude -p "$PROMPT" --permission-mode acceptEdits; then
+# Pipe the prompt via stdin (not argv) — a big diff easily exceeds the OS
+# command-line length limit ("Argument list too long").
+if printf '%s' "$PROMPT" | claude -p --permission-mode acceptEdits; then
   echo "$HEAD_SHA" > "$STATE"
   echo "[docs-sync] done. Review the changes under ./docs (git status) and commit when ready."
 else
