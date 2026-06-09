@@ -386,7 +386,7 @@ const TABS: { id: Tab; label: string; icon: typeof MessageSquare; description: s
 import { UpgradeGate } from '@/components/upgrade-gate';
 
 export default function BoardroomPage() {
-  return <UpgradeGate feature="boardroom" title="Orchestrator agent"><BoardroomContent /></UpgradeGate>;
+  return <UpgradeGate feature="boardroom" title="Boardroom"><BoardroomContent /></UpgradeGate>;
 }
 
 function BoardroomContent() {
@@ -396,7 +396,7 @@ function BoardroomContent() {
   return (
     <div className="space-y-4 animate-in">
       <div className="space-y-1">
-        <h1 className="text-h1">Orchestrator agent</h1>
+        <h1 className="text-h1">Boardroom</h1>
         <p className="text-xs text-muted-foreground">{active.description}</p>
       </div>
 
