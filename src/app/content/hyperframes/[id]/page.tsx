@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
   ArrowLeft, Save, Loader2, Plus, Trash2, Type, ChevronUp, ChevronDown,
-  AlignLeft, AlignCenter, AlignRight, ExternalLink, Film, Clapperboard, Play, Download,
+  AlignLeft, AlignCenter, AlignRight, ExternalLink, Film, Clapperboard, Play, Download, Upload, ImageIcon, Video,
 } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { parseStoryboard } from '@/lib/hyperframes-storyboard';
@@ -398,6 +398,7 @@ function SceneProps({ scene, onChange, onAddText, onSelectLayer }: {
             className="w-full text-xs px-2 mt-1.5"
           />
         )}
+        <AssetPicker onPick={(url, kind) => onChange({ background: { type: kind, value: url } })} />
       </Field>
 
       <div className="grid grid-cols-2 gap-2">
@@ -492,6 +493,69 @@ function LayerProps({ layer, onChange, onDelete }: {
       </Field>
 
       <p className="text-[10px] text-muted-foreground">Tip: drag the text on the frame to reposition. ({layer.xPct}, {layer.yPct})</p>
+    </div>
+  );
+}
+
+interface Asset { id: number; kind: 'video' | 'image'; name: string | null; url: string }
+
+// The tenant's clip library — upload a-roll/b-roll + click to drop a clip onto
+// the current scene's background. ("Switch and mash clips.")
+function AssetPicker({ onPick }: { onPick: (url: string, kind: 'video' | 'image') => void }) {
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const load = useCallback(() => {
+    fetch('/api/assets').then((r) => r.json()).then((j) => setAssets(j.assets || [])).catch(() => {});
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const upload = useCallback(async (file: File) => {
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const r = await fetch('/api/assets', { method: 'POST', body: fd });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Upload failed');
+      await load();
+      onPick(j.asset.url, j.asset.kind);
+      toast.success('Clip added');
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setUploading(false);
+    }
+  }, [load, onPick]);
+
+  return (
+    <div className="mt-2 space-y-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] text-muted-foreground">Your clips</span>
+        <label className="btn btn-ghost btn-xs cursor-pointer">
+          {uploading ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />} Upload
+          <input type="file" accept="video/*,image/*" className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ''; }} />
+        </label>
+      </div>
+      {assets.length > 0 && (
+        <div className="grid grid-cols-3 gap-1.5 max-h-32 overflow-y-auto">
+          {assets.map((a) => (
+            <button key={a.id} onClick={() => onPick(a.url, a.kind)} title={a.name || ''}
+              className="relative rounded overflow-hidden border border-border/50 hover:border-[var(--primary)]"
+              style={{ aspectRatio: '9 / 16' }}>
+              {a.kind === 'image' ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={a.url} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <video src={a.url} muted preload="metadata" className="w-full h-full object-cover" />
+              )}
+              <span className="absolute bottom-0.5 right-0.5 text-white/90">
+                {a.kind === 'image' ? <ImageIcon size={9} /> : <Video size={9} />}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

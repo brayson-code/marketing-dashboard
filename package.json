@@ -24,6 +24,7 @@
     "@nangohq/node": "^0.70.4",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.0",
+    "@vercel/blob": "^2.4.0",
     "better-sqlite3": "^12.6.2",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",
