@@ -56,6 +56,35 @@ we build. Offer **Path A (avatar)** as a per-scene option later for talking-head
 content. Both are async + support `callback_url` webhooks (`hyperframes_video.*`
 and `avatar_video.*` events).
 
+### Confirmed from the official Hyperframes docs (2026-06-09)
+*Sources Brayson shared: hyperframes.heygen.com/packages/cli + hyperframes.dev/design.*
+
+- **CLI:** `npm i -g hyperframes` (or `npx hyperframes`). `hyperframes render -o out.mp4`
+  renders an HTML composition **locally, no auth/cost** (needs Node 18+, Chrome,
+  FFmpeg/FFprobe). `hyperframes cloud render` renders in HeyGen's cloud (auth).
+  `hyperframes init`, `hyperframes preview` (live browser edit), `hyperframes doctor`,
+  `hyperframes lambda` (distributed AWS render).
+- **Env vars:** `HEYGEN_API_KEY` (cloud render + account; alias `HYPERFRAMES_API_KEY`),
+  `HEYGEN_API_URL` (default `https://api.heygen.com`), `HEYGEN_CONFIG_DIR` (`~/.heygen`),
+  `HYPERFRAMES_CUDA`, `PRODUCER_*` perf knobs. → **the key to add is `HEYGEN_API_KEY`.**
+- **Dynamic data:** `--variables '{...}'` / `--variables-file` injects values into a
+  composition at render time — this is how our editor's composition feeds a template.
+- **Authoring format (hyperframes.dev/design):** markdown-first — a `design.md`
+  (brand/visual identity) + a `frame.md` (directs the composition: **pacing, scale,
+  dwell, motion**) which import into an HTML Hyperframes project. This maps almost
+  1:1 onto what our `hyperframes-agent` already emits and what the Phase 2a editor
+  now structures.
+
+### Rendering-location decision (the Phase 2b fork)
+Vercel functions can't run headless Chrome + FFmpeg in a normal request, so local
+CLI render can't happen in-process. Three viable homes for the render:
+1. **HeyGen cloud render API** — submit composition + `HEYGEN_API_KEY`, poll/webhook,
+   store MP4 in Blob. Simplest to wire; per-render cost (confirm pricing).
+2. **`hyperframes lambda`** — distributed AWS render the CLI already supports; owned,
+   pay AWS. More setup.
+3. **Dedicated render worker** (a small box / container running the CLI locally for
+   free) that our app calls. Cheapest per-render, an extra service to run.
+
 > Open question to confirm with HeyGen before Phase 2: exact **cloud Hyperframes
 > render pricing** (not on the public pricing page) and the **per-minute rate cap**
 > (only the "10 concurrent renders" limit is documented). No official REST SDK;
