@@ -2,6 +2,7 @@ import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { listIntegrations, upsertIntegration, clearIntegration, PROVIDERS } from '@/lib/integrations-store';
 import { validateHeyGenKey } from '@/lib/heygen';
+import { validateAnthropicKey } from '@/lib/anthropic-key';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,6 +11,7 @@ export const dynamic = 'force-dynamic';
 // secret field is supplied (an Update that leaves it blank keeps the existing one).
 const SECRET_VALIDATORS: Record<string, (secret: Record<string, string>) => Promise<{ ok: boolean; error?: string }>> = {
   hyperframes: (secret) => (secret.api_key ? validateHeyGenKey(secret.api_key) : Promise.resolve({ ok: true })),
+  anthropic: (secret) => (secret.api_key ? validateAnthropicKey(secret.api_key) : Promise.resolve({ ok: true })),
 };
 
 export async function GET() {

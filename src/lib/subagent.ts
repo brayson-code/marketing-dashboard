@@ -2,13 +2,17 @@ import Anthropic from '@anthropic-ai/sdk';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { sql, jsonb, tenantId } from './db/client';
+import { getAnthropicKey } from './anthropic-key';
 import { startTask, finishTask, setTaskStream } from './agent-tasks';
 import { kgToolDefinitions, handleKgTool } from './kg-tools';
+import { skillRecallToolDefinitions, handleSkillRecallTool } from './skill-recall';
 import { chooseVariant } from './selection';
 import { constraintsForVariant, roleFor } from './constraints';
 import { selectGenesForTask, genesDirective, recordGeneApplications } from './genes';
 import { logTimeSaving, actionTypeForAgent } from './roi';
 import { getDefPrompt, getSpawnSpec } from './agent-defs';
+import { heartbeat } from './heartbeat';
+import { getOwnedGoalForAgent, observeMessage } from './goal-observer';
 
 const STATE_DIR = join(process.cwd(), 'state/keyplayer');
 const SUBAGENT_DIR = join(process.cwd(), 'agents/sub-agents');
@@ -82,6 +86,30 @@ export const SUBAGENT_REGISTRY: Record<string, SubAgentSpec> = {
     maxTokens: 4096,
     ratePerHour: 10,
     description: 'Drafts short-form video scripts + storyboards for HeyGen Hyperframes or video-use pipelines.',
+  },
+  'reel-analyst': {
+    id: 'reel-analyst',
+    // Cheap by default: a teardown from the caption/metrics/transcript it's
+    // handed is squarely in Haiku's lane, and reel-intel spawns it TOOL-FREE
+    // (single turn). "Deep analyze" upgrades the spawn to Sonnet + web_search.
+    model: 'claude-haiku-4-5',
+    maxTokens: 1500,
+    ratePerHour: 30,
+    description: 'Reverse-engineers why a competitor short-form video (Reel/Short/TikTok) performed — from its transcript + caption + metrics. Extracts the winning hook, key phrases, structure, and an adaptable angle. Research/teardown only; hands the angle to hyperframes-agent for a script.',
+  },
+  'reel-ideator': {
+    id: 'reel-ideator',
+    model: 'claude-haiku-4-5',
+    maxTokens: 1200,
+    ratePerHour: 30,
+    description: 'Turns live trends + competitor wins into a batch of fresh, testable short-form reel CONCEPTS (hook/angle/format) for the client to curate. Ideas only.',
+  },
+  'reel-optimizer': {
+    id: 'reel-optimizer',
+    model: 'claude-sonnet-4-6',
+    maxTokens: 3000,
+    ratePerHour: 20,
+    description: 'Deep optimizer for the owner OWN short-form reel: scores it, finds timestamped weak points, and writes goal-tailored Currently/Try/Expected-impact rewrites from its transcript + real IG metrics.',
   },
 };
 
@@ -195,7 +223,7 @@ async function persistMemoryRollup(rollupText: string): Promise<void> {
   }
 }
 
-export async function spawnSubAgent(type: string, task: string, parentTaskId?: number, opts?: { variant?: string; maxTurns?: number }): Promise<SpawnResult> {
+export async function spawnSubAgent(type: string, task: string, parentTaskId?: number, opts?: { variant?: string; maxTurns?: number; model?: string; tools?: 'all' | 'none' }): Promise<SpawnResult> {
   // Resolve the spec from the live DB roster (Agent Studio); fall back to the
   // hardcoded registry for builtins that haven't been seeded into the DB.
   const spec = (await getSpawnSpec(type).catch(() => null)) ?? SUBAGENT_REGISTRY[type];
@@ -207,7 +235,10 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
     return { ok: false, error: `Rate limit exceeded for ${type} (${spec.ratePerHour}/hr). Resets in ${rate.resetInSec}s.` };
   }
 
-  if (!process.env.ANTHROPIC_API_KEY) return { ok: false, error: 'ANTHROPIC_API_KEY not configured' };
+  // Per-tenant Anthropic key (BYO) — the agent runs on the tenant's own key,
+  // falling back to the platform env key for HQ/dev. See anthropic-key.ts.
+  const anthropicKey = await getAnthropicKey();
+  if (!anthropicKey) return { ok: false, error: 'No Anthropic key — connect one on the Connections page (or set ANTHROPIC_API_KEY).' };
 
   // Pick the constraint variant centrally so EVERY spawn (orchestrator, waves,
   // cron, A2A) gets selection + the variant's constraints — not just some paths.
@@ -219,6 +250,16 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
   let hydratedTask = task;
   if (type === 'memory-compactor') {
     hydratedTask = await buildMemoryCompactorPayload(task);
+  }
+  // Goal self-check — prepended so it frames the entire task. The agent must
+  // re-state the success criterion verbatim before producing the deliverable.
+  // Empty string when the agent doesn't own an active goal; never throws.
+  try {
+    const { goalDirectiveForAgent } = await import('./goals');
+    const selfCheck = await goalDirectiveForAgent(type);
+    if (selfCheck) hydratedTask = `${selfCheck}\n\n---\n\n${hydratedTask}`;
+  } catch (e) {
+    console.error(`[goal self-check] skipped for ${type}:`, (e as Error).message);
   }
   // Append the chosen variant's role constraints (Phase 2 + selection).
   hydratedTask = `${hydratedTask}\n\n# ${constraintsForVariant(type, variant)}`;
@@ -236,17 +277,36 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
   if (geneIds.length > 0) await recordGeneApplications(geneIds, taskId).catch(() => {});
   // Log the dispatch (from keyplayer -> sub-agent)
   await logA2A('keyplayer', type, task, { phase: 'dispatch', task_id: taskId });
+  // Heartbeat: "I'm starting." Best-effort; emitter swallows errors.
+  void heartbeat(type, 'start', task.slice(0, 200), taskId);
 
-  const client = new Anthropic({ maxRetries: 5 });
+  const client = new Anthropic({ apiKey: anthropicKey, maxRetries: 5 });
   const systemPrompt = await loadSubAgentSystemPrompt(type);
 
-  const tools: Anthropic.Messages.ToolUnion[] = [
+  // Tool gate (cost lever). Tools are what make a run multi-turn: each web_search /
+  // KG / skill_recall round-trip is a separate billed API call. A caller that only
+  // needs a one-shot answer from the inputs it already handed over (e.g. a reel
+  // teardown) can pass tools:'none' to run TOOL-FREE — a single turn, no search
+  // loop. Default keeps the full toolset so every other agent is unchanged.
+  const tools: Anthropic.Messages.ToolUnion[] = opts?.tools === 'none' ? [] : [
     { type: 'web_search_20250305', name: 'web_search' },
     // Shared KG tools so every sub-agent can read/write the team's graph.
     ...kgToolDefinitions(),
+    // On-demand skill recall — pull a playbook by name mid-run instead of baking
+    // every skill into the system prompt at spawn time.
+    ...skillRecallToolDefinitions(),
   ];
 
-  const messages: Anthropic.MessageParam[] = [{ role: 'user', content: hydratedTask }];
+  // Cache the initial task message. Multi-turn agents (research runs a
+  // server-side web_search pause_turn loop, KG/skill tool_use loops) re-send the
+  // FULL message array every turn — putting cache_control on the first user block
+  // means turns 2+ hit the prompt cache on the stable [system + task] prefix
+  // instead of re-billing it. Pure cost win, zero behavior change. The system
+  // prompt is already cached (see turn()), so this completes the cached prefix.
+  const messages: Anthropic.MessageParam[] = [{
+    role: 'user',
+    content: [{ type: 'text', text: hydratedTask, cache_control: { type: 'ephemeral' } }],
+  }];
 
   // Live transcript: stream text deltas into the task's stream_text buffer so the
   // Tasks page can watch the run fill in. Writes are debounced to ~1/sec.
@@ -257,9 +317,15 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
     const now = Date.now();
     if (now - lastWrite > 900) { lastWrite = now; void setTaskStream(taskId, streamBuf).catch(() => {}); }
   };
+  // Per-spawn model override (cost lever): a caller (e.g. a wave routing bulk
+  // fan-out work) can run this spawn on a cheaper tier than the registry default.
+  // `|| spec.model` (not ??) so an empty/whitespace override falls back rather
+  // than reaching the API as an invalid model id. Callers owning a model
+  // override should keep it compatible with spec.maxTokens.
+  const runModel = opts?.model?.trim() || spec.model;
   const turn = async (): Promise<Anthropic.Message> => {
     const stream = client.messages.stream({
-      model: spec.model,
+      model: runModel,
       max_tokens: spec.maxTokens,
       system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
       tools,
@@ -269,6 +335,17 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
     return stream.finalMessage();
   };
 
+  // Goal observer ("teacher") setup. Cache the owned goal once before the loop;
+  // if there's no owned goal OR the kill switch is set, the observer is inert.
+  // Bounded cost: at most `maxObserverCalls` interventions per run + per-turn
+  // dedup so identical advice can't be inserted twice in a row.
+  const observerEnabled = process.env.GOAL_OBSERVER !== 'off';
+  const ownedGoal = observerEnabled ? await getOwnedGoalForAgent(type).catch(() => null) : null;
+  const observerActive = observerEnabled && ownedGoal !== null;
+  let observerCalls = 0;
+  let lastCorrectionKey = '';
+  let pendingCorrection: string | null = null;
+
   try {
     let response = await turn();
 
@@ -276,28 +353,101 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
     // so fewer turns = faster wall-clock + less chance of blowing the 300s function
     // limit. Callers in a wave pass a tighter cap; default stays generous.
     const maxTurns = Math.max(1, Math.min(opts?.maxTurns ?? 8, 12));
+    // Cap teacher interventions per run so a runaway loop can't spike costs.
+    const maxObserverCalls = Math.min(maxTurns, 6);
     let safety = 0;
     while (safety++ < maxTurns) {
+      // Goal-observer hook — runs AFTER each turn, BEFORE the stop-reason check
+      // so we can inject a corrective user message that lands on the NEXT turn.
+      // Strictly best-effort: any failure leaves the loop unchanged.
+      if (observerActive && ownedGoal && observerCalls < maxObserverCalls) {
+        const assistantText = response.content
+          .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+          .map((b) => b.text)
+          .join('\n')
+          .trim();
+        // Skip tool-only turns or very short responses — no signal to score.
+        if (assistantText.length >= 40) {
+          observerCalls++;
+          const verdict = await observeMessage({
+            agentId: type,
+            goalTitle: ownedGoal.title,
+            successCriterion: ownedGoal.success,
+            lastAssistantMessage: assistantText,
+          });
+          if (verdict) {
+            void heartbeat(
+              type,
+              'progress',
+              `obs ${verdict.score.toFixed(2)}: ${verdict.correction ?? 'on track'}`.slice(0, 200),
+              taskId,
+            );
+            if (!verdict.on_track && verdict.correction) {
+              const key = verdict.correction.slice(0, 80);
+              if (key !== lastCorrectionKey) {
+                lastCorrectionKey = key;
+                console.log(
+                  `[observer] ${type} score=${verdict.score.toFixed(2)} correction="${verdict.correction.slice(0, 80)}"`,
+                );
+                // Queue the correction; it gets pushed onto `messages` after the
+                // assistant + tool-result messages for THIS turn are appended,
+                // so it lands as next-turn user-message context (and never
+                // breaks the assistant↔user message ordering required by the
+                // Anthropic API).
+                pendingCorrection = verdict.correction;
+              }
+            }
+          }
+        }
+      }
+
       if (response.stop_reason === 'end_turn') break;
       if (response.stop_reason === 'refusal' || response.stop_reason === 'max_tokens') break;
       if (response.stop_reason === 'pause_turn') {
         // web_search runs server-side; just continue the paused turn.
         messages.push({ role: 'assistant', content: response.content });
+        if (pendingCorrection) {
+          messages.push({
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: `# Goal-observer correction\n${pendingCorrection}\n\nIncorporate this and continue.`,
+              },
+            ],
+          });
+          pendingCorrection = null;
+        }
         response = await turn();
         continue;
       }
       if (response.stop_reason === 'tool_use') {
-        // Sub-agents can use the shared KG tools (kg_query / kg_remember).
-        // Provenance: the sub-agent type id is the source agent.
-        const kgToolUses = response.content.filter(
+        // Sub-agents can use the shared KG tools (kg_query / kg_remember) and
+        // recall_skill. Provenance: the sub-agent type id is the source agent.
+        const handledToolUses = response.content.filter(
           (b): b is Anthropic.ToolUseBlock =>
-            b.type === 'tool_use' && (b.name === 'kg_query' || b.name === 'kg_remember'),
+            b.type === 'tool_use' && (b.name === 'kg_query' || b.name === 'kg_remember' || b.name === 'recall_skill'),
         );
-        if (kgToolUses.length === 0) break;
+        if (handledToolUses.length === 0) break;
 
         messages.push({ role: 'assistant', content: response.content });
-        const toolResults = await Promise.all(kgToolUses.map((tu) => handleKgTool(tu, type)));
-        messages.push({ role: 'user', content: toolResults });
+        const toolResults = await Promise.all(handledToolUses.map((tu) =>
+          tu.name === 'recall_skill' ? handleSkillRecallTool(tu, type) : handleKgTool(tu, type),
+        ));
+        // Merge the correction (if any) into the same user block as the tool
+        // results — two adjacent user messages would violate the API's
+        // alternating-roles rule.
+        const userContent: Array<Anthropic.ToolResultBlockParam | Anthropic.TextBlockParam> = [
+          ...toolResults,
+        ];
+        if (pendingCorrection) {
+          userContent.push({
+            type: 'text',
+            text: `# Goal-observer correction\n${pendingCorrection}\n\nIncorporate this and continue.`,
+          });
+          pendingCorrection = null;
+        }
+        messages.push({ role: 'user', content: userContent });
         response = await turn();
         continue;
       }
@@ -313,6 +463,7 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
     if (!text) {
       await logA2A(type, 'keyplayer', '(no text returned)', { phase: 'result', stop_reason: response.stop_reason });
       await finishTask(taskId, { status: 'error', error: `no text (stop_reason: ${response.stop_reason})` });
+      void heartbeat(type, 'errored', `no text (stop_reason: ${response.stop_reason})`, taskId);
       return { ok: false, error: `${type} returned no text (stop_reason: ${response.stop_reason})` };
     }
 
@@ -327,6 +478,17 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
       await persistMemoryRollup(text);
     }
 
+    // Pulse: if the agent emitted a `## Pulse update` block, persist it onto
+    // its own agent_defs row so the next run reads the freshest state. Soft
+    // fail — pulse continuity is nice-to-have, never block the result.
+    try {
+      const { parsePulseUpdate, setAgentPulse } = await import('./agent-defs');
+      const nextPulse = parsePulseUpdate(text);
+      if (nextPulse) await setAgentPulse(type, nextPulse);
+    } catch (e) {
+      console.error(`[pulse] persist failed for ${type}:`, (e as Error).message);
+    }
+
     await finishTask(taskId, {
       status: 'done',
       result: text,
@@ -338,6 +500,9 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
     // Best-effort + idempotent per task; never blocks the result.
     await logTimeSaving({ actionType: actionTypeForAgent(type), agentId: type, source: 'agent', taskId }).catch(() => {});
 
+    // Heartbeat: "I finished." Final beat closes the live ticker.
+    void heartbeat(type, 'finished', text.slice(0, 200), taskId);
+
     return {
       ok: true,
       text,
@@ -348,6 +513,7 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
     const msg = err instanceof Anthropic.APIError ? `Anthropic ${err.status}: ${err.message}` : (err as Error).message;
     await logA2A(type, 'keyplayer', `ERROR: ${msg}`, { phase: 'error' });
     await finishTask(taskId, { status: 'error', error: msg });
+    void heartbeat(type, 'errored', msg.slice(0, 200), taskId);
     return { ok: false, error: msg };
   }
 }
