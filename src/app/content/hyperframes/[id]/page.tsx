@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
   ArrowLeft, Save, Loader2, Plus, Trash2, Type, ChevronUp, ChevronDown,
-  AlignLeft, AlignCenter, AlignRight, ExternalLink, Film, Clapperboard,
+  AlignLeft, AlignCenter, AlignRight, ExternalLink, Film, Clapperboard, Play, Download,
 } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { parseStoryboard } from '@/lib/hyperframes-storyboard';
@@ -14,6 +14,15 @@ import {
   type Composition, type CompositionScene, type TextLayer,
 } from '@/lib/hyperframes-composition';
 import type { DraftRow } from '@/lib/drafts';
+
+interface RenderInfo {
+  render_id?: string;
+  status?: 'queued' | 'rendering' | 'completed' | 'failed' | 'unknown';
+  video_url?: string | null;
+  thumbnail_url?: string | null;
+  error?: string | null;
+}
+const isActiveRender = (r: RenderInfo | null) => r?.status === 'queued' || r?.status === 'rendering';
 
 // Visual scene editor (Phase 2a) — edit the video layer of a storyboard before
 // rendering: position on-screen text on a live 9:16 frame, set the background /
@@ -35,6 +44,9 @@ export default function HyperframesEditorPage() {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [render, setRender] = useState<RenderInfo | null>(null);
+  const [rendering, setRendering] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   // Load the draft, then use its saved composition or seed one from the storyboard.
   useEffect(() => {
@@ -48,6 +60,8 @@ export default function HyperframesEditorPage() {
         setDraft(d);
         const saved = (d.metadata as { composition?: unknown } | null)?.composition;
         setComp(isComposition(saved) ? saved : compositionFromStoryboard(parseStoryboard(d.payload)));
+        const r = (d.metadata as { render?: RenderInfo } | null)?.render;
+        if (r?.render_id) setRender(r);
       })
       .catch((e) => !cancel && setError((e as Error).message));
     return () => { cancel = true; };
@@ -156,6 +170,42 @@ export default function HyperframesEditorPage() {
     }
   }, [comp, id]);
 
+  // Save the latest composition, then submit a HeyGen render.
+  const renderNow = useCallback(async () => {
+    if (rendering || isActiveRender(render)) return;
+    setRendering(true);
+    try {
+      await save();
+      const res = await fetch(`/api/hyperframes/${id}/render`, { method: 'POST' });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || 'Render failed to start');
+      setRender(j.render);
+      toast.success('Rendering started — this takes a minute.');
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setRendering(false);
+    }
+  }, [rendering, render, save, id]);
+
+  // While a render is queued/rendering, poll HeyGen for status; stop when terminal.
+  useEffect(() => {
+    if (!isActiveRender(render)) return;
+    let cancel = false;
+    const tick = async () => {
+      try {
+        const j = await fetch(`/api/hyperframes/${id}/render`).then((r) => r.json());
+        if (cancel || !j.render) return;
+        setRender(j.render);
+        if (j.render.status === 'completed' && j.render.video_url) { setShowPreview(true); toast.success('Render complete'); }
+        if (j.render.status === 'failed') toast.error(j.render.error || 'Render failed');
+      } catch { /* keep polling */ }
+    };
+    const iv = setInterval(tick, 5000);
+    tick();
+    return () => { cancel = true; clearInterval(iv); };
+  }, [render?.status, render?.render_id, id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (error) return <div className="p-6 text-sm text-destructive">Failed to load: {error}</div>;
   if (!comp || !draft) return <div className="p-6 text-sm text-muted-foreground flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Loading editor…</div>;
 
@@ -172,8 +222,18 @@ export default function HyperframesEditorPage() {
           <a className="btn btn-ghost btn-sm" href="https://hyperframes.heygen.com" target="_blank" rel="noreferrer">
             <ExternalLink size={13} /> HeyGen
           </a>
-          <button className="btn btn-secondary btn-sm" disabled title="In-app rendering arrives in Phase 2b">
-            <Clapperboard size={13} /> Render (soon)
+          {render?.status === 'completed' && render.video_url && (
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowPreview(true)}><Play size={13} /> Preview</button>
+          )}
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={renderNow}
+            disabled={rendering || isActiveRender(render)}
+            title="Render this composition to video via HeyGen"
+          >
+            {rendering || isActiveRender(render)
+              ? <><Loader2 size={13} className="animate-spin" /> {render?.status === 'rendering' ? 'Rendering…' : 'Queued…'}</>
+              : <><Clapperboard size={13} /> Render</>}
           </button>
           <button className="btn btn-primary btn-sm" onClick={save} disabled={saving || !dirty}>
             {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} {dirty ? 'Save' : 'Saved'}
@@ -262,6 +322,18 @@ export default function HyperframesEditorPage() {
           )}
         </div>
       </div>
+
+      {showPreview && render?.video_url && (
+        <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-6" onClick={() => setShowPreview(false)}>
+          <div onClick={(e) => e.stopPropagation()} className="flex flex-col items-center gap-3">
+            <video src={render.video_url} controls autoPlay loop className="max-h-[82vh] rounded-xl shadow-2xl" style={{ aspectRatio: '9 / 16' }} />
+            <div className="flex gap-2">
+              <a className="btn btn-secondary btn-sm" href={render.video_url} target="_blank" rel="noreferrer"><Download size={13} /> Download</a>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowPreview(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

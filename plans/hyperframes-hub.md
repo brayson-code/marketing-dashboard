@@ -1,5 +1,37 @@
 # Hyperframes Agent Hub — Build Plan
 
+## DIRECTION LOCKED (2026-06-09)
+Goal: **Hormozi-style high-performing reels** — word-by-word captions, fast cuts /
+punch-in transitions, spliced b-roll/a-roll, small bold infographics. **No stock
+imagery, no corporate junk.** Easy for content-driven (non-editor) users.
+
+Decisions:
+- **Editor model: agent-first now → timeline later.** The agent auto-builds the
+  full reel; the user refines in a simple UI. A multi-track timeline (CapCut-grade)
+  is layered on later for power users, on the SAME Hyperframes format. ("Premiere-
+  grade" and "easy" conflict — easy wins via agent-first.)
+- **Assets: user library + AI-generated, never stock.** Per-tenant uploaded
+  footage (a-roll/b-roll) + AI-generated clips (HeyGen) when needed. Build a
+  per-tenant asset manager.
+- **NO embed of HeyGen Studio.** Confirmed `app.heygen.com` sends CSP
+  `frame-ancestors 'self' …` → iframe is blocked. Remote-browser streaming is
+  costly/fragile/non-programmatic — rejected. We own the editor; HeyGen is the
+  render engine only.
+- **Captions** come from **Deepgram** (already a connection) → word-level
+  timestamps → karaoke captions. **Render** = our composition → Hyperframes HTML
+  (validated) → HeyGen cloud (validated, credited key wired).
+
+Build order: **(1) render loop** [✅ SHIPPED 2026-06-09 — editor Render button →
+`/api/hyperframes/[id]/render` → composition→HTML→zip→base64 `POST /v3/hyperframes/
+renders` (`src/lib/heygen-render.ts`) → poll → inline MP4 preview. base64 project
+shape confirmed: `{type:'base64',media_type:'application/zip',data}`. Verified
+end-to-end on a credited key.] → (2) rich format
+(caption track, transitions, b-roll/a-roll overlays, infographic components) +
+agent upgrade → (3) per-tenant asset manager (upload + AI-gen) → (4) timeline
+editor for power users → (5) one-click publish (Phase 3).
+
+
+
 > Status: **PLAN ONLY** (nothing built yet). Owner decision on 2026-06-08:
 > write the plan first; chosen render engine = **HeyGen API**.
 
