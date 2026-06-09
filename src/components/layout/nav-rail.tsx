@@ -28,48 +28,60 @@ interface NavItem {
 }
 interface NavGroup { label: string; items: NavItem[]; collapsible?: boolean }
 
-// The nav is divided by INTENT, not by feature. CORE / OPERATE / INSIGHTS are
-// daily work; OPS is "things I check when something is broken" and starts
-// collapsed so it doesn't fight the primary nav. BOTTOM stays pinned for
-// frequent setup/billing access regardless of scroll position.
+// The nav is grouped by business DIVISION (not engineering intent): HOME for the
+// universal daily items, then Creative / Marketing / Revenue / Insights / Agents.
+// OPS is "things I check when something's broken" and starts collapsed. BOTTOM
+// stays pinned for setup/billing regardless of scroll.
 const PRIMARY: NavGroup[] = [
   {
-    label: 'CORE',
+    label: 'HOME',
     items: [
       { href: '/', label: 'Overview', icon: Gauge },
-      { href: '/agents/squads', label: 'Agents', icon: Bot },
-      // Inbox retired — A2A + Mission Control live in /boardroom; channel
-      // comments live in /engagement. Returns when AgentMail/Instantly land.
-      { href: '/boardroom', label: 'Boardroom', icon: MessagesSquare },
       { href: '/tasks', label: 'Tasks', icon: Activity },
-      { href: '/drafts', label: 'Approvals', icon: Inbox },
-      { href: '/campaigns', label: 'Campaigns', icon: Waves },
-      { href: '/missions',  label: 'Missions',  icon: Rocket },
+      { href: '/drafts', label: 'Approvals', icon: Inbox, countKey: 'total_pending' },
       { href: '/goals', label: 'Goals', icon: Target },
     ],
   },
   {
-    label: 'OPERATE',
+    label: 'CREATIVE',
     items: [
-      // Content is now a single hub — Overview / Ideas / Scripts / Competitors /
-      // Pipeline / Library / Engagement live as tabs across the top of the hub
-      // (see content-tabs.tsx), not as six separate rail rows.
+      // The Content hub fronts Ideas / Scripts / Hyperframes / Media / Competitors
+      // / Pipeline / Library / Engagement as tabs (see content-tabs.tsx).
       { href: '/content/overview', label: 'Content', icon: FlaskConical, countKey: 'content',
         matchPrefixes: ['/content', '/content-lab', '/scripts', '/competitors', '/engagement'] },
+    ],
+  },
+  {
+    label: 'MARKETING',
+    items: [
+      { href: '/campaigns', label: 'Campaigns', icon: Waves },
+      { href: '/missions', label: 'Missions', icon: Rocket },
       { href: '/outreach', label: 'Outreach', icon: Mail, countKey: 'outreach' },
+      { href: '/research', label: 'Research', icon: Search, countKey: 'signals_today' },
+    ],
+  },
+  {
+    label: 'REVENUE',
+    items: [
       { href: '/crm', label: 'CRM', icon: Contact, countKey: 'new_leads' },
-      { href: '/automations', label: 'Automations', icon: Zap, countKey: 'outreach' },
+      { href: '/roi', label: 'ROI', icon: Timer },
     ],
   },
   {
     label: 'INSIGHTS',
     items: [
-      { href: '/research', label: 'Research', icon: Search, countKey: 'signals_today' },
       { href: '/analytics', label: 'Analytics', icon: LineChart },
       { href: '/kpis', label: 'KPIs', icon: BarChart3 },
-      { href: '/roi', label: 'ROI', icon: Timer },
       { href: '/usage', label: 'Usage', icon: DollarSign },
       { href: '/kg', label: 'Knowledge', icon: Network },
+    ],
+  },
+  {
+    label: 'AGENTS',
+    items: [
+      { href: '/agents/squads', label: 'Agents', icon: Bot, matchPrefixes: ['/agents/squads'] },
+      { href: '/boardroom', label: 'Orchestrator', icon: MessagesSquare, matchPrefixes: ['/boardroom'] },
+      { href: '/automations', label: 'Automations', icon: Zap },
     ],
   },
 ];

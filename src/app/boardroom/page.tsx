@@ -1,12 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Send, Phone, AlertCircle, ArrowDownToLine, ArrowUpFromLine, MessageSquare, Network, Sparkles, Paperclip, X, Loader2, ImageIcon, Info } from 'lucide-react';
+import { Send, Phone, AlertCircle, ArrowDownToLine, ArrowUpFromLine, MessageSquare, Network, Paperclip, X, Loader2, ImageIcon, Info } from 'lucide-react';
 import { A2AHistory } from '@/components/chat/a2a-history';
-import { MissionControlChat } from '@/components/chat/mission-control-chat';
 import { createClient } from '@/lib/supabase/client';
 
-type Tab = 'imessage' | 'mission' | 'a2a';
+type Tab = 'imessage' | 'a2a';
 
 type Direction = 'in' | 'out';
 
@@ -380,19 +379,24 @@ function IMessageThread() {
 }
 
 const TABS: { id: Tab; label: string; icon: typeof MessageSquare; description: string }[] = [
-  { id: 'imessage', label: 'iMessage', icon: MessageSquare, description: 'You ↔ orchestrator over iMessage' },
-  { id: 'mission', label: 'Mission Control', icon: Sparkles, description: 'Operator ↔ orchestrator (in-app)' },
+  { id: 'imessage', label: 'Orchestrator agent', icon: MessageSquare, description: 'Talk to your orchestrator — in the app and over iMessage' },
   { id: 'a2a', label: 'Agent ↔ Agent', icon: Network, description: 'Watch how your agents talk to each other' },
 ];
 
+import { UpgradeGate } from '@/components/upgrade-gate';
+
 export default function BoardroomPage() {
+  return <UpgradeGate feature="boardroom" title="Orchestrator agent"><BoardroomContent /></UpgradeGate>;
+}
+
+function BoardroomContent() {
   const [tab, setTab] = useState<Tab>('imessage');
   const active = TABS.find((t) => t.id === tab)!;
 
   return (
     <div className="space-y-4 animate-in">
       <div className="space-y-1">
-        <h1 className="text-xl font-semibold">Boardroom</h1>
+        <h1 className="text-h1">Orchestrator agent</h1>
         <p className="text-xs text-muted-foreground">{active.description}</p>
       </div>
 
@@ -413,7 +417,6 @@ export default function BoardroomPage() {
       </div>
 
       {tab === 'imessage' && <IMessageThread />}
-      {tab === 'mission' && <MissionControlChat />}
       {tab === 'a2a' && <A2AHistory />}
     </div>
   );
