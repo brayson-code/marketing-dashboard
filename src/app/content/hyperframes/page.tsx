@@ -1,8 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import {
-  Film, Sparkles, Loader2, Copy, Check, ExternalLink, Save, Pencil, X, Wand2, Clapperboard,
+  Film, Sparkles, Loader2, Copy, Check, ExternalLink, Save, Pencil, X, Wand2, Clapperboard, SlidersHorizontal,
 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { ContentTabs } from '@/components/content/content-tabs';
@@ -197,6 +198,9 @@ function StoryboardDetail({ board, onSaved }: { board: DraftRow; onSaved: () => 
           <a className="btn btn-ghost btn-sm" href="https://hyperframes.heygen.com" target="_blank" rel="noreferrer" title="Open HeyGen Hyperframes">
             <ExternalLink size={13} /> HeyGen
           </a>
+          <Link className="btn btn-primary btn-sm" href={`/content/hyperframes/${board.id}`} title="Open the visual scene editor">
+            <SlidersHorizontal size={13} /> Editor
+          </Link>
           {editing ? (
             <>
               <button className="btn btn-ghost btn-sm" onClick={() => { setText(board.payload); setEditing(false); }}><X size={13} /></button>
