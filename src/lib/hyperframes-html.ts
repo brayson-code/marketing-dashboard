@@ -49,6 +49,23 @@ export function compositionToHtml(comp: Composition): string {
       // Gentle entrance so text doesn't just pop in. Positioned at the scene's start.
       tweens.push(`tl.from("#${cssEsc(l.id)}", { opacity: 0, y: -40, duration: 0.5 }, ${start});`);
     });
+
+    // Caption track — the spoken words as a bottom karaoke band, popped in
+    // word-by-word across the scene (the signature short-form caption look).
+    if (scene.caption && scene.caption.trim()) {
+      const words = scene.caption.trim().split(/\s+/);
+      const capId = `${scene.id}-cap`;
+      const spans = words.map((w, i) => `<span class="cw" id="${capId}-${i}">${esc(w)}</span>`).join(' ');
+      clips.push(
+        `<div class="clip cap" data-start="${start}" data-duration="${dur}" data-track-index="2" ` +
+        `style="left:50%;top:80%;transform:translate(-50%,-50%);width:88%;z-index:2;text-align:center;` +
+        `font-size:62px;font-weight:800;color:#fff;line-height:1.18">${spans}</div>`,
+      );
+      const per = Math.min(0.18, (dur * 0.6) / Math.max(1, words.length));
+      words.forEach((_, i) => {
+        tweens.push(`tl.from("#${cssEsc(`${capId}-${i}`)}", { opacity: 0, y: 18, scale: 0.9, duration: 0.22 }, ${(start + i * per).toFixed(2)});`);
+      });
+    }
   });
 
   return `<!doctype html>
@@ -62,6 +79,8 @@ export function compositionToHtml(comp: Composition): string {
       html, body { width: ${W}px; height: ${H}px; overflow: hidden; background: #0B0B0F; }
       body { font-family: "Inter", system-ui, sans-serif; }
       .clip { position: absolute; }
+      .cap { text-shadow: 0 2px 10px rgba(0,0,0,.65), 0 0 2px rgba(0,0,0,.9); }
+      .cw { display: inline-block; margin: 0 .12em; }
     </style>
   </head>
   <body>

@@ -33,6 +33,7 @@ export interface CompositionScene {
   background: SceneBackground;
   layers: TextLayer[];
   voiceover?: string; // the VO / audio line — not drawn, used for render + reference
+  caption?: string;   // on-screen spoken words — rendered as karaoke-style captions
   note?: string;      // the agent's visual direction — an editor hint, not rendered
 }
 
@@ -73,6 +74,11 @@ export function compositionFromStoryboard(sb: Storyboard): Composition {
     if (opts.text && opts.text.trim()) {
       layers.push({ ...newTextLayer(`${id}-t1`, opts.text.trim()) });
     }
+    // Captions = the spoken words. Seed from the VO line, stripping a leading
+    // "VO:" and wrapping quotes so it reads as clean on-screen text.
+    const caption = opts.audio
+      ? opts.audio.replace(/^\s*VO:\s*/i, '').replace(/^["']|["']$/g, '').trim() || undefined
+      : undefined;
     return {
       id,
       label: opts.label,
@@ -81,6 +87,7 @@ export function compositionFromStoryboard(sb: Storyboard): Composition {
       background: { type: 'color', value: DEFAULT_BG },
       layers,
       voiceover: opts.audio,
+      caption,
       note: opts.visual,
     };
   };

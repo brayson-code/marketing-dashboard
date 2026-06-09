@@ -415,6 +415,10 @@ function SceneProps({ scene, onChange, onAddText, onSelectLayer }: {
         <textarea value={scene.voiceover ?? ''} onChange={(e) => onChange({ voiceover: e.target.value })} rows={2} className="w-full text-xs resize-y" placeholder="VO line for this scene…" />
       </Field>
 
+      <Field label="Captions (on-screen words)">
+        <textarea value={scene.caption ?? ''} onChange={(e) => onChange({ caption: e.target.value })} rows={2} className="w-full text-xs resize-y" placeholder="Spoken words — popped in word-by-word at the bottom" />
+      </Field>
+
       {scene.note && (
         <div className="text-[10px] text-muted-foreground rounded-md bg-[color-mix(in_srgb,var(--surface-2)_60%,transparent)] p-2">
           <span className="uppercase tracking-wide text-[8px] mr-1">Direction</span>{scene.note}
