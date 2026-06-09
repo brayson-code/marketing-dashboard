@@ -85,6 +85,39 @@ CLI render can't happen in-process. Three viable homes for the render:
 3. **Dedicated render worker** (a small box / container running the CLI locally for
    free) that our app calls. Cheapest per-render, an extra service to run.
 
+**Decision (2026-06-09): HeyGen cloud render API.**
+
+### Phase 2b — confirmed cloud-render contract (HeyGen)
+*Source: developers.heygen.com/hyperframes.*
+- **Create:** `POST /v3/hyperframes/renders`, header `x-api-key`. Body:
+  `project: { type: 'asset_id'|'url'|'base64', ... }` (the composition as a **.zip
+  with index.html at root**), `aspect_ratio: '9:16'`, `resolution: '1080p'|'4k'`,
+  `fps`, `quality`, `format: 'mp4'`, `variables` (overrides `data-composition-variables`),
+  `title`, `callback_url`, `callback_id`. → `202 { data: { render_id, status:'queued' } }`.
+- **Poll:** `GET /v3/hyperframes/renders/{render_id}` → status `queued|rendering|
+  completed|failed`; completed carries `video_url`, `thumbnail_url`, `duration`.
+- **Webhook:** `callback_url` → events `hyperframes_video.success|fail`, `callback_id` echoed.
+- Composition zip uploaded via the Assets API (→ `asset_id`), or supplied inline
+  via `type:'url'|'base64'`.
+
+### Phase 2b build pipeline
+1. `composition → Hyperframes HTML project` generator (index.html using
+   `@hyperframes/core` runtime for scene timing/animation + `data-composition-variables`).
+2. zip it → upload (Assets API → `asset_id`) **or** inline `base64`.
+3. `POST /api/hyperframes/[id]/render` → submit render, store `{ render_id, status }`
+   on `draft.metadata.render`.
+4. `/api/hyperframes/webhook` (verify secret) → on success download `video_url` →
+   Vercel Blob → update `metadata.render`.
+5. Editor "Render" button → states (queued→rendering→done) + inline MP4 preview.
+
+### Blockers before building Phase 2b
+- **`HEYGEN_API_KEY`** in `.env.local` (dev) + Vercel env (prod). Can't build/verify
+  the network calls without it.
+- **Validate the Hyperframes HTML authoring conventions** (`@hyperframes/core` timeline
+  API) with a one-scene **spike render** before building the full HTML generator —
+  the exact runtime API for scene timing/animation isn't fully documented, so we
+  confirm the format with a real render rather than guess.
+
 > Open question to confirm with HeyGen before Phase 2: exact **cloud Hyperframes
 > render pricing** (not on the public pricing page) and the **per-minute rate cap**
 > (only the "10 concurrent renders" limit is documented). No official REST SDK;
