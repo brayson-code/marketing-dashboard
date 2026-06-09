@@ -46,6 +46,9 @@ export const PROVIDERS: IntegrationProviderDef[] = [
       { name: 'webhook_secret', label: 'Webhook Secret', type: 'password' },
       { name: 'sender_name', label: 'Sender Name', type: 'text' },
     ] },
+  { id: 'agentmail', label: 'AgentMail (email agents)', category: 'email',
+    scopesHint: 'Create your own account + API key at agentmail.to, then paste the key here. Your inboxes, sends, and karma stay under YOUR account.',
+    fields: [{ name: 'api_key', label: 'API Key', type: 'password', required: true, placeholder: 'am_…' }] },
   { id: 'gmail', label: 'Gmail', category: 'email', scopesHint: 'gmail.readonly, gmail.compose',
     fields: [
       { name: 'oauth_client_id', label: 'OAuth Client ID', type: 'text' },
@@ -78,31 +81,68 @@ export const PROVIDERS: IntegrationProviderDef[] = [
       { name: 'property_id', label: 'Property ID', type: 'text', required: true },
       { name: 'service_account_json', label: 'Service Account JSON', type: 'password', required: true },
     ] },
-  { id: 'hyperframes', label: 'HeyGen Hyperframes', category: 'storage',
-    fields: [{ name: 'api_key', label: 'API Key', type: 'password', required: true }] },
+  { id: 'hyperframes', label: 'HeyGen Hyperframes (video)', category: 'ai',
+    scopesHint: 'Create an API key at app.heygen.com → Settings → API and paste it here. Powers in-app reel rendering. Note: HeyGen’s API is paid (per-render credits), separate from any web plan.',
+    fields: [{ name: 'api_key', label: 'API Key', type: 'password', required: true, placeholder: 'sk_…' }] },
+  { id: 'apify', label: 'Apify (competitor scraping)', category: 'other',
+    scopesHint: 'Create an Apify account + API token at apify.com. Used to fetch competitor reels for analysis.',
+    fields: [{ name: 'api_key', label: 'API Token', type: 'password', required: true, placeholder: 'apify_api_...' }] },
+  { id: 'deepgram', label: 'Deepgram (speech-to-text)', category: 'other',
+    scopesHint: 'Deepgram API key (deepgram.com). Transcribes reel audio when a caption track is absent. $200 free credit to start.',
+    fields: [{ name: 'api_key', label: 'API Key', type: 'password', required: true, placeholder: 'Token …' }] },
 ];
 
 // ── Crypto ──────────────────────────────────────────────────────────────────
 
-function getKey(): Buffer {
-  const raw = process.env.KEYPLAYERS_SECRETS_KEY || process.env.API_KEY || 'keyplayers-dev-fallback-do-not-use-in-prod';
-  return createHash('sha256').update(raw).digest();
+const DEV_FALLBACK_KEY = 'keyplayers-dev-fallback-do-not-use-in-prod';
+
+// We ENCRYPT under a single strong key (dedicated KEYPLAYERS_SECRETS_KEY when
+// set, else API_KEY), and NEVER under the public dev literal in production — the
+// hardening the security audit flagged. But DECRYPT is permissive: it tries
+// EVERY key that could have encrypted legacy ciphertext (including the dev
+// literal), so credentials saved BEFORE the cutover still open and re-encrypt
+// under the strong key on their next write. Permissive decrypt is safe — it only
+// recovers data we already stored; it never weakens what we write.
+function encryptionKey(): Buffer {
+  const raw = process.env.KEYPLAYERS_SECRETS_KEY || process.env.API_KEY;
+  if (raw) return createHash('sha256').update(raw).digest();
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('integrations-store: no encryption key configured — set KEYPLAYERS_SECRETS_KEY');
+  }
+  return createHash('sha256').update(DEV_FALLBACK_KEY).digest();
+}
+
+function decryptCandidates(): Buffer[] {
+  const raws = [
+    process.env.KEYPLAYERS_SECRETS_KEY,
+    process.env.API_KEY,
+    DEV_FALLBACK_KEY, // legacy decrypt only — never used to encrypt
+  ].filter((r): r is string => !!r);
+  return raws.map((r) => createHash('sha256').update(r).digest());
 }
 
 function encrypt(plain: string): string {
   const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', getKey(), iv);
+  const cipher = createCipheriv('aes-256-gcm', encryptionKey(), iv);
   const enc = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
   return `${iv.toString('base64')}:${tag.toString('base64')}:${enc.toString('base64')}`;
 }
 
-function decrypt(blob: string): string {
+function decryptWith(blob: string, key: Buffer): string {
   const [ivB64, tagB64, encB64] = blob.split(':');
-  const decipher = createDecipheriv('aes-256-gcm', getKey(), Buffer.from(ivB64, 'base64'));
+  const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(ivB64, 'base64'));
   decipher.setAuthTag(Buffer.from(tagB64, 'base64'));
   const dec = Buffer.concat([decipher.update(Buffer.from(encB64, 'base64')), decipher.final()]);
   return dec.toString('utf8');
+}
+
+function decrypt(blob: string): string {
+  let lastErr: unknown;
+  for (const key of decryptCandidates()) {
+    try { return decryptWith(blob, key); } catch (e) { lastErr = e; }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('decrypt failed under all keys');
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────
