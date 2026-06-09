@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useLayoutEffect, useRef, useState } from 'react';
 import {
-  LayoutGrid, FlaskConical, Clapperboard, Telescope, CalendarDays, FolderOpen, MessageCircle, Film,
+  LayoutGrid, FlaskConical, Clapperboard, Telescope, CalendarDays, FolderOpen, MessageCircle, Film, FolderUp,
 } from 'lucide-react';
 
 // Sub-nav for the Content hub. One strip, seven destinations — the six pages
@@ -18,6 +18,7 @@ const TABS: Array<{ href: string; label: string; icon: typeof LayoutGrid }> = [
   { href: '/content-lab',      label: 'Ideas',       icon: FlaskConical },
   { href: '/scripts',          label: 'Scripts',     icon: Clapperboard },
   { href: '/content/hyperframes', label: 'Hyperframes', icon: Film },
+  { href: '/content/media',    label: 'Media',       icon: FolderUp },
   { href: '/competitors',      label: 'Competitors', icon: Telescope },
   { href: '/content',          label: 'Pipeline',    icon: CalendarDays },
   { href: '/content/library',  label: 'Library',     icon: FolderOpen },
