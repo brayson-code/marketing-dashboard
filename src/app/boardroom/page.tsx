@@ -124,10 +124,15 @@ function IMessageThread() {
     setError(null);
     setUploading((n) => n + images.length);
     const supabase = createClient();
+    // Upload under the USER's OWN tenant prefix (from their JWT claim) so the Storage
+    // RLS policy (folder == one of my tenants) passes for client tenants — not just HQ.
+    const { data: { user } } = await supabase.auth.getUser();
+    const claim = (user?.app_metadata as Record<string, unknown> | undefined)?.tenant_id;
+    const prefix = typeof claim === 'string' && claim ? claim : TENANT_ID;
     for (const file of images) {
       try {
         const safe = file.name.replace(/[^\w.\-]+/g, '_') || 'image.png';
-        const path = `${TENANT_ID}/${crypto.randomUUID()}-${safe}`;
+        const path = `${prefix}/${crypto.randomUUID()}-${safe}`;
         const up = await supabase.storage.from(STORAGE_BUCKET).upload(path, file, { contentType: file.type, upsert: false });
         if (up.error) throw up.error;
         const signed = await supabase.storage.from(STORAGE_BUCKET).createSignedUrl(path, SIGNED_URL_TTL);

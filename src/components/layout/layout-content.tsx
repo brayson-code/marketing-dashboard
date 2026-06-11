@@ -17,11 +17,13 @@ export function LayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [authChecked, setAuthChecked] = useState(false);
 
-  // Standalone paths render their own chrome and need no authenticated user:
-  // the login screen and the public /docs knowledge base.
+  // Standalone paths render their own chrome (no dashboard shell / tenant fetches):
+  // the login screen, the public /docs knowledge base, and the no-workspace wall
+  // (an authed-but-unprovisioned user must not trigger tenant-scoped data loads).
   const isAuthPath = AUTH_PATHS.some((p) => pathname.startsWith(p));
   const isPublicDocs = pathname === '/docs' || pathname.startsWith('/docs/');
-  const isStandalone = isAuthPath || isPublicDocs;
+  const isNoWorkspace = pathname === '/no-workspace';
+  const isStandalone = isAuthPath || isPublicDocs || isNoWorkspace;
 
   useEffect(() => {
     if (isStandalone) return;
@@ -33,6 +35,15 @@ export function LayoutContent({ children }: { children: React.ReactNode }) {
         if (cancelled) return;
         if (error || !data?.user) {
           router.replace(`/login?from=${encodeURIComponent(pathname)}`);
+          return;
+        }
+        // Authenticated but no assigned workspace (no JWT tenant claim) → the
+        // no-workspace wall. Data is fail-closed server-side (resolveTenant →
+        // NO_TENANT) regardless; this is the UX gate, done client-side because the
+        // server middleware that would normally redirect is not currently wired.
+        const claim = (data.user.app_metadata as Record<string, unknown> | undefined)?.tenant_id;
+        if (!(typeof claim === 'string' && claim)) {
+          router.replace('/no-workspace');
           return;
         }
         setAuthChecked(true);

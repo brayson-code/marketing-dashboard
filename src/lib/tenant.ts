@@ -25,6 +25,13 @@ const storage = new AsyncLocalStorage<TenantContext>();
 export const DEFAULT_TENANT_ID =
   process.env.DEFAULT_TENANT_ID ?? 'fff35ccb-d1da-4fef-b8cb-e363fe1b8e14';
 
+// Sentinel for an AUTHENTICATED user who has NO assigned workspace (no JWT
+// tenant claim). It's the nil UUID — a valid uuid that matches no real tenant —
+// so every tenant-scoped query returns empty (fail-closed) instead of leaking the
+// system-default (HQ) tenant to an unprovisioned user. Distinct from DEFAULT_TENANT_ID,
+// which is the legitimate fallback for system/cron paths that have no user at all.
+export const NO_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+
 /** Run `fn` with an active tenant context (everything inside sees tenantId()). */
 export function runWithTenant<T>(ctx: TenantContext, fn: () => T): T {
   return storage.run(ctx, fn);
@@ -53,4 +60,11 @@ export function currentUserId(): string | null {
 /** True when we're inside an explicit tenant context (vs. the system fallback). */
 export function hasTenantContext(): boolean {
   return storage.getStore() != null;
+}
+
+/** True when the active request resolves to a real workspace (not the no-workspace
+ *  sentinel). An authenticated user without an assigned workspace resolves to
+ *  NO_TENANT_ID; system/cron paths resolve to DEFAULT_TENANT_ID, which IS a real one. */
+export function hasWorkspace(): boolean {
+  return tenantId() !== NO_TENANT_ID;
 }

@@ -1,30 +1,47 @@
-// Per-request tenant resolution (JWT-based). Call `await resolveTenant()` at the
-// top of a route handler: it reads the active Supabase session (cookie, no network
-// or DB lookup), pulls `tenant_id` from the user's JWT app_metadata, and sets the
-// request's tenant context so every tenantId() inside the handler scopes to THAT
-// workspace. Falls back to the system default (HQ) when there's no session or no
-// tenant claim — so existing/legacy paths behave exactly as before.
+// Per-request tenant resolution. Use at the top of a route handler as:
+//
+//     enterTenant(await resolveTenant());
+//
+// The Next.js middleware (src/proxy.ts — Next 16's "proxy" convention) validates the
+// user, STRIPS any client-supplied x-tenant-id / x-user-id headers, and reinjects
+// them from the verified JWT claim. So we trust those headers HERE only because the
+// middleware already sanitized them — a fast path that avoids a second Auth
+// round-trip per request.
+//
+// FAIL-CLOSED: an authenticated user with NO tenant claim resolves to NO_TENANT_ID
+// (the nil-uuid sentinel → tenant-scoped queries return empty), NEVER the
+// system-default (HQ). An auth error also fails closed. DEFAULT_TENANT_ID is used
+// only for genuinely session-less public/system paths (which the middleware lets
+// through, e.g. error reporting), preserving their existing behavior.
 
+import { headers } from 'next/headers';
 import { createClient } from './supabase/server';
-import { enterTenant, DEFAULT_TENANT_ID } from './tenant';
+import { DEFAULT_TENANT_ID, NO_TENANT_ID, type TenantContext } from './tenant';
 
-export async function resolveTenant(): Promise<{ tenantId: string; userId: string | null }> {
-  let tenantId = DEFAULT_TENANT_ID;
-  let userId: string | null = null;
+// Re-exported so call sites import both from one place: enterTenant(await resolveTenant()).
+export { enterTenant } from './tenant';
+
+export async function resolveTenant(): Promise<TenantContext> {
   try {
+    const h = await headers();
+    const headerTenant = h.get('x-tenant-id');
+    const headerUser = h.get('x-user-id');
+    // Fast path: trust the middleware-sanitized headers.
+    if (headerTenant) return { tenantId: headerTenant, userId: headerUser };
+    // Authenticated user but no tenant claim → no assigned workspace. Fail closed.
+    if (headerUser) return { tenantId: NO_TENANT_ID, userId: headerUser };
+
+    // No middleware headers → a public/bypassed path. Validate the session directly.
     const supabase = await createClient();
-    // getSession reads the JWT from the cookie locally (no network/DB round-trip);
-    // the middleware already validated it on the way in.
-    const { data } = await supabase.auth.getSession();
-    const user = data.session?.user;
-    if (user) {
-      userId = user.id;
-      const claim = (user.app_metadata as Record<string, unknown> | undefined)?.tenant_id;
-      if (typeof claim === 'string' && claim) tenantId = claim;
-    }
+    const { data } = await supabase.auth.getUser();
+    const user = data.user;
+    // Session-less system/public path → keep the system default (unchanged).
+    if (!user) return { tenantId: DEFAULT_TENANT_ID, userId: null };
+    const claim = (user.app_metadata as Record<string, unknown> | undefined)?.tenant_id;
+    // Authenticated but unprovisioned → fail closed to the no-workspace sentinel.
+    return { tenantId: typeof claim === 'string' && claim ? claim : NO_TENANT_ID, userId: user.id };
   } catch {
-    /* no session / unavailable → system default */
+    // Any failure (headers unavailable, getUser threw) → fail closed, never HQ.
+    return { tenantId: NO_TENANT_ID, userId: null };
   }
-  enterTenant({ tenantId, userId });
-  return { tenantId, userId };
 }

@@ -3,7 +3,10 @@ import type { NextRequest } from 'next/server';
 import { updateSession } from '@/lib/supabase/middleware';
 
 function isHostAllowedByLock(hostName: string): boolean {
-  const mode = (process.env.HERMES_HOST_LOCK || 'local').trim().toLowerCase();
+  // Default OFF (allow all hosts). The old 'local' default only permitted
+  // localhost/tailscale, which would 403 the public production domain the moment
+  // this middleware actually runs. Host restriction is now opt-in via HERMES_HOST_LOCK.
+  const mode = (process.env.HERMES_HOST_LOCK || 'off').trim().toLowerCase();
   if (mode === 'off' || mode === 'disabled' || mode === 'false' || mode === '0') {
     return true;
   }
@@ -42,8 +45,10 @@ const CRON_RUNNER_PATHS = new Set([
 // Paths that never require an authenticated Supabase user.
 function isPublicPath(pathname: string): boolean {
   if (pathname === '/login') return true;
+  if (pathname === '/docs' || pathname.startsWith('/docs/')) return true; // public knowledge base
   if (pathname.startsWith('/auth/')) return true; // Supabase OAuth/callback routes
   if (pathname.startsWith('/api/webhook/')) return true; // auth enforced in-handler
+  if (pathname === '/api/stripe/webhook') return true; // Stripe signature enforced in-handler
   if (CRON_RUNNER_PATHS.has(pathname)) return true; // CRON_SECRET enforced in-handler
   if (pathname === '/api/errors') return true; // client error reporting (may fire pre-login)
   return false;
@@ -68,6 +73,22 @@ export async function proxy(request: NextRequest) {
   }
 
   if (user) {
+    // Authenticated, but does the user have an assigned workspace? The JWT tenant
+    // claim (app_metadata.tenant_id) is the source of truth. An unprovisioned user
+    // (e.g. signed up but not yet invited into a tenant) has none — keep them out of
+    // all tenant data: send pages to /no-workspace and 403 API calls. We still allow
+    // the /no-workspace page itself and the auth routes (so they can log out).
+    const claim = (user.app_metadata as Record<string, unknown> | undefined)?.tenant_id;
+    const hasWorkspace = typeof claim === 'string' && claim.length > 0;
+    if (!hasWorkspace && pathname !== '/no-workspace' && !pathname.startsWith('/api/auth/')) {
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json({ error: 'No workspace assigned' }, { status: 403 });
+      }
+      const url = request.nextUrl.clone();
+      url.pathname = '/no-workspace';
+      url.search = '';
+      return NextResponse.redirect(url);
+    }
     return supabaseResponse;
   }
 
