@@ -5,6 +5,7 @@
 // ecosystem from reactive into self-improving.
 
 import Anthropic from '@anthropic-ai/sdk';
+import { getAnthropicKey, NO_ANTHROPIC_KEY_MESSAGE } from './anthropic-key';
 import { sql, tenantId } from './db/client';
 import { startTask, finishTask } from './agent-tasks';
 import { listActiveGoals } from './goals';
@@ -89,7 +90,8 @@ export interface ImproveResult {
 }
 
 export async function runImprovementSweep(): Promise<ImproveResult> {
-  if (!process.env.ANTHROPIC_API_KEY) return { ok: false, proposals: 0, error: 'ANTHROPIC_API_KEY not configured' };
+  const apiKey = await getAnthropicKey();
+  if (!apiKey) return { ok: false, proposals: 0, error: NO_ANTHROPIC_KEY_MESSAGE };
 
   const taskId = await startTask('improver', 'Continuous-improvement sweep');
 
@@ -106,7 +108,7 @@ export async function runImprovementSweep(): Promise<ImproveResult> {
   if (scored?.scored || outcomes?.scored) console.log(`[improve] scored ${scored?.scored ?? 0} run(s) + ${outcomes?.scored ?? 0} outcome(s) into the reward policy.`);
 
   const snapshot = await buildSnapshot();
-  const client = new Anthropic({ maxRetries: 5 });
+  const client = new Anthropic({ apiKey, maxRetries: 5 });
   const messages: Anthropic.MessageParam[] = [{ role: 'user', content: snapshot }];
   let proposals = 0;
   let totalInput = 0;

@@ -6,6 +6,7 @@
 // Mirrors the structure of revalidateIssue() in ./revalidate.
 
 import Anthropic from '@anthropic-ai/sdk';
+import { getAnthropicKey, NO_ANTHROPIC_KEY_MESSAGE } from './anthropic-key';
 import { getDraft, listDrafts, saveDraftRevalidation, type DraftRevalidation, type DraftRow } from './drafts';
 import { listActiveGoals } from './goals';
 import { isGitHubConfigured, getFileContent, defaultBranch } from './github';
@@ -90,7 +91,8 @@ Decide whether this draft is still worth acting on.${REPO_AWARE.includes(draft.t
 }
 
 export async function revalidateDraft(draftId: number): Promise<{ ok: boolean; verdict?: DraftRevalidation; error?: string }> {
-  if (!process.env.ANTHROPIC_API_KEY) return { ok: false, error: 'ANTHROPIC_API_KEY not configured' };
+  const apiKey = await getAnthropicKey();
+  if (!apiKey) return { ok: false, error: NO_ANTHROPIC_KEY_MESSAGE };
 
   const draft = await getDraft(draftId);
   if (!draft) return { ok: false, error: 'Draft not found' };
@@ -111,7 +113,7 @@ export async function revalidateDraft(draftId: number): Promise<{ ok: boolean; v
     siblings,
   );
 
-  const client = new Anthropic({ maxRetries: 5 });
+  const client = new Anthropic({ apiKey, maxRetries: 5 });
   const messages: Anthropic.MessageParam[] = [{ role: 'user', content: userMsg }];
   let verdict: DraftRevalidation | null = null;
   let reads = 0;

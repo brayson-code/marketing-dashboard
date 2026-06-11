@@ -13,7 +13,8 @@ import { parseAttachments, buildUserContent } from './vision';
 import { estimateCostUsd } from './usage';
 import { launchResearchCampaign } from './campaign-intake';
 import { runAndChain } from './waves';
-import { listSpawnableSpecs } from './agent-defs';
+import { listSpawnableSpecs, getDefPrompt } from './agent-defs';
+import { getAnthropicKey, NO_ANTHROPIC_KEY_MESSAGE } from './anthropic-key';
 
 export interface OrchestratorUsage { input: number; output: number; cost_usd: number; model: string }
 
@@ -30,22 +31,28 @@ interface ConfigVars {
   [key: string]: unknown;
 }
 
-// Cache the stable template (soul + agent + skills + interpolated vars) in module
-// memory. memory.md is read fresh per call since it changes over time — and it's
-// placed AFTER the cache breakpoint so the prefix stays valid for prompt caching.
-let cachedTemplate: string | null = null;
-
-function loadTemplate(): string {
-  if (cachedTemplate) return cachedTemplate;
-  const config = JSON.parse(readFileSync(join(STATE_DIR, 'config.json'), 'utf-8')) as ConfigVars;
-  const soul = readFileSync(join(TEMPLATE_DIR, 'soul.md'), 'utf-8');
-  const agent = readFileSync(join(TEMPLATE_DIR, 'agent.md'), 'utf-8');
-  const skills = readFileSync(join(TEMPLATE_DIR, 'skills.md'), 'utf-8');
-  let combined = [soul, agent, skills].join('\n\n---\n\n');
-  for (const [k, v] of Object.entries(config)) {
-    if (typeof v === 'string') combined = combined.replaceAll(`{{${k}}}`, v);
+// Load KeyPlayer's stable system prompt (soul + agent + skills + interpolated
+// vars). DB-first (Agent Studio) so prompt edits take effect live, mirroring
+// subagent.ts loadSubAgentSystemPrompt; falls back to the bundled agents/keyplayer
+// files. Read per-run (no module cache): one indexed query per run is negligible
+// and a forever cache would silently ignore Studio edits. memory.md is read fresh
+// per call too and placed AFTER the cache breakpoint so the cached prefix stays
+// valid for prompt caching — so nothing per-run-varying enters this cached block.
+async function loadTemplate(): Promise<string> {
+  let combined = await getDefPrompt('keyplayer').catch(() => null);
+  if (!combined) {
+    const soul = readFileSync(join(TEMPLATE_DIR, 'soul.md'), 'utf-8');
+    const agent = readFileSync(join(TEMPLATE_DIR, 'agent.md'), 'utf-8');
+    const skills = readFileSync(join(TEMPLATE_DIR, 'skills.md'), 'utf-8');
+    combined = [soul, agent, skills].join('\n\n---\n\n');
   }
-  cachedTemplate = combined;
+  // Apply the config.json {{KEY}} substitution regardless of source.
+  try {
+    const config = JSON.parse(readFileSync(join(STATE_DIR, 'config.json'), 'utf-8')) as ConfigVars;
+    for (const [k, v] of Object.entries(config)) {
+      if (typeof v === 'string') combined = combined.replaceAll(`{{${k}}}`, v);
+    }
+  } catch { /* no config file — leave placeholders as-is */ }
   return combined;
 }
 
@@ -369,7 +376,7 @@ async function handleClientToolUse(
           try { await runAndChain(launched.id); }
           catch (e) { console.error('[launch_campaign] wave 1 failed:', (e as Error).message); }
         });
-      } catch { /* no request context — owner advances from /campaigns */ }
+      } catch { /* no request context — owner advances from /missions */ }
       return {
         type: 'tool_result',
         tool_use_id: toolUse.id,
@@ -467,12 +474,13 @@ async function handleClientToolUse(
 }
 
 export async function runOrchestrator(): Promise<{ ok: true; text: string; usage: OrchestratorUsage } | { ok: false; error: string }> {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return { ok: false, error: 'ANTHROPIC_API_KEY not configured' };
+  const apiKey = await getAnthropicKey();
+  if (!apiKey) {
+    return { ok: false, error: NO_ANTHROPIC_KEY_MESSAGE };
   }
 
-  const client = new Anthropic({ maxRetries: 5 });
-  const template = loadTemplate();
+  const client = new Anthropic({ apiKey, maxRetries: 5 });
+  const template = await loadTemplate();
   const memory = await loadCurrentMemory();
   const messages = await loadRecentHistory();
 

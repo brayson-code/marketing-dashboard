@@ -6,6 +6,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { SUBAGENT_REGISTRY } from './subagent';
+import { getAnthropicKey, NO_ANTHROPIC_KEY_MESSAGE } from './anthropic-key';
 
 const KNOWN_AGENTS = Object.keys(SUBAGENT_REGISTRY);
 const DEFAULT_TZ = 'America/New_York';
@@ -28,10 +29,11 @@ export interface DraftedJob {
 export async function draftCronJob(prompt: string): Promise<DraftedJob> {
   const text = String(prompt ?? '').trim();
   if (!text) throw new Error('Describe the job you want in a sentence or two.');
-  if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not configured');
+  const apiKey = await getAnthropicKey();
+  if (!apiKey) throw new Error(NO_ANTHROPIC_KEY_MESSAGE);
 
   const today = new Date().toISOString().slice(0, 10);
-  const client = new Anthropic({ maxRetries: 5 });
+  const client = new Anthropic({ apiKey, maxRetries: 5 });
 
   const system =
     'You convert a marketing operator\'s plain-English request into ONE scheduled ' +

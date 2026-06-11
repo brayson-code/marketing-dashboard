@@ -6,6 +6,7 @@
 // and the curriculum flip. (Design: KB doc "Command Center PARL".)
 
 import Anthropic from '@anthropic-ai/sdk';
+import { getAnthropicKey, NO_ANTHROPIC_KEY_MESSAGE } from './anthropic-key';
 import { createGoal } from './goals';
 import { createCampaign, buildResearchCampaign, type CampaignBrief } from './waves';
 
@@ -17,9 +18,10 @@ export interface DraftedBrief {
 export async function draftCampaignBrief(request: string): Promise<DraftedBrief> {
   const text = String(request ?? '').trim();
   if (!text) throw new Error('Describe what you want to research in a sentence or two.');
-  if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not configured');
+  const apiKey = await getAnthropicKey();
+  if (!apiKey) throw new Error(NO_ANTHROPIC_KEY_MESSAGE);
 
-  const client = new Anthropic({ maxRetries: 5 });
+  const client = new Anthropic({ apiKey, maxRetries: 5 });
   const tool: Anthropic.Messages.Tool = {
     name: 'emit_brief',
     description: 'Emit a structured research-campaign brief derived from the request.',
@@ -73,6 +75,68 @@ export async function draftCampaignBrief(request: string): Promise<DraftedBrief>
   };
 }
 
+export interface DraftedCampaignGoal { title: string; success: string; due: string | null }
+
+/**
+ * Draft ONE verifiable North Star goal for a Campaign container from its name +
+ * brief + channels. Cheap Haiku call, tool-forced. Returns null on any failure
+ * so campaign creation never blocks on it. The success criterion is forced to be
+ * objectively verifiable so the goal can actually drive the reward/observer loop.
+ */
+export async function draftCampaignGoal(input: {
+  name: string;
+  brief?: string;
+  channels?: string[];
+}): Promise<DraftedCampaignGoal | null> {
+  const name = String(input.name ?? '').trim();
+  if (!name) return null;
+  const apiKey = await getAnthropicKey();
+  if (!apiKey) return null;
+  try {
+    const client = new Anthropic({ apiKey, maxRetries: 3 });
+    const tool: Anthropic.Messages.Tool = {
+      name: 'emit_goal',
+      description: 'Emit a single measurable North Star goal for this marketing campaign.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'short goal title' },
+          success: { type: 'string', description: 'an OBJECTIVELY VERIFIABLE definition of done — a number/threshold you could later check, not a vibe' },
+          due: { type: 'string', description: 'ISO date YYYY-MM-DD, or empty if no deadline' },
+        },
+        required: ['title', 'success'],
+      },
+    };
+    const res = await client.messages.create({
+      model: 'claude-haiku-4-5',
+      max_tokens: 400,
+      system:
+        'You convert a marketing campaign into ONE measurable North Star goal for a marketing operator. ' +
+        'The success criterion MUST be objectively verifiable (a specific number/threshold), because it becomes a tracked goal. Always call emit_goal.',
+      tools: [tool],
+      tool_choice: { type: 'tool', name: 'emit_goal' },
+      messages: [{
+        role: 'user',
+        content:
+          `Campaign: ${name}\n` +
+          (input.brief?.trim() ? `Brief: ${input.brief.trim()}\n` : '') +
+          (input.channels?.length ? `Channels: ${input.channels.join(', ')}\n` : ''),
+      }],
+    });
+    const use = res.content.find(
+      (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use' && b.name === 'emit_goal',
+    );
+    if (!use) return null;
+    const inp = use.input as { title?: string; success?: string; due?: string };
+    if (!inp.title || !inp.success) return null;
+    const due = inp.due && /^\d{4}-\d{2}-\d{2}$/.test(inp.due) ? inp.due : null;
+    return { title: inp.title, success: inp.success, due };
+  } catch (e) {
+    console.error('[campaign-goal] draft failed:', (e as Error).message);
+    return null;
+  }
+}
+
 export interface LaunchedCampaign {
   id: string;
   goalId: string;
@@ -81,18 +145,38 @@ export interface LaunchedCampaign {
 }
 
 /**
- * Full intake → goal → campaign for the default 4-wave research flow.
- * Creates the verifiable goal first (the outcome anchor), then the campaign
+ * Full intake → goal → mission for the default 4-wave research flow.
+ * Creates the verifiable goal first (the outcome anchor), then the mission
  * linked to it. Does NOT run any wave — the caller advances waves explicitly.
+ *
+ * When `campaignId` is set, the new mission is tagged to that Campaign
+ * container so it shows up in the Campaign's rolled-up mission list. When
+ * omitted, the mission is standalone (today's default).
  */
-export async function launchResearchCampaign(request: string): Promise<LaunchedCampaign> {
+export async function launchResearchCampaign(
+  request: string,
+  opts: { campaignId?: string | null } = {},
+): Promise<LaunchedCampaign> {
   const { title, brief } = await draftCampaignBrief(request);
   const goal = await createGoal({
     title,
     success: brief.success,
     owner: 'owner',
+    metadata: {
+      // Mission goals are orchestrator-owned so they surface on the KeyPlayer
+      // hero card + the goal-observer attaches, instead of floating unowned.
+      owner_agent: 'keyplayer',
+      source: 'mission',
+      // When launched inside a Campaign container, link the goal so the campaign
+      // can roll up the goals of the missions it spawned.
+      ...(opts.campaignId ? { campaign_id: opts.campaignId } : {}),
+    },
   });
   const waves = buildResearchCampaign(brief);
-  const id = await createCampaign({ title, request, brief, waves, goalId: goal.id });
+  const id = await createCampaign({
+    title, request, brief, waves,
+    goalId: goal.id,
+    campaignId: opts.campaignId ?? null,
+  });
   return { id, goalId: goal.id, title, brief };
 }

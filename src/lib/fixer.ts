@@ -7,6 +7,7 @@
 // It runs entirely from serverless (no checkout) using the GitHub REST API.
 
 import Anthropic from '@anthropic-ai/sdk';
+import { getAnthropicKey, NO_ANTHROPIC_KEY_MESSAGE } from './anthropic-key';
 import { sql, tenantId } from './db/client';
 import { getIssue, getIssueEvents, updateIssue, saveProposedPatch } from './observability';
 import { startTask, finishTask } from './agent-tasks';
@@ -94,7 +95,8 @@ export interface FixerResult {
 }
 
 export async function runFixer(issueId: string): Promise<FixerResult> {
-  if (!process.env.ANTHROPIC_API_KEY) return { ok: false, error: 'ANTHROPIC_API_KEY not configured' };
+  const apiKey = await getAnthropicKey();
+  if (!apiKey) return { ok: false, error: NO_ANTHROPIC_KEY_MESSAGE };
 
   const issue = await getIssue(issueId);
   if (!issue) return { ok: false, error: 'Issue not found' };
@@ -122,7 +124,7 @@ ${eventDump || '(no detailed events)'}
 
 Diagnose and propose a minimal fix.`;
 
-  const client = new Anthropic({ maxRetries: 5 });
+  const client = new Anthropic({ apiKey, maxRetries: 5 });
   const messages: Anthropic.MessageParam[] = [{ role: 'user', content: userMsg }];
   let proposal: PatchProposal | null = null;
   let filesRead = 0;

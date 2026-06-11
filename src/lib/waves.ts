@@ -8,6 +8,7 @@
 // wave-by-wave, which also controls cost.
 
 import Anthropic from '@anthropic-ai/sdk';
+import { getAnthropicKey, NO_ANTHROPIC_KEY_MESSAGE } from './anthropic-key';
 import { sql, jsonb, tenantId } from './db/client';
 import { spawnSubAgent } from './subagent';
 import { appendKnowledgeSection } from './documents';
@@ -46,12 +47,11 @@ interface CampaignRow {
   total_waves: number;
 }
 
-function client(): Anthropic {
-  return new Anthropic({ maxRetries: 5 });
-}
-
 async function llm(system: string, user: string, maxTokens: number): Promise<string> {
-  const res = await client().messages.create({
+  const apiKey = await getAnthropicKey();
+  if (!apiKey) throw new Error(NO_ANTHROPIC_KEY_MESSAGE);
+  const client = new Anthropic({ apiKey, maxRetries: 5 });
+  const res = await client.messages.create({
     model: SYNTH_MODEL,
     max_tokens: maxTokens,
     system,

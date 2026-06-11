@@ -5,6 +5,7 @@
 // never the repo. Reuses the same read_repo_file pattern as the Fixer.
 
 import Anthropic from '@anthropic-ai/sdk';
+import { getAnthropicKey, NO_ANTHROPIC_KEY_MESSAGE } from './anthropic-key';
 import { getIssue, getIssueEvents, saveRevalidation, type RevalidationVerdict } from './observability';
 import { isGitHubConfigured, getFileContent, defaultBranch } from './github';
 
@@ -54,7 +55,8 @@ function safePath(p: string): boolean {
 }
 
 export async function revalidateIssue(issueId: string): Promise<{ ok: boolean; verdict?: RevalidationVerdict; error?: string }> {
-  if (!process.env.ANTHROPIC_API_KEY) return { ok: false, error: 'ANTHROPIC_API_KEY not configured' };
+  const apiKey = await getAnthropicKey();
+  if (!apiKey) return { ok: false, error: NO_ANTHROPIC_KEY_MESSAGE };
 
   const issue = await getIssue(issueId);
   if (!issue) return { ok: false, error: 'Issue not found' };
@@ -87,7 +89,7 @@ ${eventDump || '(no detailed events)'}
 
 Read the current files and decide if this is still a problem and whether the patch still applies.`;
 
-  const client = new Anthropic({ maxRetries: 5 });
+  const client = new Anthropic({ apiKey, maxRetries: 5 });
   const messages: Anthropic.MessageParam[] = [{ role: 'user', content: userMsg }];
   let verdict: RevalidationVerdict | null = null;
   let reads = 0;
