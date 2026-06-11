@@ -21,9 +21,10 @@ export function LayoutContent({ children }: { children: React.ReactNode }) {
   // the login screen, the public /docs knowledge base, and the no-workspace wall
   // (an authed-but-unprovisioned user must not trigger tenant-scoped data loads).
   const isAuthPath = AUTH_PATHS.some((p) => pathname.startsWith(p));
+  const isAuthCallback = pathname.startsWith('/auth/'); // set-password, OAuth callbacks
   const isPublicDocs = pathname === '/docs' || pathname.startsWith('/docs/');
   const isNoWorkspace = pathname === '/no-workspace';
-  const isStandalone = isAuthPath || isPublicDocs || isNoWorkspace;
+  const isStandalone = isAuthPath || isAuthCallback || isPublicDocs || isNoWorkspace;
 
   useEffect(() => {
     if (isStandalone) return;
