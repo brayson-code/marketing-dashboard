@@ -84,10 +84,10 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
   },
   {
     id: 'playbook',
-    title: 'Build your company playbook',
-    body: 'Answer a few questions and we write a brief every agent reads first — so your AI team knows your objective, audience, and voice instead of sounding generic.',
+    title: 'Write your company brief',
+    body: 'Answer a few questions and we write the brief every agent reads first — so your whole AI team knows your objective, audience, and voice instead of sounding generic. (Each agent also gets its own playbook in Agent Studio.)',
     icon: BookText,
-    cta: { label: 'Build playbook', href: '/memory' },
+    cta: { label: 'Write brief', href: '/memory' },
     required: true,
     routes: ['/memory'],
     anchor: 'playbook-tab',

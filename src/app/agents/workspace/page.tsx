@@ -1,9 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bot, Crown, RefreshCw, Save, Trash2, Plus, X } from 'lucide-react';
+import { Bot, Crown, RefreshCw, Save, Trash2, Plus, X, Wand2 } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { Skeleton } from '@/components/ui/skeleton';
+import { AgentPlaybookWizard } from '@/components/agents/agent-playbook-wizard';
 
 // Known Claude models (latest family). The select keeps any legacy/custom value
 // already on a def so it isn't silently dropped.
@@ -116,6 +117,7 @@ export default function AgentStudioPage() {
   const [deleting, setDeleting] = useState(false);
 
   const [showNew, setShowNew] = useState(false);
+  const [showWizard, setShowWizard] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newId, setNewId] = useState('');
   const [newName, setNewName] = useState('');
@@ -407,6 +409,15 @@ export default function AgentStudioPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm text-xs"
+                    onClick={() => setShowWizard(true)}
+                    disabled={saving || deleting}
+                    title="Answer a few questions → generate this agent’s soul / instructions / skills"
+                  >
+                    <Wand2 size={14} /> Generate playbook
+                  </button>
                   {def.source === 'custom' ? (
                     <button
                       type="button"
@@ -552,6 +563,23 @@ export default function AgentStudioPage() {
             if (!creating) setShowNew(false);
           }}
           onCreate={create}
+        />
+      )}
+
+      {showWizard && draft && def && (
+        <AgentPlaybookWizard
+          agentId={def.id}
+          agentName={draft.name || def.id}
+          role={draft.role}
+          onClose={() => setShowWizard(false)}
+          onGenerated={(g) => {
+            patch('soul', g.soul);
+            patch('agent_md', g.agent_md);
+            patch('skills', g.skills);
+            if (g.description) patch('description', g.description);
+            setShowWizard(false);
+            toast.success('Definition generated — review the fields and Save');
+          }}
         />
       )}
     </div>

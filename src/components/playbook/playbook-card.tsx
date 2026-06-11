@@ -78,7 +78,7 @@ export function PlaybookCard() {
     <div className="panel" data-walkthrough="company-playbook">
       <div className="panel-header flex items-center justify-between">
         <div className="section-title flex items-center gap-1.5">
-          <BookText size={14} className="text-primary" /> Company playbook
+          <BookText size={14} className="text-primary" /> Company brief
         </div>
         {view === 'result' && (
           <button className="btn btn-ghost btn-sm" onClick={() => setView('quiz')} title="Edit answers & regenerate">
@@ -88,8 +88,8 @@ export function PlaybookCard() {
       </div>
       <div className="panel-body space-y-3">
         <p className="text-xs text-muted-foreground">
-          Answer a few questions and we&apos;ll write a tight playbook your whole AI team reads before doing any work —
-          so they sound like you and push your real objective, not generic marketing.
+          The shared context <em>every</em> agent reads before doing any work — so the whole team understands your
+          company, sounds like you, and pushes your real objective. (Tune each agent&apos;s own playbook in Agent Studio.)
         </p>
 
         {loading ? (

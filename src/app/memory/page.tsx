@@ -125,7 +125,7 @@ export default function MemoryPage() {
           <p className="text-xs text-muted-foreground">Edit and improve KeyPlayer&apos;s knowledge — markdown documents stored in Supabase.</p>
         </div>
         <div className="flex items-center gap-1 border-b border-border">
-          <button data-walkthrough="playbook-tab" onClick={() => setView('playbook')} className={`tab ${view === 'playbook' ? 'active' : ''}`}>Playbook</button>
+          <button data-walkthrough="playbook-tab" onClick={() => setView('playbook')} className={`tab ${view === 'playbook' ? 'active' : ''}`}>Company brief</button>
           <button onClick={() => setView('docs')} className={`tab ${view === 'docs' ? 'active' : ''}`}>Documents</button>
           <button onClick={() => setView('health')} className={`tab ${view === 'health' ? 'active' : ''}`}>Health</button>
         </div>
