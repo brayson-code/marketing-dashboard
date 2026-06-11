@@ -116,20 +116,20 @@ export async function POST(request: Request) {
     }
 
     // 4) Best-effort invite link for the owner to share (email delivery is out of
-    //    scope; failure here doesn't undo provisioning). We use a RECOVERY link: it
-    //    lands the client on /auth/set-password to choose their first password
-    //    WITHOUT a current password — the sanctioned "set password without the old
-    //    one" path, so it works even with Supabase's "Secure password change"
-    //    enabled. redirectTo must be in the Supabase Auth "Redirect URLs" allow-list.
+    //    scope; failure here doesn't undo provisioning). We generate a RECOVERY token
+    //    and point the link at our OWN /auth/confirm route (which verifies the
+    //    token_hash server-side and sets the session cookie) → /auth/set-password.
+    //    This avoids client-side fragment/PKCE parsing and the Supabase redirect
+    //    allow-list entirely, and lets the client set a FIRST password without a
+    //    current one — even with "Secure password change" enabled.
     let inviteLink: string | null = null;
     try {
       const origin = request.headers.get('origin') || new URL(request.url).origin;
-      const { data: link } = await admin.auth.admin.generateLink({
-        type: 'recovery',
-        email,
-        options: { redirectTo: `${origin}/auth/set-password` },
-      });
-      inviteLink = (link?.properties?.action_link as string | undefined) ?? null;
+      const { data: link } = await admin.auth.admin.generateLink({ type: 'recovery', email });
+      const hashed = link?.properties?.hashed_token as string | undefined;
+      inviteLink = hashed
+        ? `${origin}/auth/confirm?token_hash=${hashed}&type=recovery&next=/auth/set-password`
+        : ((link?.properties?.action_link as string | undefined) ?? null);
     } catch { /* owner can re-send later */ }
 
     return NextResponse.json({ ok: true, tenantId: newTenantId, userId, email, inviteLink });

@@ -2,14 +2,12 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
 
-// Where an invited client lands from their one-time recovery link. The Supabase
-// browser client auto-detects the session from the link's URL fragment
-// (detectSessionInUrl) and fires PASSWORD_RECOVERY, so by the time this renders they
-// hold a recovery session — which lets them set a FIRST password without a current
-// one (works even with "Secure password change" on). After that they log in normally
-// with email + password.
+// Where an invited client lands after /auth/confirm verified their recovery token
+// server-side and set the session cookie. We check the session via /api/auth/me and
+// set the password via /api/auth/set-password — both server-side, so this never
+// depends on client-side fragment/PKCE parsing. A recovery session lets them set a
+// FIRST password without a current one (works even with "Secure password change").
 export default function SetPasswordPage() {
   const router = useRouter();
   const [checking, setChecking] = useState(true);
@@ -20,19 +18,11 @@ export default function SetPasswordPage() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    const supabase = createClient();
-    let done = false;
-    supabase.auth.getSession().then(({ data }) => {
-      if (done) return;
-      setHasSession(!!data.session);
-      setChecking(false);
-    });
-    // The fragment may be processed slightly after mount — catch the SIGNED_IN event.
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setHasSession(!!session);
-      setChecking(false);
-    });
-    return () => { done = true; sub.subscription.unsubscribe(); };
+    let cancel = false;
+    fetch('/api/auth/me', { cache: 'no-store' })
+      .then((r) => { if (!cancel) { setHasSession(r.ok); setChecking(false); } })
+      .catch(() => { if (!cancel) { setHasSession(false); setChecking(false); } });
+    return () => { cancel = true; };
   }, []);
 
   const submit = useCallback(async (e: React.FormEvent) => {
@@ -42,9 +32,17 @@ export default function SetPasswordPage() {
     if (password !== confirm) { setError('Passwords do not match.'); return; }
     setBusy(true);
     try {
-      const supabase = createClient();
-      const { error: updErr } = await supabase.auth.updateUser({ password });
-      if (updErr) { setError(updErr.message || 'Could not set password'); return; }
+      const r = await fetch('/api/auth/set-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setError(j.error || 'Could not set password');
+        if (r.status === 401) setHasSession(false);
+        return;
+      }
       router.replace('/');
     } catch (err) {
       setError((err as Error).message);
