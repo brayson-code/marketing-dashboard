@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Bot, Loader2, Cpu, Activity, Coins, Crown, Users } from 'lucide-react';
+import { Bot, Loader2, Cpu, Activity, Coins, Crown, Users, FolderOpen } from 'lucide-react';
 import Link from 'next/link';
 import { type Department } from '@/components/agent-orb';
 import { AgentIcon } from '@/components/agent-icon';
@@ -101,7 +101,12 @@ export default function SquadsPage() {
           <h1 className="text-h1 flex items-center gap-2"><Bot size={18} className="text-primary" /> Agents</h1>
           <p className="text-small">Click any agent to open its memory, learning, and active tasks.</p>
         </div>
-        <span className="badge badge-neutral">{agents.length} agents · {activeCount} active</span>
+        <div className="flex items-center gap-2">
+          <span className="badge badge-neutral">{agents.length} agents · {activeCount} active</span>
+          <Link href="/agents/workspace" className="btn btn-ghost btn-sm">
+            <FolderOpen size={14} /> Open Workspace
+          </Link>
+        </div>
       </div>
 
       {loading && agents.length === 0 ? (

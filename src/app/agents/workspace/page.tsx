@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bot, Crown, RefreshCw, Save, Trash2, Plus, Wand2 } from 'lucide-react';
+import { Bot, Crown, RefreshCw, Save, Trash2, Plus, Wand2, FlaskConical, Play, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AgentPlaybookWizard } from '@/components/agents/agent-playbook-wizard';
@@ -114,6 +114,22 @@ export default function AgentStudioPage() {
   const [showNew, setShowNew] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
 
+  // Test-run sandbox: a cheap, single-turn dry run of the CURRENT draft against a
+  // sample input. Never saves and never counts as a real task — it's just here so
+  // the owner can iterate on the definition before hitting Save.
+  const [testOpen, setTestOpen] = useState(false);
+  const [testInput, setTestInput] = useState('');
+  const [testOutput, setTestOutput] = useState('');
+  const [testing, setTesting] = useState(false);
+
+  // Reset the sandbox whenever a different agent is selected so output from one
+  // agent never lingers under another.
+  useEffect(() => {
+    setTestInput('');
+    setTestOutput('');
+    setTesting(false);
+  }, [selectedId]);
+
   const loadList = useCallback(async () => {
     setLoadingList(true);
     try {
@@ -224,6 +240,36 @@ export default function AgentStudioPage() {
       setDeleting(false);
     }
   }, [def, loadList, selectedId]);
+
+  const runTest = useCallback(async () => {
+    if (!selectedId || !draft) return;
+    if (!testInput.trim()) {
+      toast.error('Enter a sample input to test-run the agent');
+      return;
+    }
+    setTesting(true);
+    setTestOutput('');
+    try {
+      const res = await fetch(`/api/agents/defs/${encodeURIComponent(selectedId)}/test-run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          soul: draft.soul,
+          agent_md: draft.agent_md,
+          skills: draft.skills,
+          model: draft.model,
+          input: testInput,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(data?.error || 'Test run failed'));
+      setTestOutput(String(data?.text || ''));
+    } catch (e) {
+      toast.error((e as Error).message || 'Test run failed');
+    } finally {
+      setTesting(false);
+    }
+  }, [draft, selectedId, testInput]);
 
   const orchestrators = useMemo(
     () => agents.filter((a) => a.role === 'orchestrator'),
@@ -467,6 +513,91 @@ export default function AgentStudioPage() {
                   value={draft.skills}
                   onChange={(v) => patch('skills', v)}
                 />
+
+                {/* Test-run sandbox — try the CURRENT (unsaved) draft on a sample
+                    input before saving. Dry run: doesn't save, doesn't count as a
+                    real task. */}
+                <div className="rounded-lg border border-border/60 bg-muted/10">
+                  <button
+                    type="button"
+                    onClick={() => setTestOpen((o) => !o)}
+                    className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left"
+                  >
+                    <span className="flex items-center gap-2 text-xs font-medium">
+                      <FlaskConical size={14} className="text-primary" /> Test run
+                      <span className="text-[10px] font-normal text-muted-foreground">
+                        sandbox · doesn’t save or count as a task
+                      </span>
+                    </span>
+                    {testOpen ? (
+                      <ChevronDown size={14} className="text-muted-foreground" />
+                    ) : (
+                      <ChevronRight size={14} className="text-muted-foreground" />
+                    )}
+                  </button>
+
+                  {testOpen && (
+                    <div className="px-3 pb-3 space-y-3 border-t border-border/60 pt-3">
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Runs this draft (soul / instructions / skills, exactly as edited above)
+                        once on your sample input — single-turn, no tools. Use it to iterate on the
+                        definition before you Save. Nothing here is persisted.
+                      </p>
+                      <label className="block space-y-1">
+                        <span className="text-xs text-muted-foreground">Sample input</span>
+                        <textarea
+                          className="input text-sm leading-relaxed"
+                          rows={3}
+                          value={testInput}
+                          onChange={(e) => setTestInput(e.target.value)}
+                          placeholder="e.g. Draft a LinkedIn post announcing our new pricing tier…"
+                        />
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm text-xs"
+                          onClick={runTest}
+                          disabled={testing || !testInput.trim()}
+                        >
+                          {testing ? (
+                            <>
+                              <Loader2 size={14} className="animate-spin" /> Running…
+                            </>
+                          ) : (
+                            <>
+                              <Play size={14} /> Test run
+                            </>
+                          )}
+                        </button>
+                        {testOutput && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm text-xs"
+                            onClick={() => setTestOutput('')}
+                            disabled={testing}
+                          >
+                            Clear output
+                          </button>
+                        )}
+                      </div>
+                      {(testing || testOutput) && (
+                        <div className="space-y-1">
+                          <span className="text-xs text-muted-foreground">Output</span>
+                          {testing && !testOutput ? (
+                            <div className="rounded-lg border border-border/60 bg-background px-3 py-3 text-xs text-muted-foreground flex items-center gap-2">
+                              <Loader2 size={14} className="animate-spin" /> Running the draft on your sample input…
+                            </div>
+                          ) : (
+                            <pre className="rounded-lg border border-border/60 bg-background px-3 py-3 text-[13px] leading-6 whitespace-pre-wrap break-words max-h-[420px] overflow-y-auto">
+                              {testOutput}
+                            </pre>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </>
           )}

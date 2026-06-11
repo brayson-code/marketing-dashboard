@@ -99,6 +99,44 @@ async function approvalByAgent(sinceDays = 45): Promise<Map<string, number>> {
   return map;
 }
 
+// Per-agent OUTCOME ratio over a recent window: of the drafts this agent produced
+// that the owner already reviewed, what share was actually SHIPPED — i.e. reached a
+// terminal executed state (published / sent / confirmed) rather than being rejected
+// or left as an unexecuted 'approved' shell.
+//
+// Attribution choice (documented per the design note up top): a task's downstream
+// "outcome" is credited to the agent that authored the work (agent_drafts.created_by),
+// using the executed share of its recently-reviewed drafts. We deliberately picked
+// the SHIP signal over goal-progress here because:
+//   • it's per-agent and directly queryable (created_by → executed_at/status), with no
+//     reliable task→goal foreign key on agent_tasks to attribute against;
+//   • it's distinct from the approval component — approval = approved/(approved+rejected)
+//     over reviewed drafts, whereas outcome = executed/reviewed, so a draft the owner
+//     approved but never shipped pulls outcome DOWN without touching approval; and
+//   • campaign/goal-event attribution already has its own path (scoreOutcomes() →
+//     wave_runs → goals), so this fills the per-task gap without double-counting.
+// Denominator is reviewed drafts (reviewed_at not null) so pending work doesn't dilute
+// the signal. Returns a Map keyed by agent_id; agents with no reviewed drafts in the
+// window are simply absent → the caller leaves outcome null (scoring degrades to today).
+async function outcomeByAgent(sinceDays = 45): Promise<Map<string, number>> {
+  const rows = (await sql()`
+    SELECT created_by AS agent,
+           count(*) FILTER (WHERE status IN ('published','sent','confirmed'))::int AS executed,
+           count(*)::int AS reviewed
+    FROM public.agent_drafts
+    WHERE tenant_id = ${tenantId()}
+      AND created_by IS NOT NULL
+      AND reviewed_at IS NOT NULL
+      AND reviewed_at > now() - (${sinceDays} || ' days')::interval
+    GROUP BY created_by
+  `) as unknown as Array<{ agent: string; executed: number; reviewed: number }>;
+  const map = new Map<string, number>();
+  for (const r of rows) {
+    if (r.reviewed > 0) map.set(r.agent, r.executed / r.reviewed);
+  }
+  return map;
+}
+
 export interface ScoreResult {
   scored: number;
   byAgent: Record<string, { n: number; meanReward: number }>;
@@ -129,6 +167,7 @@ export async function scoreUnscoredTasks(opts: { limit?: number; dryRun?: boolea
 
   const owner = await getOwnerWeights();
   const approvals = await approvalByAgent();
+  const outcomes = await outcomeByAgent();
   // Current per-agent run counts (for cold/warm staging).
   const policyRows = (await sql()`
     SELECT agent_id, n FROM public.agent_policy WHERE tenant_id = ${tenantId()} AND variant = 'base'
@@ -142,7 +181,10 @@ export async function scoreUnscoredTasks(opts: { limit?: number; dryRun?: boolea
     if (reliability == null) continue;
     const role = roleFor(t.agent_id);
     const approval = approvals.has(t.agent_id) ? approvals.get(t.agent_id)! : null;
-    const outcome: Component = null; // TODO(outcome): goal/campaign-event attribution + the flip
+    // OUTCOME: executed (shipped) share of this agent's recently-reviewed drafts.
+    // null when the agent has no reviewed drafts in the window → blend() simply
+    // drops it and scoring degrades to exactly today's approval+reliability behavior.
+    const outcome: Component = outcomes.has(t.agent_id) ? outcomes.get(t.agent_id)! : null;
     const stage: 'cold' | 'warm' = (counts.get(t.agent_id) ?? 0) >= WARM_THRESHOLD ? 'warm' : 'cold';
     const weights = stageWeights(stage, owner);
     const reward = blend({ approval, outcome, reliability }, weights);

@@ -395,6 +395,7 @@ export interface MissionListItem {
   current_wave: number;
   total_waves: number;
   goal_id: string | null;
+  campaign_id: string | null;
   updated_at: string;
   /** Wave specs — { label, agents[] } per wave. Included so the Overview's
    *  Missions strip can render the real pipeline without a second fetch. The
@@ -404,7 +405,7 @@ export interface MissionListItem {
 
 export async function listMissions(): Promise<MissionListItem[]> {
   const rows = (await sql()`
-    SELECT id, title, status, current_wave, total_waves, goal_id, waves, updated_at
+    SELECT id, title, status, current_wave, total_waves, goal_id, campaign_id, waves, updated_at
     FROM public.wave_runs WHERE tenant_id = ${tenantId()}
     ORDER BY updated_at DESC LIMIT 50
   `) as unknown as Array<Omit<MissionListItem, 'updated_at' | 'waves'> & { updated_at: Date; waves: WaveSpec[] | null }>;
@@ -423,7 +424,7 @@ export interface MissionStep {
 
 export async function getMissionDetail(id: string): Promise<{ mission: Record<string, unknown>; steps: MissionStep[] } | null> {
   const rows = (await sql()`
-    SELECT id, title, request, brief, goal_id, waves, status, current_wave, total_waves, final_report, error, created_at, updated_at
+    SELECT id, title, request, brief, goal_id, campaign_id, waves, status, current_wave, total_waves, final_report, error, created_at, updated_at
     FROM public.wave_runs WHERE id = ${id} AND tenant_id = ${tenantId()}
   `) as unknown as Array<Record<string, unknown>>;
   if (rows.length === 0) return null;

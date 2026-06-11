@@ -43,6 +43,14 @@ const PRIMARY: NavGroup[] = [
     ],
   },
   {
+    label: 'AGENTS',
+    items: [
+      { href: '/agents/squads', label: 'Agents', icon: Bot, matchPrefixes: ['/agents/squads'] },
+      { href: '/boardroom', label: 'Boardroom', icon: MessagesSquare, matchPrefixes: ['/boardroom'] },
+      { href: '/automations', label: 'Automations', icon: Zap },
+    ],
+  },
+  {
     label: 'CREATIVE',
     items: [
       // The Content hub fronts Ideas / Scripts / Hyperframes / Media / Competitors
@@ -74,14 +82,6 @@ const PRIMARY: NavGroup[] = [
       { href: '/kpis', label: 'KPIs', icon: BarChart3 },
       { href: '/usage', label: 'Usage', icon: DollarSign },
       { href: '/kg', label: 'Knowledge', icon: Network },
-    ],
-  },
-  {
-    label: 'AGENTS',
-    items: [
-      { href: '/agents/squads', label: 'Agents', icon: Bot, matchPrefixes: ['/agents/squads'] },
-      { href: '/boardroom', label: 'Boardroom', icon: MessagesSquare, matchPrefixes: ['/boardroom'] },
-      { href: '/automations', label: 'Automations', icon: Zap },
     ],
   },
 ];

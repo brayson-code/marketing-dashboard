@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Waves, Loader2, Play, ChevronDown, FileText, Target, AlertTriangle } from 'lucide-react';
+import Link from 'next/link';
+import { Waves, Loader2, Play, ChevronDown, FileText, Target, AlertTriangle, Layers } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Explainer } from '@/components/ui/explainer';
@@ -13,6 +14,7 @@ interface CampaignListItem {
   current_wave: number;
   total_waves: number;
   goal_id: string | null;
+  campaign_id?: string | null;
   updated_at: string;
 }
 interface AgentResult { agentId: string; task: string; ok: boolean; text: string | null; error: string | null }
@@ -30,6 +32,39 @@ interface Campaign {
   campaign_id?: string | null;
 }
 interface Detail { campaign: Campaign; steps: Step[] }
+
+// Tiny module-level cache so we fetch each campaign's title at most once across
+// chip renders (the missions page can show many missions tagged to the same one).
+const campaignTitleCache = new Map<string, string>();
+
+/** Small badge linking a mission to its parent Campaign (/campaigns/[id]). */
+function CampaignChip({ campaignId }: { campaignId: string }) {
+  const [title, setTitle] = useState<string | null>(() => campaignTitleCache.get(campaignId) ?? null);
+  useEffect(() => {
+    // The initial state already seeds from the cache, so skip the fetch when we
+    // already have the title (avoids a synchronous setState inside the effect).
+    if (campaignTitleCache.has(campaignId)) return;
+    let alive = true;
+    fetch(`/api/campaigns/${campaignId}`, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        const name: string | undefined = j?.campaign?.name;
+        if (name) campaignTitleCache.set(campaignId, name);
+        if (alive && name) setTitle(name);
+      })
+      .catch(() => { /* leave the generic "Campaign" label */ });
+    return () => { alive = false; };
+  }, [campaignId]);
+  return (
+    <Link
+      href={`/campaigns/${campaignId}`}
+      className="badge badge-info inline-flex items-center gap-1 hover:opacity-80"
+      title={title ? `In campaign: ${title}` : 'In a campaign'}
+    >
+      <Layers size={10} /> {title ?? 'Campaign'}
+    </Link>
+  );
+}
 
 function statusPill(status: string) {
   if (status === 'done') return 'status-pill status-ok';
@@ -195,7 +230,10 @@ export default function MissionsPage() {
                 <span className="text-xs font-medium truncate flex-1">{it.title}</span>
                 <span className={statusPill(it.status)}>{it.status}</span>
               </div>
-              <div className="text-[10px] text-muted-foreground mt-1">Wave {Math.min(it.current_wave + (it.status === 'done' ? 0 : 1), it.total_waves)}/{it.total_waves}</div>
+              <div className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1.5">
+                <span>Wave {Math.min(it.current_wave + (it.status === 'done' ? 0 : 1), it.total_waves)}/{it.total_waves}</span>
+                {it.campaign_id && <span className="inline-flex items-center gap-0.5 text-[var(--info)]" title="In a campaign"><Layers size={9} /> campaign</span>}
+              </div>
             </button>
           ))}
         </div>
@@ -215,8 +253,9 @@ export default function MissionsPage() {
                   <div>
                     <div className="flex items-center gap-2">
                       <h2 className="text-base font-semibold">{c.title}</h2>
-                      {/* TODO: wire campaign linkage — once missions expose campaign_id, swap the badge for a real CampaignChip. */}
-                      {c.campaign_id ? null /* <CampaignChip campaignId={c.campaign_id} /> */ : <span className="badge badge-neutral">Standalone</span>}
+                      {c.campaign_id
+                        ? <CampaignChip campaignId={c.campaign_id} />
+                        : <span className="badge badge-neutral">Standalone</span>}
                     </div>
                     <div className="text-[11px] text-muted-foreground mt-0.5">
                       Wave {Math.min(c.current_wave + (c.status === 'done' ? 0 : 1), c.total_waves)} of {c.total_waves}

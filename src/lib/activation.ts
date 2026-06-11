@@ -166,10 +166,16 @@ export async function recordQuickMission(missionId: string): Promise<void> {
  *  in /drafts within minutes. Called from /api/onboarding when the wizard
  *  completes. Best-effort: if mission spawn fails the clock still starts. */
 export async function activateAndLaunchQuickMission(opts: { agencyName?: string; industry?: string }): Promise<{ started: boolean; missionId: string | null }> {
-  const started = await startActivation();
-  if (!started) {
-    // Already activated — never re-fire a mission for an existing tenant.
-    return { started: false, missionId: null };
+  // Idempotency is gated on the MISSION, not the clock: if a quick mission was
+  // already recorded, never re-fire. (Previously we stamped the 72h clock FIRST,
+  // so an intake that threw — e.g. a BYO tenant with no Anthropic key yet — burned
+  // the activation window forever with no mission and no retry. Now the clock only
+  // starts once the mission is real, and a failure leaves everything retryable.)
+  const existingRows = (await sql()`
+    SELECT activation_quick_mission_id AS id FROM public.tenants WHERE id = ${tenantId()} LIMIT 1
+  `) as unknown as Array<{ id: string | null }>;
+  if (existingRows[0]?.id) {
+    return { started: true, missionId: existingRows[0].id };
   }
   try {
     // Lazy import to avoid pulling the heavy intake stack in unrelated code paths.
@@ -186,6 +192,8 @@ export async function activateAndLaunchQuickMission(opts: { agencyName?: string;
     ].filter(Boolean).join(' ');
     const launched = await launchResearchCampaign(brief);
     await recordQuickMission(launched.id);
+    // Start the 72h activation clock ONLY now that the mission actually exists.
+    await startActivation();
     // Dispatch wave 0 into its OWN tenant-tagged 300s function via /api/cron/advance
     // (dispatchMissionAdvance carries tenantId() in the body). We must NOT run the
     // chain as a detached inline promise here: Fluid Compute freezes un-after()'d
@@ -194,7 +202,9 @@ export async function activateAndLaunchQuickMission(opts: { agencyName?: string;
     dispatchMissionAdvance(launched.id);
     return { started: true, missionId: launched.id };
   } catch (e) {
-    console.error('[activation] quick mission failed:', (e as Error).message);
-    return { started: true, missionId: null };
+    // Clock NOT started (it's stamped only after success above), so this stays
+    // retryable — a later call (re-run, or once a key is connected) can fire it.
+    console.error('[activation] quick mission failed (clock not started — retryable):', (e as Error).message);
+    return { started: false, missionId: null };
   }
 }
