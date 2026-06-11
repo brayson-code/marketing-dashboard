@@ -39,6 +39,14 @@ You can also set per-type overrides (e.g. auto-publish content but always approv
 
 ![the Autonomy page with the four levels](images/concepts-1.png)
 
+## Guided setup walkthrough
+
+The **active tour** that runs the first time you open a new workspace. A coaching bubble points at the exact tab for each setup step, in order — starting with connecting your Claude key — and each step retires the moment you actually finish it. A persistent **Finish setup** checklist tracks the same progress. Required steps: connect your Claude key, pick a plan, turn on your AI executives, set a goal, and build your company playbook. See [Getting Started](./getting-started.md).
+
+## Company Playbook
+
+A short **business brief** that every agent — and the orchestrator — reads before doing any work. You answer a few questions in **Memory → Playbook** (what you do, your objective, your ideal customer, your value, your channels, your voice, your guardrails) and KeyCommand writes a tight playbook from them. Because that brief is injected into every agent's instructions, your team works from *your* objectives, audience, and voice instead of sounding generic. You can regenerate or edit it anytime. It's part of your guided setup. See [Getting Started](./getting-started.md#5-build-your-company-playbook).
+
 ## Goals
 
 Verifiable **outcomes** you want to reach (e.g. "1,000 subscribers"). Agents work toward them and report progress, but you confirm when a goal is actually done. See [Goals & Missions](./goals-and-missions.md).
@@ -61,7 +69,7 @@ The [Content Lab](./content-lab.md) view that aggregates everything you've analy
 
 ## Connections
 
-Your linked **accounts and API keys** — social platforms (one-tap) and services like Apify, Deepgram, and AgentMail (paste-a-key). KeyCommand is "bring your own keys," so agents act through *your* accounts. See [Connections](./connections.md).
+Your linked **accounts and API keys** — social platforms (one-tap) and services like Apify, Deepgram, and AgentMail (paste-a-key). KeyCommand is "bring your own keys," so agents act through *your* accounts. The first and most important one is your **Anthropic (Claude) key**: your agents run on your own key and stay paused until it's connected. See [Connections](./connections.md).
 
 ## Tenants / Workspaces
 

@@ -15,7 +15,8 @@ These docs are written for the people who **use** KeyCommand day to day: markete
 - **Write and record scripts.** Generate reel scripts from a kept idea or a competitor teardown, edit them, and read them off a built-in teleprompter.
 - **Run a team of agents.** A roster of specialist agents (research, content, outreach, and more) does the work; you can view, edit, and create them in the Agent Studio.
 - **Stay in control.** Everything agents produce lands in **Approvals** for your one-tap approval. You decide how much autonomy they have.
-- **Connect your stack.** Bring your own API keys and social accounts so agents act through *your* tools and *your* brand.
+- **Connect your stack.** Bring your own API keys and social accounts so agents act through *your* tools and *your* brand. Your AI team runs on your own Claude key — connect it first and your agents come to life.
+- **Teach the team your business once.** A short **company playbook** captures your objective, audience, and voice, and every agent reads it before doing any work.
 
 ---
 
@@ -46,7 +47,7 @@ These docs are written for the people who **use** KeyCommand day to day: markete
 
 ## New here? Start with these three
 
-1. **[Getting Started](./getting-started.md)** — sign in and connect your first account.
+1. **[Getting Started](./getting-started.md)** — sign in, connect your Claude key (step one — agents stay paused until you do), and let the guided walkthrough lead you through setup.
 2. **[Competitor Reel Intel](./competitors.md)** — paste a competitor's reel link and watch an agent break it down. It's the fastest way to see KeyCommand in action.
 3. **[Content Lab](./content-lab.md)** — turn what you learned into reel concepts and scripts.
 

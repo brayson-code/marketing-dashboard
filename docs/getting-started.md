@@ -38,22 +38,40 @@ Don't worry about understanding every widget yet. The [Overview page](./overview
 
 ---
 
-## 3. Finish the setup wizard (if shown)
+## 3. Connect your Claude key — step one
 
-The first time you open KeyCommand, a short **onboarding wizard** may appear over the Overview. It collects the basics about your business so your agents have context to work with — things like your brand, your goals, and which accounts you want to connect. Walk through it and click **Done**. You can revisit the same steps later from the **Connections** and **Goals** pages.
+**This is the first thing to do, before anything else.** Your AI team runs on **your own Anthropic (Claude) key**, so your data and your AI spend stay under your account. Until that key is connected, **your agents stay paused** — KeyCommand won't run any of them on a borrowed key.
+
+1. Open **Connections** from the left navigation.
+2. In **AI providers**, find the **Anthropic (Claude API)** tile.
+3. Click **Connect**, paste your Anthropic API key, and click **Save**. The key is checked against Anthropic before it's saved, so **connected** means it actually works. Once it's connected, your agents wake up.
+
+> Don't have a key yet? Create one at [console.anthropic.com](https://console.anthropic.com) → **API Keys**.
 
 ---
 
-## 4. Connect your first account
+## 4. Let the guided walkthrough lead the way
 
-KeyCommand is most useful once it can act through *your* accounts. Open **Connections** from the left navigation.
+The first time you open KeyCommand, a **guided setup walkthrough** kicks in. It's an active tour: a small coaching bubble points at exactly which tab to click for each setup step, in order — starting with **Connect your Claude key** above — and retires each step the moment you actually finish it. A persistent **Finish setup** checklist tracks your progress so you can pick up where you left off.
 
-There are two kinds of connections:
+You don't have to follow it in lockstep — click **Skip** on any step or **Turn off** to dismiss the tour — but it's the fastest way to a working workspace. The required steps are: connect your Claude key, pick a plan, turn on your AI executives, set a goal, and build your [company playbook](./concepts.md#company-playbook).
+
+---
+
+## 5. Build your company playbook
+
+Open **Memory → Playbook** and answer a few short questions about your business — what you do, your #1 objective, your ideal customer, your voice, and your hard no-gos. KeyCommand turns those answers into a tight **business brief** that **every agent and the orchestrator read before doing any work**, so your AI team sounds like *your* business instead of generic. You can regenerate or hand-edit it anytime. See [the company playbook in Concepts](./concepts.md#company-playbook).
+
+---
+
+## 6. Connect your other accounts
+
+KeyCommand is most useful once it can act through *your* accounts. Back on **Connections**, there are two kinds of connections beyond your Claude key:
 
 - **Social accounts** (Instagram, Facebook, LinkedIn, YouTube, X, TikTok) connect with one tap — you log in to the platform and approve access.
-- **API keys & other services** (Apify, Deepgram, AgentMail, Anthropic, and more) connect by pasting a key you create on that service's website.
+- **API keys & other services** (Apify, Deepgram, AgentMail, and more) connect by pasting a key you create on that service's website.
 
-**For your very first session, connect Apify.** It's the key that unlocks Competitor Reel Intel — the feature that best shows off what KeyCommand can do.
+**Next after your Claude key, connect Apify.** It's the key that unlocks Competitor Reel Intel — the feature that best shows off what KeyCommand can do.
 
 1. Open **Connections**.
 2. Scroll to **API keys & other services** and find the **Apify** tile.
@@ -65,7 +83,7 @@ See the [Connections page](./connections.md) for what every connection unlocks a
 
 ---
 
-## 5. Do your first real thing
+## 7. Do your first real thing
 
 Now you're set up. Here's the fastest path to seeing value:
 

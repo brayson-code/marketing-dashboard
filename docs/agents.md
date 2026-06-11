@@ -21,6 +21,11 @@ Each agent is defined by three things, written in plain language:
 
 It also has a **model** (the underlying AI it runs on — faster/cheaper or slower/smarter) and a few settings like a token budget.
 
+Two things every agent shares, no matter which one it is:
+
+- **They run on your workspace's own Claude key.** Agents use the Anthropic key you connect on [Connections](./connections.md) — your data and your AI spend stay under your account. Until that key is connected, agents stay paused. It's [step one of setup](./getting-started.md#3-connect-your-claude-key--step-one).
+- **They all read your [company playbook](./concepts.md#company-playbook).** The business brief you build in **Memory → Playbook** is injected into every agent (and the orchestrator) before it works, so the whole team knows your objective, audience, voice, and guardrails — and sounds like *your* business, not a generic one.
+
 ---
 
 ## Viewing your team (`/agents`)

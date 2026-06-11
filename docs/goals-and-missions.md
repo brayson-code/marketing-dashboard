@@ -60,7 +60,7 @@ Each campaign card shows its goal, channels, window, and how many missions are r
 
 ### What it is
 
-A **Mission** is a single big request executed as a sequence of **waves** — rounds of agent work that build on each other. You give it an objective; KeyCommand assembles a brief, runs the waves (each wave can involve several agents), and produces a final report.
+A **Mission** is a single big request executed as a sequence of **waves** — rounds of agent work that build on each other. You give it an objective; KeyCommand assembles a brief, then runs all of its waves (each wave can involve several agents) **through to completion**, ending in a final report. Each wave auto-advances to the next on its own, so a launched mission runs the full sequence end-to-end without you babysitting it.
 
 ### Why it matters
 
@@ -70,7 +70,7 @@ Some work is too big for one agent and one step. Missions break a large objectiv
 
 1. Open **Missions**.
 2. Describe what you want accomplished and **launch** the mission.
-3. Watch it progress wave by wave. Expand any wave to read what each agent produced and the synthesis of that round.
+3. Watch it progress wave by wave — each wave hands off to the next automatically until all four are done. Expand any wave to read what each agent produced and the synthesis of that round.
 4. When it finishes, read the **final report**.
 
 ![a Mission running, showing its waves and per-agent results](images/goals-and-missions-3.png)

@@ -19,6 +19,8 @@ All secrets are **encrypted at rest** and scoped to your workspace only.
 
 KeyCommand is "bring your own keys." When you connect *your* accounts, agents act through your brand and your billing — and you read your *own* real usage and analytics. Nothing is shared across workspaces.
 
+The most important key is your **Anthropic (Claude) key** — the AI your whole team runs on. It's strict bring-your-own: agents run on *your* key (so your data and AI spend stay under your account) and **stay paused until you connect it**. Connecting it is step one of setup. See [Getting Started](./getting-started.md#3-connect-your-claude-key--step-one).
+
 ---
 
 ## How to connect a social account
@@ -67,7 +69,7 @@ Social connections power publishing, reading your analytics, and pulling your br
 
 | Service | What it unlocks |
 |---------|-----------------|
-| **Anthropic (Claude API)** | The AI that powers your agents. |
+| **Anthropic (Claude API)** | **The AI your entire team runs on — connect this first.** Strict bring-your-own: agents run on your key, and they stay paused until it's connected. The key is verified against Anthropic before it's saved. |
 | **OpenAI** | An alternative AI provider. |
 
 ### Analytics, calendar & social
