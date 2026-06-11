@@ -89,12 +89,12 @@ export default function ClientsPage() {
         <div className="section-title flex items-center gap-1.5"><UserPlus size={14} className="text-primary" /> Add a client</div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-1">
-            <label className="text-[11px] font-medium">Workspace name</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Acme Co." style={{ width: '100%' }} required />
+            <label htmlFor="client-name" className="text-[11px] font-medium">Workspace name</label>
+            <input id="client-name" name="client-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Acme Co." autoComplete="organization" style={{ width: '100%' }} required />
           </div>
           <div className="space-y-1">
-            <label className="text-[11px] font-medium">Client email</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="founder@acme.com" style={{ width: '100%' }} required />
+            <label htmlFor="client-email" className="text-[11px] font-medium">Client email</label>
+            <input id="client-email" name="client-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="founder@acme.com" autoComplete="email" style={{ width: '100%' }} required />
           </div>
         </div>
         {error && <p className="text-xs text-destructive">{error}</p>}
