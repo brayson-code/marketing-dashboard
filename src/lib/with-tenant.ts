@@ -2,46 +2,67 @@
 //
 //     enterTenant(await resolveTenant());
 //
-// The Next.js middleware (src/proxy.ts — Next 16's "proxy" convention) validates the
-// user, STRIPS any client-supplied x-tenant-id / x-user-id headers, and reinjects
-// them from the verified JWT claim. So we trust those headers HERE only because the
-// middleware already sanitized them — a fast path that avoids a second Auth
-// round-trip per request.
-//
-// FAIL-CLOSED: an authenticated user with NO tenant claim resolves to NO_TENANT_ID
-// (the nil-uuid sentinel → tenant-scoped queries return empty), NEVER the
-// system-default (HQ). An auth error also fails closed. DEFAULT_TENANT_ID is used
-// only for genuinely session-less public/system paths (which the middleware lets
-// through, e.g. error reporting), preserving their existing behavior.
+// Resolution order (each step is a real, isolated source — never an arbitrary tenant):
+//   1. x-tenant-id header — the JWT tenant claim, set by the middleware (src/proxy.ts)
+//      which strips any client-supplied value and reinjects it from the validated
+//      session. Fast path, no extra work.
+//   2. The authenticated user's workspace_members row — the SOURCE OF TRUTH. The JWT
+//      claim is only a cache of this; a freshly-issued session (e.g. just after the
+//      recovery/set-password flow) can briefly lack the claim, so we fall back to the
+//      user's actual membership rather than failing the request.
+//   3. NO_TENANT_ID — authenticated but no workspace at all (fail closed → empty data,
+//      never HQ).
+//   4. DEFAULT_TENANT_ID — only for genuinely session-less public/system paths.
 
 import { headers } from 'next/headers';
 import { createClient } from './supabase/server';
+import { sql } from './db/client';
 import { DEFAULT_TENANT_ID, NO_TENANT_ID, type TenantContext } from './tenant';
 
 // Re-exported so call sites import both from one place: enterTenant(await resolveTenant()).
 export { enterTenant } from './tenant';
+
+/** The user's workspace from membership (source of truth). Oldest membership wins. */
+async function workspaceForUser(userId: string): Promise<string | null> {
+  try {
+    const rows = (await sql()`
+      SELECT workspace_id FROM public.workspace_members
+      WHERE user_id = ${userId}
+      ORDER BY created_at ASC
+      LIMIT 1
+    `) as unknown as Array<{ workspace_id: string }>;
+    return rows[0]?.workspace_id ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export async function resolveTenant(): Promise<TenantContext> {
   try {
     const h = await headers();
     const headerTenant = h.get('x-tenant-id');
     const headerUser = h.get('x-user-id');
-    // Fast path: trust the middleware-sanitized headers.
+
+    // 1. Trusted, middleware-sanitized tenant claim.
     if (headerTenant) return { tenantId: headerTenant, userId: headerUser };
-    // Authenticated user but no tenant claim → no assigned workspace. Fail closed.
-    if (headerUser) return { tenantId: NO_TENANT_ID, userId: headerUser };
+
+    // 2. Authenticated but no claim header → resolve from membership before failing.
+    if (headerUser) {
+      const ws = await workspaceForUser(headerUser);
+      return { tenantId: ws ?? NO_TENANT_ID, userId: headerUser };
+    }
 
     // No middleware headers → a public/bypassed path. Validate the session directly.
     const supabase = await createClient();
     const { data } = await supabase.auth.getUser();
     const user = data.user;
-    // Session-less system/public path → keep the system default (unchanged).
-    if (!user) return { tenantId: DEFAULT_TENANT_ID, userId: null };
+    if (!user) return { tenantId: DEFAULT_TENANT_ID, userId: null }; // session-less system/public
     const claim = (user.app_metadata as Record<string, unknown> | undefined)?.tenant_id;
-    // Authenticated but unprovisioned → fail closed to the no-workspace sentinel.
-    return { tenantId: typeof claim === 'string' && claim ? claim : NO_TENANT_ID, userId: user.id };
+    if (typeof claim === 'string' && claim) return { tenantId: claim, userId: user.id };
+    const ws = await workspaceForUser(user.id);
+    return { tenantId: ws ?? NO_TENANT_ID, userId: user.id };
   } catch {
-    // Any failure (headers unavailable, getUser threw) → fail closed, never HQ.
+    // Any failure → fail closed, never HQ.
     return { tenantId: NO_TENANT_ID, userId: null };
   }
 }
