@@ -279,6 +279,13 @@ async function callClaude(
   const systemBlocks: Anthropic.TextBlockParam[] = [
     { type: 'text', text: template, cache_control: { type: 'ephemeral' } },
   ];
+  // The company playbook (objectives, ICP, voice, constraints) — so the orchestrator
+  // speaks for the business, not generically. Empty until the owner generates one.
+  try {
+    const { companyContextBlock } = await import('./company-playbook');
+    const ctx = await companyContextBlock();
+    if (ctx) systemBlocks.push({ type: 'text', text: ctx });
+  } catch { /* best-effort context */ }
   if (memory) {
     systemBlocks.push({
       type: 'text',

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BrainCircuit, Plus, Save, Trash2, Loader2, FileText } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { PlaybookCard } from '@/components/playbook/playbook-card';
 
 type DocStatus = 'raw' | 'wiki' | 'archived';
 
@@ -40,7 +41,7 @@ export default function MemoryPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<'docs' | 'health'>('docs');
+  const [view, setView] = useState<'docs' | 'health' | 'playbook'>('docs');
   const loadedFor = useRef<string | null>(null);
 
   const loadList = useCallback(async () => {
@@ -120,16 +121,17 @@ export default function MemoryPage() {
     <div className="space-y-4 animate-in">
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <div className="space-y-1">
-          <h1 className="text-xl font-semibold flex items-center gap-2"><BrainCircuit size={18} className="text-primary" /> Memory</h1>
+          <h1 className="text-h1 flex items-center gap-2"><BrainCircuit size={18} className="text-primary" /> Memory</h1>
           <p className="text-xs text-muted-foreground">Edit and improve KeyPlayer&apos;s knowledge — markdown documents stored in Supabase.</p>
         </div>
         <div className="flex items-center gap-1 border-b border-border">
+          <button onClick={() => setView('playbook')} className={`tab ${view === 'playbook' ? 'active' : ''}`}>Playbook</button>
           <button onClick={() => setView('docs')} className={`tab ${view === 'docs' ? 'active' : ''}`}>Documents</button>
           <button onClick={() => setView('health')} className={`tab ${view === 'health' ? 'active' : ''}`}>Health</button>
         </div>
       </div>
 
-      {view === 'health' ? <HealthView /> : (
+      {view === 'playbook' ? <div className="max-w-2xl"><PlaybookCard /></div> : view === 'health' ? <HealthView /> : (
       <div className="panel flex" style={{ height: 'calc(100vh - 220px)', minHeight: 460 }}>
         {/* Document list */}
         <div className="w-60 border-r border-border/60 flex flex-col shrink-0">

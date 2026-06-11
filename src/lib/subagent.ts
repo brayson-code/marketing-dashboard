@@ -151,6 +151,14 @@ async function loadSubAgentSystemPrompt(type: string): Promise<string> {
       if (typeof v === 'string') combined = combined.replaceAll(`{{${k}}}`, v);
     }
   } catch { /* no config file — leave placeholders as-is */ }
+  // Prepend the tenant's company playbook so EVERY agent runs knowing the business
+  // (objectives, ICP, voice, constraints). Empty string when none is set up yet —
+  // behavior is unchanged until the owner generates a playbook. Best-effort.
+  try {
+    const { companyContextBlock } = await import('./company-playbook');
+    const ctx = await companyContextBlock();
+    if (ctx) combined = `${ctx}\n${combined}`;
+  } catch { /* never block a run on context load */ }
   return combined;
 }
 
