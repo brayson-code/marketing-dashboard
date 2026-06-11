@@ -37,7 +37,20 @@ export interface WalkthroughStep {
 }
 
 // Order = the setup sequence (and the checklist order). Required steps first.
+// STEP ONE is the Anthropic key: nothing the AI team does works without it, and we
+// no longer fall back to the platform key for client workspaces (strict BYO), so a
+// workspace literally cannot run an agent until this is connected.
 export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
+  {
+    id: 'claude_key',
+    title: 'Connect your Claude key',
+    body: 'Step one — your AI team runs on your own Anthropic key, so your data and spend stay under your account. Agents stay paused until this is connected.',
+    icon: KeyRound,
+    cta: { label: 'Connect Claude', href: '/connections' },
+    required: true,
+    routes: ['/connections'],
+    anchor: 'connect-claude',
+  },
   {
     id: 'plan_set',
     title: 'Pick a plan',
@@ -47,16 +60,6 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
     required: true,
     routes: ['/billing'],
     anchor: 'billing-plan',
-  },
-  {
-    id: 'claude_key',
-    title: 'Connect your Claude key',
-    body: 'Your AI team runs on your own Anthropic key, so your data and spend stay under your account.',
-    icon: KeyRound,
-    cta: { label: 'Connect Claude', href: '/connections' },
-    required: true,
-    routes: ['/connections'],
-    anchor: 'connect-claude',
   },
   {
     id: 'execs_enabled',

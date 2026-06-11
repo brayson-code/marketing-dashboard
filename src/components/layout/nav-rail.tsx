@@ -202,6 +202,7 @@ function NavLink({ item, active, count, compact }:
       href={item.href}
       target={item.newTab ? '_blank' : undefined}
       rel={item.newTab ? 'noreferrer' : undefined}
+      data-walkthrough={`nav:${item.href}`}
       className={`relative w-full flex items-center gap-2 px-2 ${compact ? 'py-1' : 'py-1.5'} rounded-lg text-sm`}
       style={{
         color: active ? 'var(--primary)' : 'var(--muted-foreground)',

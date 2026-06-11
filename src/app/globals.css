@@ -751,6 +751,17 @@ textarea:focus {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 40%, transparent);
 }
 
+/* Active walkthrough-tour highlight — the nav tab / control the current step points
+   at. STATIC (no animation): a crisp primary ring + a soft, fixed outer wash so the
+   eye lands on it without the page appearing to flash. */
+.wt-target {
+  border-radius: var(--radius);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--primary) 55%, transparent),
+    0 0 0 6px color-mix(in srgb, var(--primary) 16%, transparent);
+  transition: box-shadow var(--t-popover) var(--ease-out);
+}
+
 /* Stagger helper — apply `data-stagger` to a parent grid and direct children
    fade in with 50ms delays (Emil's "30–80ms" sweet spot). Cascading entrance
    feels more natural than everything appearing at once. */
