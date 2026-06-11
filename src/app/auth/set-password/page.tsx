@@ -4,10 +4,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 
-// Where an invited client lands from their one-time magic link. The Supabase browser
-// client auto-detects the session from the link's URL fragment (detectSessionInUrl),
-// so by the time this renders they're authenticated — they just need to choose a
-// password so they can log in normally (email + password) afterwards.
+// Where an invited client lands from their one-time recovery link. The Supabase
+// browser client auto-detects the session from the link's URL fragment
+// (detectSessionInUrl) and fires PASSWORD_RECOVERY, so by the time this renders they
+// hold a recovery session — which lets them set a FIRST password without a current
+// one (works even with "Secure password change" on). After that they log in normally
+// with email + password.
 export default function SetPasswordPage() {
   const router = useRouter();
   const [checking, setChecking] = useState(true);

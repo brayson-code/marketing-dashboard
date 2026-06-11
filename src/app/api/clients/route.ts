@@ -116,15 +116,16 @@ export async function POST(request: Request) {
     }
 
     // 4) Best-effort invite link for the owner to share (email delivery is out of
-    //    scope; failure here doesn't undo provisioning). The link logs the client in
-    //    once, then lands them on /auth/set-password to choose a password — so they
-    //    can log in with email + password afterwards. redirectTo must be in the
-    //    Supabase Auth "Redirect URLs" allow-list.
+    //    scope; failure here doesn't undo provisioning). We use a RECOVERY link: it
+    //    lands the client on /auth/set-password to choose their first password
+    //    WITHOUT a current password — the sanctioned "set password without the old
+    //    one" path, so it works even with Supabase's "Secure password change"
+    //    enabled. redirectTo must be in the Supabase Auth "Redirect URLs" allow-list.
     let inviteLink: string | null = null;
     try {
       const origin = request.headers.get('origin') || new URL(request.url).origin;
       const { data: link } = await admin.auth.admin.generateLink({
-        type: 'magiclink',
+        type: 'recovery',
         email,
         options: { redirectTo: `${origin}/auth/set-password` },
       });
