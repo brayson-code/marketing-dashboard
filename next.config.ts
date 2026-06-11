@@ -20,26 +20,9 @@ const nextConfig: NextConfig = {
   // deliberately NOT set here yet: a strict policy needs testing against Next's
   // inline scripts + Supabase/Vercel origins so it doesn't break the app.
   async headers() {
-    // Baseline security headers. The CSP is the permissive first pass — VERIFIED in
-    // the browser to not break rendering (pages load, console clean). It enforces the
-    // high-value directives (default-src/base-uri/object-src/frame-ancestors/form-action)
-    // while staying permissive on script/style/frame/connect so Next hydration,
-    // Supabase (incl. realtime wss), and reel embeds work. HSTS is added by Vercel.
-    const csp = [
-      "default-src 'self'",
-      "base-uri 'self'",
-      "object-src 'none'",
-      "frame-ancestors 'self'",
-      "form-action 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:",
-      "style-src 'self' 'unsafe-inline' https:",
-      "img-src 'self' data: blob: https:",
-      "font-src 'self' data: https:",
-      "media-src 'self' blob: https:",
-      "connect-src 'self' https: wss:",
-      "frame-src 'self' https:",
-    ].join('; ');
-
+    // Static baseline headers only. The Content-Security-Policy is NONCE-BASED and
+    // therefore set PER-REQUEST in the middleware (src/lib/supabase/middleware.ts) —
+    // it can't live here because the nonce changes every request. HSTS is added by Vercel.
     return [
       {
         source: '/:path*',
@@ -48,7 +31,6 @@ const nextConfig: NextConfig = {
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
-          { key: 'Content-Security-Policy', value: csp },
         ],
       },
     ];

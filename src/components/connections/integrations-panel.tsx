@@ -48,17 +48,20 @@ const CATEGORIES: Array<{ id: Category | 'all'; label: string }> = [
 export function IntegrationsPanel() {
   const [providers, setProviders] = useState<ProviderDef[]>([]);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
+  const [tenantId, setTenantId] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [filter, setFilter] = useState<Category | 'all'>('all');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState(false);
 
   const load = useCallback(async () => {
     const res = await fetch('/api/integrations-setup', { cache: 'no-store' });
     const json = await res.json();
     setProviders(json.providers ?? []);
     setIntegrations(json.integrations ?? []);
+    setTenantId(json.tenant_id ?? null);
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -177,6 +180,35 @@ export function IntegrationsPanel() {
                         />
                       </div>
                     ))}
+                    {p.id === 'loopmessage' && tenantId && (
+                      <div className="space-y-1 pt-1">
+                        <label className="text-[11px] font-medium">Inbound webhook URL</label>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            readOnly
+                            value={`${typeof window !== 'undefined' ? window.location.origin : ''}/api/webhook/loopmessage/${tenantId}`}
+                            onFocus={(e) => e.currentTarget.select()}
+                            className="text-[10px] font-mono"
+                            style={{ width: '100%' }}
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm shrink-0"
+                            onClick={() => {
+                              navigator.clipboard?.writeText(`${window.location.origin}/api/webhook/loopmessage/${tenantId}`)
+                                .then(() => { setCopiedUrl(true); window.setTimeout(() => setCopiedUrl(false), 1500); })
+                                .catch(() => {});
+                            }}
+                          >
+                            {copiedUrl ? 'Copied' : 'Copy'}
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">
+                          Point LoopMessage&rsquo;s webhook at this URL and set the <strong>Webhook Secret</strong> above to the same value
+                          you configure in LoopMessage. Inbound iMessages then land in <em>this</em> workspace.
+                        </p>
+                      </div>
+                    )}
                     <div className="flex gap-2 pt-1">
                       <button className="btn btn-primary btn-sm" disabled={saving} onClick={() => save(p)}>{saving ? 'Saving…' : 'Save'}</button>
                       <button className="btn btn-ghost btn-sm" onClick={() => { setEditing(null); setDraft({}); }}>Cancel</button>

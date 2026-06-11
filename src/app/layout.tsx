@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Geist, Geist_Mono, Sora } from "next/font/google";
 import { LayoutContent } from "@/components/layout/layout-content";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -37,15 +38,21 @@ export const viewport = {
   viewportFit: "cover" as const,
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // The middleware (src/lib/supabase/middleware.ts) mints a per-request CSP nonce
+  // and forwards it on the x-nonce request header. Read it here so next-themes can
+  // stamp it onto its inline flash-prevention <script> — otherwise the strict CSP
+  // blocks that script. Reading headers() opts the layout into dynamic rendering,
+  // which is expected (and already true) for this per-request, auth-gated app.
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${geist.variable} ${geistMono.variable} ${sora.variable} antialiased`}>
-        <ThemeProvider>
+        <ThemeProvider nonce={nonce}>
           <ErrorReporter />
           <LayoutContent>{children}</LayoutContent>
           <Toaster />

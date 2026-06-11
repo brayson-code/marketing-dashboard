@@ -1,5 +1,6 @@
 import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
+import { tenantId } from '@/lib/tenant';
 import { listIntegrations, upsertIntegration, clearIntegration, PROVIDERS } from '@/lib/integrations-store';
 import { validateHeyGenKey } from '@/lib/heygen';
 import { validateAnthropicKey } from '@/lib/anthropic-key';
@@ -16,7 +17,10 @@ const SECRET_VALIDATORS: Record<string, (secret: Record<string, string>) => Prom
 
 export async function GET() {
   enterTenant(await resolveTenant());
-  return NextResponse.json({ providers: PROVIDERS, integrations: await listIntegrations() });
+  // tenant_id is returned so the UI can render this workspace's per-tenant webhook
+  // URLs (e.g. LoopMessage → /api/webhook/loopmessage/<tenant_id>). It's the
+  // workspace id, not a secret — the webhook_secret is what actually authenticates.
+  return NextResponse.json({ providers: PROVIDERS, integrations: await listIntegrations(), tenant_id: tenantId() });
 }
 
 export async function POST(request: Request) {
