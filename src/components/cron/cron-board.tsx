@@ -184,15 +184,18 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
     setTemplateId('');
     setNlPrompt('');
     setEditJson(JSON.stringify({
-      id: 'daily-research',
-      name: 'Daily competitor scan',
-      agentId: 'research-analyst',
+      id: 'competitor-watch',
+      name: 'Competitor watchlist (daily)',
+      agentId: 'reel-analyst',
       enabled: true,
-      schedule: { expr: '0 9 * * 1-5', tz: 'America/New_York' },
+      schedule: { expr: '0 9 * * *', tz: 'America/New_York' },
       payload: {
-        message: 'Scan for notable AI marketing tool launches in the last 24h. Return 5 bullets with sources.',
-        saveToKb: true,
-        kbDoc: 'Competitor intel',
+        // kind:'watchlist' makes the dispatcher sweep every due competitor —
+        // scrape their recent reels and tear down the top new performer(s) —
+        // instead of spawning a single agent off `message`.
+        kind: 'watchlist',
+        message: 'Sweep the competitor watchlist: fetch each due competitor\'s recent reels and analyze the top new performer(s).',
+        saveToKb: false,
       },
       skill: 'research',
     }, null, 2));
@@ -463,7 +466,7 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
         </div>
       </div>
 
-      <div className={variant === 'page' ? innerGridClass : `panel-body ${innerGridClass}`}>
+      <div className={variant === 'page' ? innerGridClass : `panel-body ${innerGridClass}`} data-walkthrough="enable-execs">
         {loading && jobs.length === 0
           ? Array.from({ length: 4 }).map((_, i) => (
               <div key={`sk-${i}`} className="panel">

@@ -74,7 +74,7 @@ export default function GoalsPage() {
           <h1 className="text-h1">Goals</h1>
           <p className="text-xs text-muted-foreground">KeyPlayer reads + writes these via tools. You always get the final word.</p>
         </div>
-        <button onClick={() => setCreating((c) => !c)} className="btn btn-ghost"><Plus size={14} /> New goal</button>
+        <button onClick={() => setCreating((c) => !c)} className="btn btn-ghost" data-walkthrough="add-goal"><Plus size={14} /> New goal</button>
       </div>
 
       <Explainer

@@ -85,6 +85,107 @@
   --surface-1: rgba(255, 255, 255, 0.03);
   --surface-2: rgba(255, 255, 255, 0.055);
   --surface-3: rgba(255, 255, 255, 0.10);
+
+  /* Claude usage widget palette — DARK mode (warm charcoal card, cream ink).
+     Light-mode equivalents are defined in the :root block below. The widget
+     references these via var() so it auto-follows whichever theme is active. */
+  --claude-bg: #1A1512;
+  --claude-ink: #F5F3F0;
+  --claude-ink-muted: rgba(245, 243, 240, 0.60);
+  --claude-border: rgba(255, 255, 255, 0.12);
+  --claude-fill-soft: rgba(255, 255, 255, 0.08);
+  --claude-fill-softer: rgba(255, 255, 255, 0.05);
+  --claude-primary: #E8835A;
+  --claude-bright: #FB923C;
+  --claude-warn: #F87171;
+  --claude-tint: rgba(234, 88, 12, 0.10);
+  --claude-grid: rgba(255, 255, 255, 0.08);
+  --claude-shadow: 0 18px 40px -12px rgba(234, 88, 12, 0.35), 0 10px 22px -8px rgba(0, 0, 0, 0.30);
+
+  /* Per-department signature colors — used by AgentOrb + lens tabs + hero cards.
+     One color per department head; sub-agents inherit their head's color so the
+     dashboard reads as a coherent department palette per lens. */
+  --dept-leadership: #10d982;
+  --dept-marketing:  #a78bfa;
+  --dept-revenue:    #4c9fff;
+  --dept-operations: #2dd4bf;
+  --dept-client-experience: #f59e0b;
+}
+
+/* Same vars in light mode. NOTE: this MUST be `:root:not(.dark)` (not just
+ * `:root`) — `:root` and `.dark` share the same CSS specificity (0,1,0), so
+ * a plain `:root` block after the `.dark` block would always win by source
+ * order, breaking the dark theme. The :not() selector scopes these to
+ * "no .dark class on root" — i.e. light mode only. */
+:root:not(.dark) {
+  --dept-leadership: #38a169;
+  --dept-marketing:  #7c3aed;
+  --dept-revenue:    #2563eb;
+  --dept-operations: #0d9488;
+  --dept-client-experience: #d97706;
+
+  /* Claude usage widget — LIGHT mode (warm cream card, dark ink). */
+  --claude-bg: #FFF7ED;
+  --claude-ink: #1A1512;
+  --claude-ink-muted: rgba(26, 21, 18, 0.65);
+  --claude-border: rgba(0, 0, 0, 0.12);
+  --claude-fill-soft: rgba(0, 0, 0, 0.06);
+  --claude-fill-softer: rgba(0, 0, 0, 0.03);
+  --claude-primary: #DC6539;
+  --claude-bright: #C2410C;
+  --claude-warn: #DC2626;
+  --claude-tint: rgba(234, 88, 12, 0.08);
+  --claude-grid: rgba(0, 0, 0, 0.06);
+  --claude-shadow: 0 18px 40px -12px rgba(196, 60, 12, 0.18), 0 10px 22px -8px rgba(0, 0, 0, 0.12);
+}
+
+/* ─── Type scale + spacing scale ──────────────────────────
+   Five type sizes (instead of the previous twelve), each with its own line-
+   height and tracking. Use the `.text-*` classes on new code; existing
+   raw font-size rules are still valid but should migrate over time. The
+   spacing scale follows an 8-pt grid (Impeccable's "spatial design" rule). */
+:root {
+  --text-display: 1.875rem;  /* 30px — rare hero numbers */
+  --text-h1:      1.375rem;  /* 22px — page title */
+  --text-h2:      1rem;      /* 16px — section title */
+  --text-body:    0.875rem;  /* 14px — body */
+  --text-small:   0.75rem;   /* 12px — caption / meta */
+  --text-micro:   0.6875rem; /* 11px — badge / tag */
+
+  --space-0: 0px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+}
+
+.text-display { font-family: var(--font-sora), var(--font-geist), sans-serif; font-size: var(--text-display); line-height: 1.05; letter-spacing: -0.02em; font-weight: 600; }
+.text-h1      { font-family: var(--font-sora), var(--font-geist), sans-serif; font-size: var(--text-h1);      line-height: 1.15; letter-spacing: -0.015em; font-weight: 600; }
+.text-h2      { font-family: var(--font-sora), var(--font-geist), sans-serif; font-size: var(--text-h2);      line-height: 1.3;  letter-spacing: -0.01em;  font-weight: 600; }
+.text-body    { font-size: var(--text-body);  line-height: 1.5; }
+.text-small   { font-size: var(--text-small); line-height: 1.4; color: var(--muted-foreground); }
+.text-micro   { font-size: var(--text-micro); line-height: 1.3; }
+
+/* ─── Motion language (Emil Kowalski design-eng rules) ─────
+   One easing vocabulary for the whole app. Bare `ease` and `transition: all`
+   are banned downstream — every motion declaration in this file uses these
+   variables, so changing motion personality is a one-line edit.
+   * --ease-out      : entering / appearing (starts fast, feels responsive)
+   * --ease-in-out   : moving / morphing between two states on screen
+   * --ease-drawer   : drawer/sheet/modal slides (Emil's specific curve)
+   * Durations under 300ms for UI; under 200ms for buttons. */
+:root {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --t-press: 120ms;
+  --t-tooltip: 160ms;
+  --t-popover: 200ms;
+  --t-modal: 280ms;
 }
 
 /* ─── Base ─────────────────────────────────────────────── */
@@ -154,12 +255,16 @@ h1, h2, h3, .section-title {
 }
 
 .card-hover {
-  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+  transition: border-color var(--t-popover) var(--ease-out),
+              box-shadow var(--t-popover) var(--ease-out),
+              transform var(--t-popover) var(--ease-out);
 }
-.card-hover:hover {
-  border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 10%, transparent), 0 8px 20px color-mix(in srgb, var(--foreground) 8%, transparent);
-  transform: translateY(-1px);
+@media (hover: hover) and (pointer: fine) {
+  .card-hover:hover {
+    border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 10%, transparent), 0 8px 20px color-mix(in srgb, var(--foreground) 8%, transparent);
+    transform: translateY(-1px);
+  }
 }
 
 /* ─── Badge ────────────────────────────────────────────── */
@@ -211,6 +316,76 @@ h1, h2, h3, .section-title {
   background: color-mix(in srgb, var(--surface-1) 85%, transparent);
   color: var(--muted-foreground);
   border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+/* ─── Agent orb ───────────────────────────────────────────
+   The signature visual identity of each agent. The breath keyframe gives a
+   subtle 2.4s pulse so the orbs feel alive without being noisy. Pure CSS, no
+   GSAP — kept light so 5+ orbs can run on screen at once. */
+@keyframes orb-breath {
+  0%, 100% { transform: scale(1);    filter: saturate(1.15) brightness(1); }
+  50%      { transform: scale(1.05); filter: saturate(1.35) brightness(1.1); }
+}
+.agent-orb--pulse {
+  animation: orb-breath 2.4s var(--ease-in-out) infinite;
+}
+
+/* "Live" state — applied to panels/cards via data-live="true". A breathing
+   primary-color border glow so running work pops without being a strobe. Pair
+   with panel--sweep for the scanning highlight. */
+@keyframes border-glow {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--primary) 30%, transparent),
+      0 0 18px color-mix(in srgb, var(--primary) 14%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--primary) 55%, transparent),
+      0 0 32px color-mix(in srgb, var(--primary) 30%, transparent);
+  }
+}
+[data-live="true"] {
+  animation: border-glow 2.4s var(--ease-in-out) infinite;
+}
+
+/* Diagonal shimmer that sweeps across a panel — applied via class. Used on
+   hero/agent cards when their agent is actively running to convey energy. */
+@keyframes shimmer-sweep {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(110%); }
+}
+.panel--sweep { position: relative; overflow: hidden; }
+.panel--sweep::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    105deg,
+    transparent 38%,
+    color-mix(in srgb, var(--primary) 14%, transparent) 50%,
+    transparent 62%
+  );
+  animation: shimmer-sweep 3.5s var(--ease-in-out) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-live="true"] { animation: none; }
+  .panel--sweep::after { display: none; }
+}
+
+/* Per-agent icon (the favicon-style square) — subtle glow pulse on active. */
+@keyframes agent-icon-pulse {
+  0%, 100% { transform: scale(1);    filter: brightness(1); }
+  50%      { transform: scale(1.04); filter: brightness(1.18); }
+}
+.agent-icon--pulse {
+  animation: agent-icon-pulse 2.6s var(--ease-in-out) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-orb--pulse, .agent-icon--pulse { animation: none; }
 }
 
 /* ─── Stat Card Glow ───────────────────────────────────── */
@@ -268,11 +443,18 @@ h1, h2, h3, .section-title {
   font-size: 0.8125rem;
   font-weight: 600;
   line-height: 1.1;
-  transition: all 0.15s ease-out;
+  /* Emil: never `transition: all`. Specify the properties that change. */
+  transition: background-color var(--t-press) var(--ease-out),
+              color var(--t-press) var(--ease-out),
+              border-color var(--t-press) var(--ease-out),
+              transform var(--t-press) var(--ease-out),
+              box-shadow var(--t-press) var(--ease-out);
   cursor: pointer;
   white-space: nowrap;
   min-height: 32px;
 }
+/* Emil: buttons must feel responsive to press. scale subtle (0.95–0.98). */
+.btn:active:not(:disabled) { transform: scale(0.97); }
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -333,6 +515,61 @@ select {
   padding: 6px 10px;
 }
 
+/* Native dropdown options were white-on-white in dark mode. Chrome ignores
+ * `background-color` on <option> in the native popup — the lever that actually
+ * paints the popup dark is `color-scheme` on the <select>. The dashboard is
+ * dark-first, so force it (light mode falls back to a light popup). The option
+ * colors below additionally fix Firefox, which DOES honor them. */
+select { color-scheme: dark !important; }
+select option,
+select optgroup {
+  background-color: var(--surface-1) !important;
+  color: var(--foreground) !important;
+}
+
+/* ─── Rotating-light CTA (discoverability) ──────────────────────────────────
+ * A slow conic-gradient halo spinning around a highlighted button so it's easy
+ * to spot. On-brand with the motion language: subtle, GPU-cheap, and it stops
+ * for users who ask for reduced motion. Apply `.glow-cta` to a button that has
+ * an opaque background (the bg covers the centre so only the ring/halo shows). */
+@property --glow-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+@keyframes glow-spin {
+  to { --glow-angle: 360deg; }
+}
+.glow-cta {
+  position: relative;
+}
+/* A thin light traveling AROUND the button's border (a masked gradient ring) —
+ * not a fill or a blur inside it. The mask shows only the 2px perimeter band. */
+.glow-cta::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  padding: 2px;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--glow-angle),
+    transparent 0deg,
+    color-mix(in srgb, var(--primary) 70%, white) 55deg,
+    var(--primary) 90deg,
+    transparent 150deg,
+    transparent 360deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  animation: glow-spin 3s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .glow-cta::before { animation: none; }
+}
+
 textarea {
   padding: 8px 10px;
 }
@@ -350,6 +587,15 @@ textarea:focus {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 18%, transparent);
 }
 
+/* The `.input` class is applied across the app expecting a full-width form
+ * field, but it was never defined — so textareas fell back to the browser's
+ * default ~20-column width regardless of container. Define it: fill the width. */
+.input {
+  width: 100%;
+  display: block;
+  box-sizing: border-box;
+}
+
 /* ─── Nav Rail ─────────────────────────────────────────── */
 .nav-item {
   display: flex;
@@ -361,13 +607,16 @@ textarea:focus {
   color: var(--muted-foreground);
   font-size: 0.58rem;
   line-height: 1;
-  transition: all 0.15s;
+  transition: color var(--t-press) var(--ease-out),
+              background-color var(--t-press) var(--ease-out);
   cursor: pointer;
   text-decoration: none;
 }
-.nav-item:hover {
-  color: var(--foreground);
-  background: color-mix(in srgb, var(--surface-2) 80%, transparent);
+@media (hover: hover) and (pointer: fine) {
+  .nav-item:hover {
+    color: var(--foreground);
+    background: color-mix(in srgb, var(--surface-2) 80%, transparent);
+  }
 }
 .nav-item.active {
   color: var(--primary);
@@ -427,20 +676,109 @@ textarea:focus {
 }
 
 /* ─── Animations ───────────────────────────────────────── */
+/* Emil: never animate FROM scale(0). Start from scale(0.97)+translateY+opacity 0
+   so the element feels like it "arrives" rather than spawning from a singularity. */
 @keyframes fade-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
 }
 .animate-in {
-  animation: fade-in 0.3s ease-out;
+  animation: fade-in var(--t-popover) var(--ease-out) both;
 }
 
 @keyframes slide-in-right {
-  from { opacity: 0; transform: translateX(16px); }
-  to { opacity: 1; transform: translateX(0); }
+  from { opacity: 0; transform: translateX(12px); }
+  to   { opacity: 1; transform: translateX(0); }
 }
 .animate-slide-in {
-  animation: slide-in-right 0.25s ease-out;
+  animation: slide-in-right var(--t-popover) var(--ease-out) both;
+}
+
+/* Popover / dropdown enter — scales from its transform-origin (set inline by
+   the trigger), per Emil's "popovers scale from trigger, modals stay centered"
+   rule. Never animate FROM scale(0): start at 0.96 + opacity 0. */
+@keyframes popover-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.popover {
+  /* Popovers must be readable — override .card's translucent surface with a
+     solid background. The previous frosted treatment let the dashboard show
+     through and made the notification list + logout button hard to read. */
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow:
+    0 16px 40px -12px rgba(0, 0, 0, 0.45),
+    0 4px 12px -4px rgba(0, 0, 0, 0.2);
+  animation: popover-in var(--t-popover) var(--ease-out) both;
+}
+.dark .popover {
+  background: #15151c; /* solid dark surface, not a translucent mix */
+  border-color: rgba(255, 255, 255, 0.10);
+  box-shadow:
+    0 24px 48px -12px rgba(0, 0, 0, 0.85),
+    0 8px 20px -8px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+}
+.popover-from-trigger {
+  /* transform-origin is set inline per popover (top right / top left / etc.). */
+  will-change: transform, opacity;
+}
+
+/* Walkthrough coachmark — an anchored "bubble" that points at the control a setup
+   step needs. A touch more pronounced than a popover (it's asking for attention)
+   but still Emil-safe: starts at 0.94 + 8px offset, never scale(0). transform-origin
+   is set inline by the bubble to point back at its anchor. */
+@keyframes coachmark-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.94); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+/* Opacity-only entrance for prefers-reduced-motion (no transform). */
+@keyframes fade-only { from { opacity: 0; } to { opacity: 1; } }
+.coachmark {
+  animation: coachmark-in var(--t-popover) var(--ease-out) both;
+  will-change: transform, opacity;
+}
+/* Soft ring on the anchored target so the eye finds it. Keeps a visible ring at
+   rest and gently breathes outward — never fully invisible at its peak. */
+@keyframes coachmark-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 38%, transparent); }
+  50%      { box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary) 12%, transparent); }
+}
+.coachmark-target {
+  border-radius: var(--radius);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 38%, transparent);
+  animation: coachmark-pulse 2s var(--ease-in-out) infinite;
+}
+
+/* Stagger helper — apply `data-stagger` to a parent grid and direct children
+   fade in with 50ms delays (Emil's "30–80ms" sweet spot). Cascading entrance
+   feels more natural than everything appearing at once. */
+[data-stagger] > * { animation: fade-in var(--t-popover) var(--ease-out) both; }
+[data-stagger] > *:nth-child(1) { animation-delay:   0ms; }
+[data-stagger] > *:nth-child(2) { animation-delay:  50ms; }
+[data-stagger] > *:nth-child(3) { animation-delay: 100ms; }
+[data-stagger] > *:nth-child(4) { animation-delay: 150ms; }
+[data-stagger] > *:nth-child(5) { animation-delay: 200ms; }
+[data-stagger] > *:nth-child(6) { animation-delay: 250ms; }
+
+/* Emil: prefers-reduced-motion ≠ no motion. Keep opacity changes (they aid
+   comprehension), kill transform-based motion. */
+@media (prefers-reduced-motion: reduce) {
+  /* Opacity-only (fade-only has no transform) — honor "kill transform-based motion". */
+  .animate-in, .animate-slide-in, [data-stagger] > *, .coachmark {
+    animation: fade-only 0.2s ease both;
+  }
+  .btn:active:not(:disabled) { transform: none; }
+  .card-hover:hover { transform: none; }
+  /* No pulsing — keep a static ring so the target is still emphasized. */
+  .coachmark-target {
+    animation: none;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 45%, transparent);
+  }
 }
 
 @keyframes shimmer {
@@ -465,6 +803,71 @@ textarea:focus {
 }
 .pulse-dot {
   animation: pulse-dot 2s infinite;
+}
+
+/* Live reel scan — a thin highlight line sweeping vertically over an in-flight
+ * analysis tile while the agents work. Color is baked into the gradient inline;
+ * this just animates the vertical position. Pauses for reduced motion. */
+@keyframes reel-scan {
+  0%   { transform: translateY(-120%); opacity: 0; }
+  12%  { opacity: 1; }
+  88%  { opacity: 1; }
+  100% { transform: translateY(120%); opacity: 0; }
+}
+.reel-scan {
+  animation: reel-scan 2.4s var(--ease-out) infinite;
+}
+
+/* Live reel segmented stage bar — the active segment breathes so it reads as
+ * "in progress" vs the solid done segments. */
+@keyframes reel-segment-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+.reel-segment-active {
+  animation: reel-segment-pulse 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .reel-scan, .reel-segment-active { animation: none; }
+}
+
+/* Status-ring breathe — concentric rings on the System Status cell. Tempo
+ * is set inline (animation-duration) by the StatusPulse component, so a busy
+ * system pulses fast and a quiet one slowly. */
+@keyframes status-breathe {
+  0%, 100% { transform: scale(1);    opacity: 1; }
+  50%      { transform: scale(1.08); opacity: 0.55; }
+}
+
+/* QuickWinCountdown shimmer — a slow diagonal sheen across the activation
+ * card. Color baked into the gradient inline; this just animates position. */
+@keyframes quick-win-sheen {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.quick-win-shimmer {
+  animation: quick-win-sheen 6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .quick-win-shimmer { animation: none; }
+}
+
+/* KPI cells on Overview — when wrapped in a Link, hover lifts the background
+ * subtly so it reads as clickable. Press-down scale lives in the motion language. */
+.kpi-cell-link:hover {
+  background: color-mix(in srgb, var(--surface-2) 38%, transparent);
+}
+.kpi-cell-link:active {
+  transform: scale(0.992);
+  transition-duration: var(--t-press);
+}
+
+/* Lens tabs — the chrome (tint + underline) is owned by a shared sliding
+ * indicator (see lens-tabs.tsx), so per-tab backgrounds are intentionally
+ * absent. Only the press micro-scale lives here, in the motion language. */
+.lens-tab:active {
+  transform: scale(0.985);
+  transition-duration: var(--t-press);
 }
 
 @keyframes count-up {
@@ -531,9 +934,12 @@ textarea:focus {
 
 /* Usage widget: modern "floating card" feel */
 .usage-card {
-  transition: transform 0.22s ease, box-shadow 0.22s ease;
+  transition: transform var(--t-popover) var(--ease-out),
+              box-shadow var(--t-popover) var(--ease-out);
 }
-.usage-card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 22px 46px -12px rgba(234,88,12,0.34), 0 10px 22px -8px rgba(0,0,0,0.12);
+@media (hover: hover) and (pointer: fine) {
+  .usage-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 22px 46px -12px rgba(234,88,12,0.34), 0 10px 22px -8px rgba(0,0,0,0.12);
+  }
 }

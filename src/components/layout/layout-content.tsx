@@ -7,6 +7,7 @@ import { HeaderBar } from './header-bar';
 import { MobileNav } from './mobile-nav';
 import { AppShell } from './app-shell';
 import { CommandPalette } from '../command-palette';
+import { WalkthroughController } from '../walkthrough/walkthrough-controller';
 import { createClient } from '@/lib/supabase/client';
 
 const AUTH_PATHS = ['/login'];
@@ -16,10 +17,14 @@ export function LayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [authChecked, setAuthChecked] = useState(false);
 
+  // Standalone paths render their own chrome and need no authenticated user:
+  // the login screen and the public /docs knowledge base.
   const isAuthPath = AUTH_PATHS.some((p) => pathname.startsWith(p));
+  const isPublicDocs = pathname === '/docs' || pathname.startsWith('/docs/');
+  const isStandalone = isAuthPath || isPublicDocs;
 
   useEffect(() => {
-    if (isAuthPath) return;
+    if (isStandalone) return;
     let cancelled = false;
     const supabase = createClient();
     supabase.auth
@@ -38,9 +43,9 @@ export function LayoutContent({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [isAuthPath, pathname, router]);
+  }, [isStandalone, pathname, router]);
 
-  if (isAuthPath) {
+  if (isStandalone) {
     return <>{children}</>;
   }
 
@@ -57,6 +62,7 @@ export function LayoutContent({ children }: { children: React.ReactNode }) {
       </div>
       <MobileNav />
       <CommandPalette />
+      <WalkthroughController />
     </>
   );
 }

@@ -6,6 +6,7 @@ import {
   RefreshCw, Trash2, Users, UserPlus, KeyRound, BrainCircuit, BellRing, Scale,
 } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
+import { WalkthroughSettings } from '@/components/walkthrough/walkthrough-settings';
 import { timeAgo } from '@/lib/utils';
 import { getRoleMatrix } from '@/lib/rbac';
 import pkg from '../../../package.json';
@@ -485,6 +486,7 @@ export default function SettingsPage() {
       {/* Database Info */}
       {activeTab === 'general' && (
       <>
+      <WalkthroughSettings />
       <div className="panel p-5 space-y-4">
         <h2 className="text-sm font-medium flex items-center gap-2">
           <Database size={14} className="text-primary" /> Database
