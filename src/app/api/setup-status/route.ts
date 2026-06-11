@@ -41,8 +41,8 @@ export async function GET() {
              AND agent_id IN ('ai-ceo','ai-cmo','ai-coo','ai-cro','ai-cxo')
              AND enabled = true AND next_run_at IS NOT NULL) AS execs_enabled,
         EXISTS(SELECT 1 FROM public.goals WHERE tenant_id = ${tid}) AS goals,
-        EXISTS(SELECT 1 FROM public.documents
-           WHERE tenant_id = ${tid} AND title = 'Agency profile') AS agency_profile,
+        (SELECT COALESCE(length(trim(business_profile->>'playbook')) > 0, false)
+           FROM public.tenants WHERE id = ${tid}) AS playbook,
         EXISTS(SELECT 1 FROM public.connections
            WHERE tenant_id = ${tid} AND status = 'connected') AS socials,
         EXISTS(SELECT 1 FROM public.client_integrations
@@ -63,7 +63,7 @@ export async function GET() {
       claude_key: boolean;
       execs_enabled: boolean;
       goals: boolean;
-      agency_profile: boolean;
+      playbook: boolean;
       socials: boolean;
       integrations: boolean;
       competitor_watch: boolean;
@@ -83,7 +83,7 @@ export async function GET() {
         claude_key: !!r?.claude_key,
         execs_enabled: !!r?.execs_enabled,
         goals: !!r?.goals,
-        agency_profile: !!r?.agency_profile,
+        playbook: !!r?.playbook,
         socials: !!r?.socials,
         integrations: !!r?.integrations,
         competitor_watch: !!r?.competitor_watch,

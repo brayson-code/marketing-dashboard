@@ -1,5 +1,5 @@
 import {
-  CreditCard, KeyRound, Bot, Target, FileText, Share2, BarChart3, Eye, UserPlus,
+  CreditCard, KeyRound, Bot, Target, BookText, Share2, BarChart3, Eye, UserPlus,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -12,7 +12,7 @@ export type SignalKey =
   | 'claude_key'
   | 'execs_enabled'
   | 'goals'
-  | 'agency_profile'
+  | 'playbook'
   | 'socials'
   | 'integrations'
   | 'competitor_watch'
@@ -83,13 +83,14 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
     anchor: 'add-goal',
   },
   {
-    id: 'agency_profile',
-    title: 'Add your agency profile',
-    body: 'A short profile of your agency gives every agent the context and voice to sound like you.',
-    icon: FileText,
-    cta: { label: 'Open Knowledge', href: '/kg' },
+    id: 'playbook',
+    title: 'Build your company playbook',
+    body: 'Answer a few questions and we write a brief every agent reads first — so your AI team knows your objective, audience, and voice instead of sounding generic.',
+    icon: BookText,
+    cta: { label: 'Build playbook', href: '/memory' },
     required: true,
-    routes: [],
+    routes: ['/memory'],
+    anchor: 'playbook-tab',
   },
   {
     id: 'socials',
