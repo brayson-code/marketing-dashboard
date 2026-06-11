@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bot, Crown, RefreshCw, Save, Trash2, Plus, X, Wand2 } from 'lucide-react';
+import { Bot, Crown, RefreshCw, Save, Trash2, Plus, Wand2 } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AgentPlaybookWizard } from '@/components/agents/agent-playbook-wizard';
+import { CreateAgentModal } from '@/components/agents/create-agent-modal';
 
 // Known Claude models (latest family). The select keeps any legacy/custom value
 // already on a def so it isn't silently dropped.
@@ -83,12 +84,6 @@ type Editable = {
   enabled: boolean;
 };
 
-const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-
-function isSlug(v: string): boolean {
-  return SLUG_RE.test(v);
-}
-
 function toEditable(a: AgentDef): Editable {
   return {
     name: a.name ?? '',
@@ -118,12 +113,6 @@ export default function AgentStudioPage() {
 
   const [showNew, setShowNew] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [newId, setNewId] = useState('');
-  const [newName, setNewName] = useState('');
-  const [newRole, setNewRole] = useState<AgentRole>('general');
-  const [newModel, setNewModel] = useState('claude-opus-4-8');
-  const [newDescription, setNewDescription] = useState('');
 
   const loadList = useCallback(async () => {
     setLoadingList(true);
@@ -236,62 +225,6 @@ export default function AgentStudioPage() {
     }
   }, [def, loadList, selectedId]);
 
-  const resetNewForm = useCallback(() => {
-    setNewId('');
-    setNewName('');
-    setNewRole('general');
-    setNewModel('claude-opus-4-8');
-    setNewDescription('');
-  }, []);
-
-  const create = useCallback(async () => {
-    const id = newId.trim();
-    const name = newName.trim();
-    if (!id || !name) {
-      toast.error('ID and name are required');
-      return;
-    }
-    if (!isSlug(id)) {
-      toast.error('ID must be a slug: lowercase letters, digits, and hyphens');
-      return;
-    }
-    setCreating(true);
-    try {
-      const res = await fetch('/api/agents/defs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id,
-          name,
-          role: newRole,
-          model: newModel,
-          max_tokens: 8000,
-          rate_per_hour: 0,
-          description: newDescription,
-          soul: '',
-          agent_md: '',
-          skills: '',
-          spawnable: true,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        if (res.status === 409) throw new Error(String(data?.error || `Agent "${id}" already exists`));
-        throw new Error(String(data?.error || 'Create failed'));
-      }
-      toast.success('Agent created');
-      const created = data.agent as AgentDef;
-      setShowNew(false);
-      resetNewForm();
-      await loadList();
-      await selectAgent(created?.id || id);
-    } catch (e) {
-      toast.error((e as Error).message || 'Create failed');
-    } finally {
-      setCreating(false);
-    }
-  }, [loadList, newDescription, newId, newModel, newName, newRole, resetNewForm, selectAgent]);
-
   const orchestrators = useMemo(
     () => agents.filter((a) => a.role === 'orchestrator'),
     [agents],
@@ -300,8 +233,6 @@ export default function AgentStudioPage() {
     () => agents.filter((a) => a.role !== 'orchestrator'),
     [agents],
   );
-
-  const newIdValid = newId === '' || isSlug(newId);
 
   return (
     <div className="space-y-6 animate-in w-full">
@@ -327,10 +258,7 @@ export default function AgentStudioPage() {
             <button
               type="button"
               className="btn btn-sm text-xs"
-              onClick={() => {
-                resetNewForm();
-                setShowNew(true);
-              }}
+              onClick={() => setShowNew(true)}
             >
               <Plus size={12} /> New agent
             </button>
@@ -546,23 +474,14 @@ export default function AgentStudioPage() {
       </div>
 
       {showNew && (
-        <NewAgentModal
-          id={newId}
-          name={newName}
-          role={newRole}
-          model={newModel}
-          description={newDescription}
-          idValid={newIdValid}
-          creating={creating}
-          onId={setNewId}
-          onName={setNewName}
-          onRole={setNewRole}
-          onModel={setNewModel}
-          onDescription={setNewDescription}
-          onClose={() => {
-            if (!creating) setShowNew(false);
+        <CreateAgentModal
+          onClose={() => setShowNew(false)}
+          onCreated={async (id) => {
+            setShowNew(false);
+            toast.success('Agent created');
+            await loadList();
+            await selectAgent(id);
           }}
-          onCreate={create}
         />
       )}
 
@@ -710,132 +629,5 @@ function MonoField({
   );
 }
 
-function NewAgentModal({
-  id,
-  name,
-  role,
-  model,
-  description,
-  idValid,
-  creating,
-  onId,
-  onName,
-  onRole,
-  onModel,
-  onDescription,
-  onClose,
-  onCreate,
-}: {
-  id: string;
-  name: string;
-  role: AgentRole;
-  model: string;
-  description: string;
-  idValid: boolean;
-  creating: boolean;
-  onId: (v: string) => void;
-  onName: (v: string) => void;
-  onRole: (v: AgentRole) => void;
-  onModel: (v: string) => void;
-  onDescription: (v: string) => void;
-  onClose: () => void;
-  onCreate: () => void;
-}) {
-  return (
-    <div
-      className="fixed inset-0 z-[90] flex items-center justify-center bg-background/70 backdrop-blur-sm p-4"
-      onClick={onClose}
-    >
-      <div
-        className="panel w-full max-w-lg animate-in"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="panel-header flex items-center justify-between">
-          <div className="text-sm font-medium flex items-center gap-2">
-            <Plus size={14} className="text-primary" /> New agent
-          </div>
-          <button
-            type="button"
-            className="btn btn-ghost btn-xs"
-            onClick={onClose}
-            disabled={creating}
-            aria-label="Close"
-          >
-            <X size={14} />
-          </button>
-        </div>
-
-        <div className="panel-body space-y-3">
-          <label className="block space-y-1">
-            <span className="text-xs text-muted-foreground">ID (slug)</span>
-            <input
-              className="input text-sm font-mono"
-              value={id}
-              onChange={(e) => onId(e.target.value)}
-              placeholder="market-researcher"
-              autoFocus
-            />
-            <span className={`text-[10px] ${idValid ? 'text-muted-foreground' : 'text-destructive'}`}>
-              {idValid
-                ? 'Lowercase letters, digits, and hyphens. Cannot be changed later.'
-                : 'Invalid slug — use lowercase letters, digits, and hyphens only.'}
-            </span>
-          </label>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <label className="space-y-1">
-              <span className="text-xs text-muted-foreground">Name</span>
-              <input
-                className="input text-sm"
-                value={name}
-                onChange={(e) => onName(e.target.value)}
-                placeholder="Market Researcher"
-              />
-            </label>
-            <label className="space-y-1">
-              <span className="text-xs text-muted-foreground">Role</span>
-              <select
-                className="input text-sm"
-                value={role}
-                onChange={(e) => onRole(e.target.value as AgentRole)}
-              >
-                {ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <label className="block space-y-1">
-            <span className="text-xs text-muted-foreground">Model</span>
-            <ModelSelect value={model} onChange={onModel} />
-          </label>
-          <label className="block space-y-1">
-            <span className="text-xs text-muted-foreground">Starter description</span>
-            <textarea
-              className="input text-sm leading-relaxed"
-              rows={2}
-              value={description}
-              onChange={(e) => onDescription(e.target.value)}
-              placeholder="What this agent is for…"
-            />
-          </label>
-        </div>
-
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border/40">
-          <button type="button" className="btn btn-ghost btn-sm text-xs" onClick={onClose} disabled={creating}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="btn btn-primary btn-sm text-xs"
-            onClick={onCreate}
-            disabled={creating || !id.trim() || !name.trim() || !idValid}
-          >
-            <Plus size={14} /> {creating ? 'Creating…' : 'Create agent'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+// New-agent creation now lives in CreateAgentModal (templates + built-in playbook
+// questionnaire). The old bare id/name/role form was removed.
