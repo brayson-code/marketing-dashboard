@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar, Legend } from 'recharts';
-import { DollarSign, Cpu, Zap, Activity } from 'lucide-react';
+import { DollarSign, Cpu, Zap, Activity, Bot, Database, Mic } from 'lucide-react';
 
 interface DailyUsage { day: string; input_tokens: number; output_tokens: number; cost_usd: number; calls: number }
 interface AgentUsage { agent_id: string; model: string; calls: number; input_tokens: number; output_tokens: number; cost_usd: number; avg_duration_sec: number }
@@ -10,6 +10,11 @@ interface UsageSummary {
   total: { input_tokens: number; output_tokens: number; cost_usd: number; calls: number };
   by_day: DailyUsage[];
   by_agent: AgentUsage[];
+}
+interface Spend {
+  claude: { usd: number; tokens: number };
+  apify: { usedUsd: number | null; plan: string | null } | null;
+  deepgram: { balanceUsd: number | null; usedUsd: number | null } | null;
 }
 
 const RANGES = [
@@ -29,6 +34,7 @@ function fmtDay(day: string): string { return day.slice(5); /* MM-DD */ }
 
 export default function UsagePage() {
   const [data, setData] = useState<UsageSummary | null>(null);
+  const [spend, setSpend] = useState<Spend | null>(null);
   const [days, setDays] = useState(14);
 
   const load = useCallback(async () => {
@@ -36,7 +42,15 @@ export default function UsagePage() {
     setData(await res.json());
   }, [days]);
 
+  const loadSpend = useCallback(async () => {
+    try {
+      const res = await fetch('/api/spend', { cache: 'no-store' });
+      if (res.ok) setSpend(await res.json());
+    } catch { /* leave prior spend */ }
+  }, []);
+
   useEffect(() => { load(); const id = setInterval(load, 5000); return () => clearInterval(id); }, [load]);
+  useEffect(() => { loadSpend(); const id = setInterval(loadSpend, 60000); return () => clearInterval(id); }, [loadSpend]);
 
   if (!data) return <div className="text-xs text-muted-foreground">Loading usage…</div>;
 
@@ -54,6 +68,30 @@ export default function UsagePage() {
           {RANGES.map((r) => (
             <button key={r.days} onClick={() => setDays(r.days)} className={`tab ${days === r.days ? 'active' : ''}`}>{r.label}</button>
           ))}
+        </div>
+      </div>
+
+      <div>
+        <div className="section-title mb-2">Spend</div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <SpendCard
+            icon={Bot}
+            label="Claude"
+            value={spend ? fmtUsd(spend.claude.usd) : '—'}
+            sub={spend ? `${fmtNum(spend.claude.tokens)} tokens · last 30d` : 'last 30d'}
+          />
+          <SpendCard
+            icon={Database}
+            label="Apify"
+            value={spend?.apify?.usedUsd != null ? fmtUsd(spend.apify.usedUsd) : '—'}
+            sub={spend?.apify ? (spend.apify.plan ? `${spend.apify.plan} plan · month to date` : 'month to date') : 'not connected'}
+          />
+          <SpendCard
+            icon={Mic}
+            label="Deepgram"
+            value={spend?.deepgram?.balanceUsd != null ? `${fmtUsd(spend.deepgram.balanceUsd)} free credit left` : '—'}
+            sub={spend?.deepgram ? 'remaining balance' : 'not connected'}
+          />
         </div>
       </div>
 
@@ -138,6 +176,18 @@ function StatTile({ icon: Icon, label, value, sub }: { icon: typeof Activity; la
         <Icon size={11} /> {label}
       </div>
       <div className="text-xl font-semibold mt-1">{value}</div>
+      {sub && <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>}
+    </div>
+  );
+}
+
+function SpendCard({ icon: Icon, label, value, sub }: { icon: typeof Activity; label: string; value: string; sub?: string }) {
+  return (
+    <div className="panel p-4">
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+        <Icon size={11} /> {label}
+      </div>
+      <div className="text-lg font-semibold mt-1">{value}</div>
       {sub && <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>}
     </div>
   );

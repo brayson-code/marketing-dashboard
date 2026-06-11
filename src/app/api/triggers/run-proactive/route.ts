@@ -1,12 +1,15 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { runProactiveSweep, gatherSignals } from '@/lib/proactive';
 
 export async function GET() {
+  enterTenant(await resolveTenant());
   // Dry-run: just show signals without invoking KeyPlayer.
   return NextResponse.json({ signals: await gatherSignals(), invoked: false, mode: 'dry_run' });
 }
 
 export async function POST() {
+  enterTenant(await resolveTenant());
   // Fire-and-forget so the caller (cron/UI button) gets a fast 202.
   void runProactiveSweep()
     .then((r) => {

@@ -4,6 +4,7 @@
 // Cron dispatcher (/api/cron/dispatch) and the "Run now" button (/api/cron PUT).
 
 import { sql, jsonb, tenantId } from './db/client';
+import { runWithTenant } from './tenant';
 import { spawnSubAgent } from './subagent';
 import { computeNextRun } from './cron-expr';
 import { appendKnowledgeSection } from './documents';
@@ -16,7 +17,7 @@ interface DueJobRow {
   enabled: boolean;
   schedule_expr: string;
   schedule_tz: string;
-  payload: { message?: string; saveToKb?: boolean; kbDoc?: string } & Record<string, unknown>;
+  payload: { kind?: string; message?: string; saveToKb?: boolean; kbDoc?: string } & Record<string, unknown>;
 }
 
 function utcStamp(d = new Date()): string {
@@ -62,7 +63,22 @@ async function runOne(job: DueJobRow): Promise<{ id: string; status: 'ok' | 'err
   let fullResult: string | null = null;
   let savedTo: string | null = null;
 
-  if (!job.agent_id) {
+  if (job.payload?.kind === 'watchlist') {
+    // Competitor watchlist sweep. Unlike agent jobs, this doesn't spawn a single
+    // sub-agent off payload.message — it walks every due competitor, scrapes their
+    // recent reels, and analyzes the top new performer(s) (which internally spawns
+    // reel-analyst per reel). Dynamic import keeps reel-intel out of the dispatcher's
+    // base bundle and matches the buildAgentAugment best-effort pattern.
+    try {
+      const { runWatchlistDue } = await import('./reel-intel');
+      const r = await runWatchlistDue();
+      summary = `Watchlist swept: checked ${r.checked} competitor(s), analyzed ${r.analyzed} reel(s).`;
+      fullResult = summary;
+    } catch (err) {
+      status = 'error';
+      errorText = (err as Error).message;
+    }
+  } else if (!job.agent_id) {
     status = 'error';
     errorText = 'No agent configured for this job';
   } else if (!job.payload?.message) {
@@ -71,8 +87,13 @@ async function runOne(job: DueJobRow): Promise<{ id: string; status: 'ok' | 'err
   } else {
     // spawnSubAgent picks + applies the constraint variant centrally. We only add
     // the kg_remember directive (with tier-derived confidence) when feeding the KB.
+    // Per-agent augmenters: inject live signals the agent should reason about
+    // (e.g. AI CMO needs the channel's actual numbers for a weekly brand review,
+    // not a vibes-based recap). Each augmenter is best-effort + null-safe.
+    const augment = await buildAgentAugment(job.agent_id);
     const message =
       String(job.payload.message) +
+      (augment ? `\n\n${augment}` : '') +
       (saveToKb ? `\n\n# ${kgPersistDirective()}` : '');
     try {
       const res = await spawnSubAgent(job.agent_id, message);
@@ -118,12 +139,39 @@ async function runOne(job: DueJobRow): Promise<{ id: string; status: 'ok' | 'err
   const secs = Math.round(durationMs / 1000);
   if (status === 'ok') {
     const kb = savedTo ? ` Saved to knowledge base → "${savedTo}".` : '';
-    await notify(`Cron "${label}" completed`, `${job.agent_id} finished in ${secs}s.${kb}`, 'info');
+    const who = job.payload?.kind === 'watchlist' ? (summary ?? 'Watchlist swept') : `${job.agent_id} finished`;
+    await notify(`Cron "${label}" completed`, `${who} in ${secs}s.${kb}`, 'info');
   } else {
     await notify(`Cron "${label}" failed`, errorText || 'Unknown error', 'warning');
   }
 
   return { id: job.id, status };
+}
+
+/** Build the per-agent live-signal block. Returns '' when there's nothing to
+ *  add or the data sources are unavailable — never throws. The result is
+ *  appended to the agent's cron payload.message just before dispatch. */
+async function buildAgentAugment(agentId: string | null): Promise<string> {
+  if (!agentId) return '';
+  if (agentId !== 'ai-cmo') return ''; // only CMO consumes channel stats today
+  try {
+    const { isConnected, getChannelStats, last30DayMetrics } = await import('./youtube');
+    if (!(await isConnected())) return '';
+    const [ch, m] = await Promise.all([getChannelStats(), last30DayMetrics()]);
+    if (!ch) return '';
+    const lines: string[] = [];
+    lines.push('# Live channel signals (read-only, current)');
+    lines.push(`YouTube · ${ch.title || 'channel'}: ${ch.subscribers.toLocaleString()} subs · ${ch.views_total.toLocaleString()} total views · ${ch.videos_total} videos.`);
+    if (m) {
+      const netSubs = (m.net_subs > 0 ? '+' : '') + m.net_subs;
+      lines.push(`Last 30d (${m.start} → ${m.end}): ${m.views.toLocaleString()} views · ${m.estimated_minutes_watched.toLocaleString()} watch min · avg view ${m.average_view_duration_sec}s · net subs ${netSubs}.`);
+    }
+    lines.push('Use these numbers verbatim where the brief asks about channel performance. Do not invent metrics.');
+    return lines.join('\n');
+  } catch (e) {
+    console.error('[cron-runner] augment failed:', (e as Error).message);
+    return '';
+  }
 }
 
 async function loadJob(id: string): Promise<DueJobRow | null> {
@@ -149,21 +197,27 @@ export async function runCronJob(id: string): Promise<{ ran: boolean; status?: '
  * limits and keep within the function's memory/CPU budget.
  */
 export async function runDueJobs(): Promise<{ ran: number; results: Array<{ id: string; status: string }> }> {
+  // The hourly Vercel dispatcher runs OUTSIDE any tenant context, so we select
+  // due jobs across ALL tenants (the backend connects as the RLS-bypassing
+  // postgres role, so this legitimately sees every tenant's rows) and run each
+  // one INSIDE its owning tenant's context. Without runWithTenant, tenantId()
+  // falls back to the system default (HQ) and only HQ's jobs would ever fire —
+  // every other tenant's scheduled cron, incl. the competitor watchlist, would
+  // silently never run.
   const due = (await sql()`
-    SELECT id, name, agent_id, enabled, schedule_expr, schedule_tz, payload
+    SELECT id, name, agent_id, enabled, schedule_expr, schedule_tz, payload, tenant_id
     FROM public.cron_jobs
-    WHERE tenant_id = ${tenantId()}
-      AND enabled = true
+    WHERE enabled = true
       AND next_run_at IS NOT NULL
       AND next_run_at <= now()
     ORDER BY next_run_at ASC
-    LIMIT 25
-  `) as unknown as DueJobRow[];
+    LIMIT 50
+  `) as unknown as Array<DueJobRow & { tenant_id: string }>;
 
   const results: Array<{ id: string; status: string }> = [];
   for (const job of due) {
     try {
-      const r = await runOne(job);
+      const r = await runWithTenant({ tenantId: job.tenant_id, userId: null }, () => runOne(job));
       results.push(r);
     } catch (err) {
       results.push({ id: job.id, status: 'error' });

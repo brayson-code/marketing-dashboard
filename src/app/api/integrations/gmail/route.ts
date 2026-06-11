@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { ImapFlow } from 'imapflow';
 import { requireApiUser } from '@/lib/api-auth';
@@ -7,6 +8,7 @@ const user = process.env.EMAIL_USER;
 const pass = process.env.EMAIL_PASSWORD;
 
 export async function GET(request: Request) {
+  enterTenant(await resolveTenant());
   const auth = requireApiUser(request);
   if (auth) return auth;
   if (!user || !pass) {

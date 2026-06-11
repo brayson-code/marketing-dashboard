@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { draftCronJob } from '@/lib/cron-nl';
 
@@ -8,6 +9,7 @@ export const maxDuration = 60;
 // into a cron job object for the editor to load. Owner-only (behind the auth
 // middleware); does NOT create the job — the owner reviews + saves.
 export async function POST(request: Request) {
+  enterTenant(await resolveTenant());
   const body = await request.json().catch(() => ({}));
   const prompt = typeof body?.prompt === 'string' ? body.prompt : '';
   try {

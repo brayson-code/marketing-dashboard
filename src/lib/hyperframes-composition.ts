@@ -6,6 +6,13 @@
 // editor opens.
 
 import type { Storyboard } from './hyperframes-storyboard';
+import type { ClipCatalogEntry } from './hyperframes-clips';
+
+/** Optional hooks for compositionFromStoryboard — resolve a scene's clip ref to a real asset. */
+export interface CompositionFromStoryboardOpts {
+  /** Resolve a clip reference (id or name) to a Media-library asset, or null. */
+  resolveClip?: (ref?: string | null) => ClipCatalogEntry | null;
+}
 
 export interface TextLayer {
   id: string;
@@ -63,39 +70,47 @@ function parseTimeRange(time?: string): { startMs?: number; endMs?: number } {
   return {};
 }
 
-export function compositionFromStoryboard(sb: Storyboard): Composition {
+export function compositionFromStoryboard(sb: Storyboard, opts: CompositionFromStoryboardOpts = {}): Composition {
   let n = 0;
   const sid = () => `s${++n}`;
+  const resolveClip = opts.resolveClip;
 
-  const build = (opts: { label?: string; time?: string; text?: string; visual?: string; audio?: string }): CompositionScene => {
+  const build = (b: { label?: string; time?: string; text?: string; visual?: string; audio?: string; clip?: string }): CompositionScene => {
     const id = sid();
-    const { startMs, endMs } = parseTimeRange(opts.time);
+    const { startMs, endMs } = parseTimeRange(b.time);
     const layers: TextLayer[] = [];
-    if (opts.text && opts.text.trim()) {
-      layers.push({ ...newTextLayer(`${id}-t1`, opts.text.trim()) });
+    if (b.text && b.text.trim()) {
+      layers.push({ ...newTextLayer(`${id}-t1`, b.text.trim()) });
     }
     // Captions = the spoken words. Seed from the VO line, stripping a leading
     // "VO:" and wrapping quotes so it reads as clean on-screen text.
-    const caption = opts.audio
-      ? opts.audio.replace(/^\s*VO:\s*/i, '').replace(/^["']|["']$/g, '').trim() || undefined
+    const caption = b.audio
+      ? b.audio.replace(/^\s*VO:\s*/i, '').replace(/^["']|["']$/g, '').trim() || undefined
       : undefined;
+    // When a scene references a real Media-library clip and the resolver finds it,
+    // use that asset's URL as the scene background (video or image). Otherwise the
+    // background stays the default color — identical to pre-clip behavior.
+    const asset = resolveClip ? resolveClip(b.clip) : null;
+    const background: SceneBackground = asset
+      ? { type: asset.kind === 'video' ? 'video' : 'image', value: asset.url }
+      : { type: 'color', value: DEFAULT_BG };
     return {
       id,
-      label: opts.label,
+      label: b.label,
       startMs: startMs ?? 0,
       endMs: endMs ?? 0,
-      background: { type: 'color', value: DEFAULT_BG },
+      background,
       layers,
-      voiceover: opts.audio,
+      voiceover: b.audio,
       caption,
-      note: opts.visual,
+      note: b.visual,
     };
   };
 
   const scenes: CompositionScene[] = [];
-  if (sb.hook) scenes.push(build({ label: 'Hook', text: sb.hook.onScreenText, visual: sb.hook.visual, audio: sb.hook.audio }));
-  for (const s of sb.scenes) scenes.push(build({ time: s.time, text: s.onScreenText, visual: s.visual, audio: s.audio }));
-  if (sb.cta && (sb.cta.onScreenText || sb.cta.visual)) scenes.push(build({ label: 'CTA', text: sb.cta.onScreenText, visual: sb.cta.visual }));
+  if (sb.hook) scenes.push(build({ label: 'Hook', text: sb.hook.onScreenText, visual: sb.hook.visual, audio: sb.hook.audio, clip: sb.hook.clip }));
+  for (const s of sb.scenes) scenes.push(build({ time: s.time, text: s.onScreenText, visual: s.visual, audio: s.audio, clip: s.clip }));
+  if (sb.cta && (sb.cta.onScreenText || sb.cta.visual)) scenes.push(build({ label: 'CTA', text: sb.cta.onScreenText, visual: sb.cta.visual, clip: sb.cta.clip }));
   if (scenes.length === 0) scenes.push(newScene(sid(), 0));
 
   // Fill in any missing/invalid timings sequentially so the timeline is sane.

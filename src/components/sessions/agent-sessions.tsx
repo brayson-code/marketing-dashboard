@@ -61,7 +61,7 @@ export function AgentSessions() {
             return (
               <div key={session.conversation_id} className="px-5 py-3 flex items-center gap-3">
                 <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${theme.bg} ${theme.color}`}>
-                  {theme.emoji} {session.agent_id}
+                  {session.agent_id}
                 </span>
                 <div className="flex-1 min-w-0">
                   <div className="text-xs truncate">

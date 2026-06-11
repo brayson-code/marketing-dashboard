@@ -123,9 +123,9 @@ export function A2AHistory() {
             }`}
           >
             <div className="text-xs font-medium flex items-center gap-1 truncate">
-              <span>{c.a.emoji}</span><span className="truncate">{c.a.name}</span>
+              <span className="truncate">{c.a.name}</span>
               <Network size={10} className="text-muted-foreground shrink-0" />
-              <span>{c.b.emoji}</span><span className="truncate">{c.b.name}</span>
+              <span className="truncate">{c.b.name}</span>
             </div>
             <div className="text-[10px] text-muted-foreground mt-0.5">{c.message_count} msgs · {ago(c.last_at)}</div>
           </button>
@@ -141,8 +141,8 @@ export function A2AHistory() {
             current.messages.map((m) => (
               <div key={m.id} className="rounded-xl border border-border/60 bg-[var(--surface-2)] p-3">
                 <div className="flex items-center gap-1.5 text-[11px] mb-1 flex-wrap">
-                  <span className="font-medium">{m.from.emoji} {m.from.name}</span>
-                  {m.to && <><ArrowRight size={11} className="text-muted-foreground" /><span className="font-medium">{m.to.emoji} {m.to.name}</span></>}
+                  <span className="font-medium">{m.from.name}</span>
+                  {m.to && <><ArrowRight size={11} className="text-muted-foreground" /><span className="font-medium">{m.to.name}</span></>}
                   {m.phase && <span className={`badge ${PHASE_STYLE[m.phase] ?? 'badge-neutral'}`}>{m.phase}</span>}
                   <span className="text-muted-foreground ml-auto">{ago(m.created_at)}</span>
                 </div>
@@ -162,7 +162,7 @@ export function A2AHistory() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); } }}
-                placeholder={`Send a task to ${target.emoji} ${target.name}…`}
+                placeholder={`Send a task to ${target.name}…`}
                 rows={2}
                 disabled={sending}
                 className="flex-1 resize-none"

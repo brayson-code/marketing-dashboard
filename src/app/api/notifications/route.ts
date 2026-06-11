@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextRequest, NextResponse } from 'next/server';
 import { sql, tenantId } from '@/lib/db/client';
 import { requireApiEditor, requireApiUser } from '@/lib/api-auth';
@@ -16,6 +17,7 @@ interface NotificationRow {
 }
 
 export async function GET(req: NextRequest) {
+  enterTenant(await resolveTenant());
   const auth = requireApiUser(req as Request);
   if (auth) return auth;
   const { searchParams } = req.nextUrl;
@@ -45,6 +47,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  enterTenant(await resolveTenant());
   const auth = requireApiEditor(req as Request);
   if (auth) return auth;
   const actor = requireUser(req as Request);

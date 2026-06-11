@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { startSync, syncAll } from '@/lib/sync';
 import { requireApiUser } from '@/lib/api-auth';
@@ -6,6 +7,7 @@ import { requireApiUser } from '@/lib/api-auth';
 let started = false;
 
 export async function POST(request: Request) {
+  enterTenant(await resolveTenant());
   const auth = requireApiUser(request as Request);
   if (auth) return auth;
   if (!started) {
@@ -17,6 +19,7 @@ export async function POST(request: Request) {
 }
 
 export async function GET(request: Request) {
+  enterTenant(await resolveTenant());
   const auth = requireApiUser(request as Request);
   if (auth) return auth;
   if (!started) {

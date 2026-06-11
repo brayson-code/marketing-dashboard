@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { requireApiUser } from '@/lib/api-auth';
 
@@ -20,6 +21,7 @@ async function rpc(method: string, params: unknown[] = []): Promise<unknown> {
 }
 
 export async function GET(request: Request) {
+  enterTenant(await resolveTenant());
   const auth = requireApiUser(request);
   if (auth) return auth;
   if (!heliusUrl) {

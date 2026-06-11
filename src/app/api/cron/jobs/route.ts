@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextRequest, NextResponse } from 'next/server';
 import { logAudit } from '@/lib/audit';
 import { requireUser } from '@/lib/auth';
@@ -18,6 +19,7 @@ function statusFor(msg: string): number {
 }
 
 export async function GET() {
+  enterTenant(await resolveTenant());
   try {
     const jobs = await listCronJobs();
     return NextResponse.json({ jobs, can_write: true });
@@ -27,6 +29,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  enterTenant(await resolveTenant());
   const body = await req.json().catch(() => ({}));
   try {
     await createCronJob(body?.job ?? {});
@@ -39,6 +42,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  enterTenant(await resolveTenant());
   const body = await req.json().catch(() => ({}));
   try {
     await updateCronJob(body?.job ?? {});
@@ -51,6 +55,7 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  enterTenant(await resolveTenant());
   const id = normalizeJobId(req.nextUrl.searchParams.get('id') || req.nextUrl.searchParams.get('jobId'));
   if (!id) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
   try {

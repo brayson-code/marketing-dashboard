@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import {
   countOtherAdmins,
@@ -27,6 +28,7 @@ function ensureAnotherAdminExists(excludingUserId: number) {
 }
 
 export async function GET(request: Request) {
+  enterTenant(await resolveTenant());
   try {
     requireAdmin(request);
     return NextResponse.json({ users: listUsers() });
@@ -43,6 +45,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  enterTenant(await resolveTenant());
   try {
     requireAdmin(request);
     const body = (await request.json()) as { username?: string; password?: string; role?: string };
@@ -65,6 +68,7 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  enterTenant(await resolveTenant());
   try {
     const admin = requireAdmin(request);
     const body = (await request.json()) as { id?: number; role?: string; password?: string };
@@ -95,6 +99,7 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  enterTenant(await resolveTenant());
   try {
     const admin = requireAdmin(request);
     const body = (await request.json()) as { id?: number };

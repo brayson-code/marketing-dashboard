@@ -28,7 +28,13 @@ const INPUT = 'px-3 py-2 rounded-lg border border-border bg-background'; // app 
 const STATUS_BADGE: Record<GeneStatus, string> = { active: 'badge-success', proposed: 'badge-warning', retired: 'badge-neutral' };
 const FILTERS: Array<GeneStatus | 'all'> = ['active', 'proposed', 'retired', 'all'];
 
+import { UpgradeGate } from '@/components/upgrade-gate';
+
 export default function GenesPage() {
+  return <UpgradeGate feature="genes" title="Genes"><GenesContent /></UpgradeGate>;
+}
+
+function GenesContent() {
   const [genes, setGenes] = useState<Gene[]>([]);
   const [enabled, setEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -88,7 +94,7 @@ export default function GenesPage() {
     <div className="space-y-4 animate-in">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="space-y-1">
-          <h1 className="text-xl font-semibold flex items-center gap-2"><Dna size={18} className="text-primary" /> Strategy Genes</h1>
+          <h1 className="text-h1 flex items-center gap-2"><Dna size={18} className="text-primary" /> Strategy Genes</h1>
           <p className="text-xs text-muted-foreground">
             Named, versioned lessons the agents learn. <b>Active</b> genes are injected into matching agents&apos; tasks;
             <b> proposed</b> ones are inert until you approve them. Toggle the master switch to stop using all genes instantly.

@@ -12,6 +12,10 @@ export interface SquadAgentMeta {
   role: string;
   model: string;
   description: string;
+  // Used by the Agents page to split the roster into "Org Chart" (the
+  // executive layer) vs "Specialists" (everything else).
+  department: string | null;
+  is_executive: boolean;
 }
 
 // Display metadata for agents that aren't in SUBAGENT_REGISTRY (orchestrator +
@@ -28,13 +32,17 @@ const META: Record<string, { name: string; emoji: string; role: string }> = {
   'lead-research': { name: 'Lead Research', emoji: '🕵️', role: 'Sales' },
   'thumbnail-generator': { name: 'Thumbnail Generator', emoji: '🖼️', role: 'Content' },
   'hyperframes-agent': { name: 'Hyperframes Agent', emoji: '🎬', role: 'Content' },
+  'reel-analyst': { name: 'Reel Analyst', emoji: '🎯', role: 'Research' },
+  'reel-ideator': { name: 'Reel Ideator', emoji: '💡', role: 'Content' },
+  'reel-optimizer': { name: 'Reel Optimizer', emoji: '🔬', role: 'Content' },
 };
 
 function titleize(id: string): string {
   return id.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-/** The static roster: orchestrator first, then the registered sub-agents, then system agents. */
+/** The static fallback roster: orchestrator + bundled sub-agents + system agents.
+ *  Used to backfill agents that aren't (yet) present in agent_defs for this tenant. */
 export function squadRoster(): SquadAgentMeta[] {
   const roster: SquadAgentMeta[] = [
     {
@@ -42,6 +50,8 @@ export function squadRoster(): SquadAgentMeta[] {
       ...META.keyplayer,
       model: 'claude-sonnet-4-6',
       description: 'The main agent. Talks to you over iMessage + the boardroom, plans the work, and dispatches the squad.',
+      department: 'leadership',
+      is_executive: false,
     },
   ];
 
@@ -54,15 +64,54 @@ export function squadRoster(): SquadAgentMeta[] {
       role: meta?.role ?? 'Specialist',
       model: spec.model,
       description: spec.description,
+      department: null,
+      is_executive: false,
     });
   }
 
   roster.push(
-    { id: 'fixer', ...META.fixer, model: 'claude-sonnet-4-6', description: 'Reads the repo via GitHub, diagnoses bugs caught by KeyWatch, and opens draft PRs for review.' },
-    { id: 'improver', ...META.improver, model: 'claude-sonnet-4-6', description: 'Reviews the business + system state on a schedule and files improvement proposals as drafts.' },
+    { id: 'fixer', ...META.fixer, model: 'claude-sonnet-4-6', description: 'Reads the repo via GitHub, diagnoses bugs caught by KeyWatch, and opens draft PRs for review.', department: 'operations', is_executive: false },
+    { id: 'improver', ...META.improver, model: 'claude-sonnet-4-6', description: 'Reviews the business + system state on a schedule and files improvement proposals as drafts.', department: 'operations', is_executive: false },
   );
 
   return roster;
+}
+
+/** Live roster — every enabled agent_def row, plus the static fallback for
+ *  built-ins that haven't been seeded into the DB. Agent Studio additions
+ *  (C-suite, custom agents) now show up here automatically. */
+async function liveRoster(): Promise<SquadAgentMeta[]> {
+  let dbRows: Array<{ id: string; name: string; role: string; role_title: string | null; model: string; description: string; department: string | null; is_executive: boolean }> = [];
+  try {
+    dbRows = (await sql()`
+      SELECT id, name, role, role_title, model, description, department, is_executive
+      FROM public.agent_defs
+      WHERE tenant_id = ${tenantId()} AND enabled = true
+      ORDER BY id
+    `) as unknown as typeof dbRows;
+  } catch {
+    // DB unreachable — fall back to the static roster so the page still renders.
+    return squadRoster();
+  }
+
+  const out: SquadAgentMeta[] = dbRows.map((r) => ({
+    id: r.id,
+    name: r.name || titleize(r.id),
+    emoji: META[r.id]?.emoji ?? '',
+    // Prefer the human role_title ("AI CEO", "Content Writer") over the raw
+    // type slug ("orchestrator", "general") so the list reads cleanly.
+    role: r.role_title ?? META[r.id]?.role ?? titleize(r.role || 'Specialist'),
+    model: r.model,
+    description: r.description ?? '',
+    department: r.department,
+    is_executive: r.is_executive,
+  }));
+
+  // Backfill anything in the static roster that the DB hasn't seeded yet
+  // (fixer/improver typically, plus any sub-agent not yet upserted).
+  const seen = new Set(out.map((a) => a.id));
+  for (const m of squadRoster()) if (!seen.has(m.id)) out.push(m);
+  return out;
 }
 
 export interface SquadAgentStats {
@@ -94,8 +143,9 @@ export async function getSquad(): Promise<SquadAgent[]> {
 
   const byId = new Map(rows.map((r) => [r.agent_id, r]));
   const now = Date.now() / 1000;
+  const roster = await liveRoster();
 
-  return squadRoster().map((meta) => {
+  return roster.map((meta) => {
     const s = byId.get(meta.id);
     const runs = Number(s?.runs ?? 0);
     const running = Number(s?.running ?? 0);

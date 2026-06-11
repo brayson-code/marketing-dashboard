@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { revalidateDraft } from '@/lib/revalidate-draft';
 
@@ -7,6 +8,7 @@ export const maxDuration = 120; // one Claude pass; may read a few repo files fo
 // POST /api/drafts/:id/revalidate — re-judge whether this draft is still worth acting
 // on against current goals + what's already shipped. Read-only (writes only a verdict).
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  enterTenant(await resolveTenant());
   const { id } = await params;
   const draftId = Number(id);
   if (!Number.isFinite(draftId)) return NextResponse.json({ error: 'Invalid draft id' }, { status: 400 });

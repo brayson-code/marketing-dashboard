@@ -10,6 +10,7 @@ import {
   Check, XCircle,
   LayoutList, Kanban, AlertCircle, BarChart3, ExternalLink,
 } from 'lucide-react';
+import { PageHeader } from '@/components/layout/page-header';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { useDashboard } from '@/store';
 import { timeAgo } from '@/lib/utils';
@@ -343,37 +344,39 @@ export default function CrmPage() {
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <h1 className="text-xl font-semibold">CRM</h1>
-          {canEdit && (
+      <PageHeader
+        icon={<Contact size={18} />}
+        title="CRM"
+        subtitle="Leads, tiers, and what's overdue. Tap a row for the full record."
+        actions={
+          canEdit && (
             <button className="btn btn-primary btn-sm" onClick={() => setCreateOpen(true)}>
               Add Lead
             </button>
-          )}
-        </div>
-        {data?.summary && (
-          <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
-            <span><strong className="text-foreground">{data.summary.total}</strong> leads</span>
-            <span>avg score <strong className="text-foreground">{data.summary.avg_score}</strong></span>
-            {data.summary.tier_breakdown.map(t => (
-              <span key={t.tier} className={`badge border ${TIER_COLORS[t.tier] || ''}`}>
-                Tier {t.tier}: {t.c}
-              </span>
-            ))}
+          )
+        }
+      />
+      {data?.summary && (
+        <div className="panel p-3 flex items-center gap-4 text-small flex-wrap">
+          <span><strong className="text-foreground">{data.summary.total}</strong> leads</span>
+          <span>avg score <strong className="text-foreground">{data.summary.avg_score}</strong></span>
+          {data.summary.tier_breakdown.map(t => (
+            <span key={t.tier} className={`badge border ${TIER_COLORS[t.tier] || ''}`}>
+              Tier {t.tier}: {t.c}
+            </span>
+          ))}
           {(data.summary?.tasks_overdue ?? data.tasks_overdue ?? 0) > 0 && (
             <span className="badge border bg-destructive/15 text-destructive border-destructive/30">
-                SLA breaches: {data.summary?.tasks_overdue ?? data.tasks_overdue}
+              SLA breaches: {data.summary?.tasks_overdue ?? data.tasks_overdue}
             </span>
           )}
           {(data.summary?.tasks_due_today ?? data.tasks_due_today ?? 0) > 0 && (
             <span className="badge border bg-warning/15 text-warning border-warning/30">
-                Due today: {data.summary?.tasks_due_today ?? data.tasks_due_today}
+              Due today: {data.summary?.tasks_due_today ?? data.tasks_due_today}
             </span>
           )}
-          </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Quick Stats */}
       {data?.summary && (

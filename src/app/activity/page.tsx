@@ -33,7 +33,7 @@ export default function ActivityPage() {
     <div className="space-y-6 animate-in">
       <div className="panel">
         <div className="panel-header flex items-center justify-between flex-wrap gap-3">
-          <h1 className="text-xl font-semibold">Activity Log</h1>
+          <h1 className="text-h1">Activity Log</h1>
           <div className="flex items-center gap-2">
             <button
               className="btn btn-ghost text-xs"

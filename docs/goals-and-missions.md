@@ -1,6 +1,6 @@
-# Goals & Missions
+# Goals, Campaigns & Missions
 
-**Goals** are the outcomes you want; **Missions** (and Campaigns) are how a team of agents works toward them in coordinated waves. Together they let you point KeyCommand at a result and watch it drive.
+**Goals** are the outcomes you want. **Campaigns** are themed, multi-channel pushes toward a goal over a date range. **Missions** are the execution runs — coordinated waves of agent work — that happen underneath. Together they let you point KeyCommand at a result and watch it drive.
 
 ![the Goals page with active goals and progress](images/goals-and-missions-1.png)
 
@@ -31,6 +31,31 @@ As work happens, a goal collects **progress entries** (expand a goal to read the
 
 ---
 
+## Campaigns
+
+### What it is
+
+A **Campaign** is a themed, multi-channel push toward a goal over a date range — a product launch, a month of LinkedIn thought-leadership, a webinar promo. It groups the **Missions** that do the actual work, so everything aimed at the same outcome lives in one place.
+
+### Why it matters
+
+When a coordinated effort spans several channels and weeks, a campaign is the container that keeps it together: one goal, one set of channels, one window, and a running count of the missions underneath it.
+
+### How to use it
+
+1. Open **Campaigns** and click **New campaign**.
+2. Fill in:
+   - **Name** — what the push is (e.g. *"Q3 product launch push"*).
+   - **Goal** — optional; the [goal](#goals) this campaign drives.
+   - **Channels** — a comma-separated list (e.g. *linkedin, x, email*).
+   - **Starts / Ends** — optional date window. Leave both blank for open-ended.
+   - **Brief** — optional; what the campaign is going after. Your agents read this.
+3. Click **Create**.
+
+Each campaign card shows its goal, channels, window, and how many missions are running, done, or total. Open a campaign to edit its details, change its **status** (active → paused → done → archived), and **launch a new mission** scoped to it.
+
+---
+
 ## Missions
 
 ### What it is
@@ -50,7 +75,7 @@ Some work is too big for one agent and one step. Missions break a large objectiv
 
 ![a Mission running, showing its waves and per-agent results](images/goals-and-missions-3.png)
 
-You can tie a Mission to a Goal, so a mission's progress feeds the goal it's meant to advance. The **Campaigns** page shows the same wave-based work from a campaign angle, and the active campaign's waves also appear in the **Automation Flow** strip on your [Overview](./overview.md).
+You can tie a Mission to a Goal, so a mission's progress feeds the goal it's meant to advance, and run missions under a **Campaign** to keep a multi-week push organized. A running mission's waves also appear in the **Automation Flow** strip on your [Overview](./overview.md).
 
 ---
 
@@ -58,5 +83,6 @@ You can tie a Mission to a Goal, so a mission's progress feeds the goal it's mea
 
 - **Write success criteria you can actually check.** A goal like "grow the brand" can never be marked done; "1,000 newsletter subscribers verified in the dashboard" can.
 - **Keep a small set of active goals.** A handful of sharp goals focuses the team far better than a long wishlist.
-- **Use Missions for the big, multi-step pushes** — a launch, a content sprint, a research deep-dive — and let everyday asks flow through the [Boardroom](./boardroom.md) and [Drafts](./drafts.md).
+- **Use Missions for the big, multi-step pushes** — a launch, a content sprint, a research deep-dive — and let everyday asks flow through the [Boardroom](./boardroom.md) and [Approvals](./drafts.md).
+- **Group related missions under a Campaign** when an effort spans channels and weeks, so the whole push reads against one goal and window.
 - **You are the verifier.** Agents propose that a goal is done; confirming it is your call, every time.

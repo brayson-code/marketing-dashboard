@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { listGenes, createGene, genesEnabled, setGenesEnabled, type GeneStatus } from '@/lib/genes';
 
@@ -6,6 +7,7 @@ export const runtime = 'nodejs';
 
 // GET /api/genes?status=active|proposed|retired  → { enabled, genes }
 export async function GET(request: Request) {
+  enterTenant(await resolveTenant());
   try {
     const status = new URL(request.url).searchParams.get('status') as GeneStatus | null;
     const [enabled, genes] = await Promise.all([
@@ -20,6 +22,7 @@ export async function GET(request: Request) {
 
 // POST /api/genes  → mint an owner-authored gene (born active)
 export async function POST(request: Request) {
+  enterTenant(await resolveTenant());
   try {
     const body = await request.json();
     const { title, body: text, role, agentId } = body ?? {};
@@ -36,6 +39,7 @@ export async function POST(request: Request) {
 
 // PUT /api/genes  → toggle the global kill switch { enabled: boolean }
 export async function PUT(request: Request) {
+  enterTenant(await resolveTenant());
   try {
     const { enabled } = await request.json();
     await setGenesEnabled(!!enabled);

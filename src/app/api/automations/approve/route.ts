@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextRequest, NextResponse } from "next/server";
 import { sql, tenantId } from "@/lib/db/client";
 import { requireApiEditor } from "@/lib/api-auth";
@@ -9,6 +10,7 @@ export const dynamic = "force-dynamic";
 const LEAD_APPROVED_STATUS = "approved";
 
 export async function POST(req: NextRequest) {
+  enterTenant(await resolveTenant());
   const auth = requireApiEditor(req as Request);
   if (auth) return auth;
   const actor = requireUser(req as Request);

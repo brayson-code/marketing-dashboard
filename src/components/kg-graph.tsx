@@ -78,16 +78,23 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
   const [width, setWidth] = useState(640);
   const [hoverId, setHoverId] = useState<number | null>(null);
 
-  // Theme colors resolved from CSS vars (re-read on mount; cheap).
+  // Theme colors resolved from CSS vars. Re-read whenever the .dark class on
+  // <html> toggles so the canvas palette flips with the rest of the dashboard
+  // (canvas can't read var(--x) live — we have to push concrete colors in).
   const [theme, setTheme] = useState({ border: '#2a2a2a', fg: '#e5e5e5', card: '#111', primary: '#6366f1', muted: '#888' });
   useEffect(() => {
-    setTheme({
+    const read = () => setTheme({
       border: cssVar('--border', '#2a2a2a'),
       fg: cssVar('--foreground', '#e5e5e5'),
       card: cssVar('--card', '#111'),
       primary: cssVar('--primary', '#6366f1'),
       muted: cssVar('--muted-foreground', '#888'),
     });
+    read();
+    if (typeof MutationObserver === 'undefined' || typeof document === 'undefined') return;
+    const mo = new MutationObserver(read);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme'] });
+    return () => mo.disconnect();
   }, []);
 
   // Content signature: only the actual entities/relations matter, not array

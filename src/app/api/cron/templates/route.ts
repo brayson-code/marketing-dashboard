@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireApiEditor, requireApiUser } from '@/lib/api-auth';
 import { requireUser } from '@/lib/auth';
@@ -12,6 +13,7 @@ import {
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  enterTenant(await resolveTenant());
   const auth = requireApiUser(req as unknown as Request);
   if (auth) return auth;
 
@@ -26,6 +28,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  enterTenant(await resolveTenant());
   const auth = requireApiEditor(req as unknown as Request);
   if (auth) return auth;
   const actor = requireUser(req as unknown as Request);
@@ -54,6 +57,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  enterTenant(await resolveTenant());
   const auth = requireApiEditor(req as unknown as Request);
   if (auth) return auth;
   const actor = requireUser(req as unknown as Request);
@@ -83,6 +87,7 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  enterTenant(await resolveTenant());
   const auth = requireApiEditor(req as unknown as Request);
   if (auth) return auth;
   const actor = requireUser(req as unknown as Request);

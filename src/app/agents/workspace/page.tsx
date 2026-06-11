@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 // Known Claude models (latest family). The select keeps any legacy/custom value
 // already on a def so it isn't silently dropped.
 const MODELS: { id: string; label: string }[] = [
+  { id: 'claude-opus-4-8', label: 'Opus 4.8 — most capable (newest)' },
   { id: 'claude-opus-4-7', label: 'Opus 4.7 — most capable' },
   { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6 — balanced' },
   { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5 — fast & cheap' },
@@ -119,7 +120,7 @@ export default function AgentStudioPage() {
   const [newId, setNewId] = useState('');
   const [newName, setNewName] = useState('');
   const [newRole, setNewRole] = useState<AgentRole>('general');
-  const [newModel, setNewModel] = useState('claude-opus-4-7');
+  const [newModel, setNewModel] = useState('claude-opus-4-8');
   const [newDescription, setNewDescription] = useState('');
 
   const loadList = useCallback(async () => {
@@ -159,6 +160,15 @@ export default function AgentStudioPage() {
       setLoadingDef(false);
     }
   }, []);
+
+  // Deep-link: `/agents/workspace?agent=<id>` (e.g. the Edit button on an agent's
+  // detail page) opens that agent straight into the editor. Read on the client
+  // to avoid a Suspense boundary; runs once. selectAgent fetches by id, so it
+  // works whether or not the list has loaded.
+  useEffect(() => {
+    const want = new URLSearchParams(window.location.search).get('agent');
+    if (want) selectAgent(want);
+  }, [selectAgent]);
 
   const patch = useCallback(<K extends keyof Editable>(key: K, value: Editable[K]) => {
     setDraft((prev) => (prev ? { ...prev, [key]: value } : prev));
@@ -228,7 +238,7 @@ export default function AgentStudioPage() {
     setNewId('');
     setNewName('');
     setNewRole('general');
-    setNewModel('claude-opus-4-7');
+    setNewModel('claude-opus-4-8');
     setNewDescription('');
   }, []);
 
@@ -295,7 +305,7 @@ export default function AgentStudioPage() {
     <div className="space-y-6 animate-in w-full">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="space-y-1">
-          <h1 className="text-xl font-semibold flex items-center gap-2">
+          <h1 className="text-h1 flex items-center gap-2">
             <Bot size={18} className="text-primary" /> Agent Studio
           </h1>
           <p className="text-xs text-muted-foreground">
@@ -307,9 +317,9 @@ export default function AgentStudioPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* LEFT: agent list */}
-        <div className="panel lg:col-span-1">
+      <div className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] gap-4 items-start">
+        {/* LEFT: agent list — fixed narrow sidebar so the editor gets the room. */}
+        <div className="panel">
           <div className="panel-header flex items-center justify-between">
             <div className="text-sm font-medium">Agents</div>
             <button
@@ -361,8 +371,8 @@ export default function AgentStudioPage() {
           </div>
         </div>
 
-        {/* RIGHT: editor */}
-        <div className="panel lg:col-span-2">
+        {/* RIGHT: editor — fills the remaining width. */}
+        <div className="panel min-w-0">
           {!selectedId ? (
             <div className="panel-body">
               <div className="h-48 flex items-center justify-center text-sm text-muted-foreground text-center px-6">
@@ -387,7 +397,13 @@ export default function AgentStudioPage() {
                   </div>
                   <div className="text-[10px] text-muted-foreground mt-1 flex items-center gap-2 flex-wrap">
                     <SourceBadge source={def.source} />
-                    <span>Updated {new Date(def.updated_at).toLocaleString()}</span>
+                    {/* Synthesized bundled defs carry an epoch-0 timestamp — show
+                        "not saved yet" instead of a misleading 1969 date. */}
+                    {new Date(def.updated_at).getTime() > 0 ? (
+                      <span>Updated {new Date(def.updated_at).toLocaleString()}</span>
+                    ) : (
+                      <span>Not saved yet · bundled default</span>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -417,7 +433,7 @@ export default function AgentStudioPage() {
               </div>
 
               <div className="panel-body space-y-5">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
                   <label className="space-y-1">
                     <span className="text-xs text-muted-foreground">Name</span>
                     <input

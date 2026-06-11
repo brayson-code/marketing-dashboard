@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
@@ -5,6 +6,7 @@ import { sql, tenantId } from '@/lib/db/client';
 import { getHermesStateDir } from '@/lib/hermes-state';
 import { requireApiUser } from '@/lib/api-auth';
 import { getInstance, resolveOpenClawPaths } from '@/lib/instances';
+import { memo } from '@/lib/cache';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,11 +26,14 @@ function getInstanceId(request: Request): string | null {
 }
 
 export async function GET(request: Request) {
+  enterTenant(await resolveTenant());
   const auth = requireApiUser(request);
   if (auth) return auth;
 
   try {
     const instance = getInstance(getInstanceId(request));
+
+    const data = await memo(`hud:${tenantId()}:${instance.id}`, 10000, async () => {
     const { cronDir } = resolveOpenClawPaths(instance);
 
     const s = sql();
@@ -46,17 +51,30 @@ export async function GET(request: Request) {
       }
     }
 
-    const [contentPendingRows, seqPendingRows, staleContentRows, staleSeqRows] = await Promise.all([
-      s`SELECT COUNT(*) as c FROM content_posts WHERE tenant_id = ${tenantId()} AND status = 'pending_approval'`,
-      s`SELECT COUNT(*) as c FROM sequences WHERE tenant_id = ${tenantId()} AND status = 'pending_approval'`,
-      s`SELECT COUNT(*) as c FROM content_posts WHERE tenant_id = ${tenantId()} AND status = 'pending_approval' AND created_at < now() - interval '24 hours'`,
-      s`SELECT COUNT(*) as c FROM sequences WHERE tenant_id = ${tenantId()} AND status = 'pending_approval' AND created_at < now() - interval '24 hours'`,
+    // Real sources:
+    //   approvals_pending = agent_drafts.status = 'pending'   (your pile — what's waiting on you)
+    //   approvals_stale   = same, but older than 24h          (chasing the user)
+    //   in_flight         = wave_runs.running + agent_tasks.running
+    //                                                         (their pile — what's happening for you right now)
+    //   waves_pending     = wave_step_runs.status = 'pending' (queued waves; surfaces in the kanban Up Next)
+    // The legacy content_posts/sequences tables are V0 and now empty on most
+    // tenants — querying them gave the dashboard a permanent zero before.
+    const [draftsPendingRows, draftsStaleRows, wavesPendingRows, tasksRunningRows, missionsRunningRows] = await Promise.all([
+      s`SELECT COUNT(*) AS c FROM public.agent_drafts WHERE tenant_id = ${tenantId()} AND status = 'pending'`,
+      s`SELECT COUNT(*) AS c FROM public.agent_drafts WHERE tenant_id = ${tenantId()} AND status = 'pending' AND created_at < now() - interval '24 hours'`,
+      s`SELECT COUNT(*) AS c FROM public.wave_step_runs WHERE tenant_id = ${tenantId()} AND status = 'pending'`,
+      s`SELECT COUNT(*) AS c FROM public.agent_tasks WHERE tenant_id = ${tenantId()} AND status = 'running'`,
+      s`SELECT COUNT(*) AS c FROM public.wave_runs WHERE tenant_id = ${tenantId()} AND status = 'running'`,
     ]);
 
-    const content_pending = { c: Number(contentPendingRows[0]?.c ?? 0) };
-    const seq_pending = { c: Number(seqPendingRows[0]?.c ?? 0) };
-    const stale_content = { c: Number(staleContentRows[0]?.c ?? 0) };
-    const stale_sequences = { c: Number(staleSeqRows[0]?.c ?? 0) };
+    const drafts_pending     = Number(draftsPendingRows[0]?.c ?? 0);
+    const drafts_stale       = Number(draftsStaleRows[0]?.c ?? 0);
+    const waves_pending      = Number(wavesPendingRows[0]?.c ?? 0);
+    const tasks_running      = Number(tasksRunningRows[0]?.c ?? 0);
+    const missions_running   = Number(missionsRunningRows[0]?.c ?? 0);
+    // In Flight = what your agents are actively working on RIGHT NOW. Pairs
+    // with approvals_pending as a clean opposite — their pile vs. yours.
+    const in_flight          = missions_running + tasks_running;
 
     let cron_total = 0;
     let cron_errors = 0;
@@ -84,15 +102,22 @@ export async function GET(request: Request) {
       // ignore
     }
 
-    return NextResponse.json({
+    return {
       instance: instance.id,
       sending_paused,
       paused_reason,
-      approvals_pending: (content_pending?.c ?? 0) + (seq_pending?.c ?? 0),
-      approvals_stale: (stale_content?.c ?? 0) + (stale_sequences?.c ?? 0),
+      approvals_pending: drafts_pending,
+      approvals_stale: drafts_stale,
+      in_flight,
+      missions_running,
+      tasks_running,
+      waves_pending,
       cron_total,
       cron_errors,
+    };
     });
+
+    return NextResponse.json(data);
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }

@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -7,9 +8,11 @@ export const dynamic = 'force-dynamic';
 // listing so the page shows a clean "not available in the cloud" empty state
 // instead of crashing. Writes are disabled.
 export async function GET() {
+  enterTenant(await resolveTenant());
   return NextResponse.json({ rootId: null, rootLabel: '', kind: 'workspace', writable: false, entries: [] });
 }
 
 export async function POST() {
+  enterTenant(await resolveTenant());
   return NextResponse.json({ error: 'Workspace writes are not available in the cloud deployment.' }, { status: 403 });
 }

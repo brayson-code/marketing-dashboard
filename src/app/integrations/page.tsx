@@ -54,7 +54,7 @@ export default function IntegrationsPage() {
     <div className="space-y-6 animate-in">
       <div className="panel">
         <div className="panel-header">
-          <h1 className="text-xl font-semibold">Integrations</h1>
+          <h1 className="text-h1">Integrations</h1>
           <p className="text-sm text-muted-foreground">Live status for KeyPlayers data sources</p>
         </div>
       </div>

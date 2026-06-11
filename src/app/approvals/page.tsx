@@ -167,7 +167,7 @@ export default function ApprovalsPage() {
       <div className="panel">
         <div className="panel-header flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-xl font-semibold">Approvals</h1>
+            <h1 className="text-h1">Approvals</h1>
             <p className="text-sm text-muted-foreground">Review pending content drafts and outreach sequences</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">

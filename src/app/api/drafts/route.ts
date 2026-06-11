@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import {
   listDrafts,
@@ -10,6 +11,7 @@ import {
 } from '@/lib/drafts';
 
 export async function GET(request: Request) {
+  enterTenant(await resolveTenant());
   const url = new URL(request.url);
   const status = (url.searchParams.get('status') ?? 'all') as DraftStatus | 'all';
   const limit = Math.min(Number(url.searchParams.get('limit') ?? 100), 500);
@@ -18,6 +20,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  enterTenant(await resolveTenant());
   let body: { action?: string; draft_id?: number; note?: string };
   try { body = await request.json(); }
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }

@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Activity, CheckCircle2, AlertCircle, Loader2, ArrowRight, Zap } from 'lucide-react';
 import { Pipeline } from '@/components/tasks/pipeline';
+import { KanbanBoard } from '@/components/tasks/kanban-board';
+import { PageHeader } from '@/components/layout/page-header';
 
-type TaskView = 'activity' | 'pipeline';
+type TaskView = 'board' | 'activity' | 'pipeline';
 
 type TaskStatus = 'running' | 'done' | 'error' | 'cancelled';
 
@@ -68,7 +70,7 @@ export default function TasksPage() {
   const [data, setData] = useState<TasksResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
-  const [view, setView] = useState<TaskView>('pipeline');
+  const [view, setView] = useState<TaskView>('board');
 
   const load = useCallback(async () => {
     try {
@@ -191,69 +193,44 @@ export default function TasksPage() {
   }
 
   return (
-    <div className="space-y-4 animate-in">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="space-y-1">
-          <h1 className="text-xl font-semibold">Tasks</h1>
-          <p className="text-xs text-muted-foreground">
-            {view === 'activity'
-              ? 'Live view of orchestrator and sub-agent activity. Refreshes every 2s.'
-              : 'How the orchestrator’s parallel agent waves flow toward each goal. Refreshes every 3s.'}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 text-xs flex-wrap">
-          <div className="flex gap-1">
-            <button onClick={() => setView('activity')} className={`tab ${view === 'activity' ? 'active' : ''}`}>
-              Activity
+    <div className="space-y-6 animate-in">
+      <PageHeader
+        icon={<Activity size={18} />}
+        title="Tasks"
+        subtitle="What needs you, what the swarm is doing right now, and how each campaign is flowing through its waves. Refreshes every 3s."
+        actions={
+          <>
+            <button onClick={runProactive} className="btn btn-ghost btn-sm" title="Trigger KeyPlayer to scan for stalled goals, pending drafts, long-running tasks, etc.">
+              <Zap size={11} /> Run proactive sweep
             </button>
-            <button onClick={() => setView('pipeline')} className={`tab ${view === 'pipeline' ? 'active' : ''}`}>
-              Pipeline
-            </button>
-          </div>
-          {view === 'activity' && (
-            <>
-              <button onClick={runProactive} className="btn btn-ghost btn-sm" title="Trigger KeyPlayer to scan for stalled goals, pending drafts, long-running tasks, etc.">
-                <Zap size={11} /> Run proactive sweep
-              </button>
-              <span className="badge badge-info inline-flex items-center gap-1.5">
-                <Loader2 size={11} className={running.length > 0 ? 'animate-spin' : ''} />
-                {running.length} running
-              </span>
-              <span className="badge badge-neutral">{data?.counts.total ?? 0} total</span>
-            </>
-          )}
-        </div>
-      </div>
+            <span className="badge badge-info inline-flex items-center gap-1.5">
+              <Loader2 size={11} className={running.length > 0 ? 'animate-spin' : ''} />
+              {running.length} running
+            </span>
+            <span className="badge badge-neutral">{data?.counts.total ?? 0} total</span>
+          </>
+        }
+      />
 
-      {error && view === 'activity' && (
+      {error && (
         <div className="panel p-3 text-xs text-destructive flex items-center gap-1.5">
           <AlertCircle size={12} /> {error}
         </div>
       )}
 
-      {view === 'pipeline' ? (
-        <Pipeline />
-      ) : (
-        <>
-          {running.length > 0 && (
-            <div className="space-y-2">
-              <div className="section-title">In progress</div>
-              <div className="space-y-2">{orderWithChildren(running).map(renderTask)}</div>
-            </div>
-          )}
+      {/* The board: what needs me / who's doing what right now. */}
+      <KanbanBoard />
 
-          <div className="space-y-2">
-            <div className="section-title">Recent</div>
-            {recent.length === 0 ? (
-              <div className="panel p-4 text-xs text-muted-foreground text-center">
-                No completed tasks yet. Send a message to KeyPlayer to kick one off.
-              </div>
-            ) : (
-              <div className="space-y-2">{orderWithChildren(recent).map(renderTask)}</div>
-            )}
-          </div>
-        </>
-      )}
+      {/* Below: how the swarm is REASONING — the active campaign's parallel
+          waves. Reads as "the task board above shows individual moves, this
+          shows the strategy producing them." */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 text-h2">
+          <span>Swarm flow</span>
+          <span className="text-small font-normal">— how each active campaign moves through its waves</span>
+        </div>
+        <Pipeline />
+      </div>
     </div>
   );
 }

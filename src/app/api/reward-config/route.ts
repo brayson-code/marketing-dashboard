@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { sql, tenantId } from '@/lib/db/client';
 
@@ -14,6 +15,7 @@ interface RewardRow {
 
 // GET → current reward weights for the default tenant.
 export async function GET() {
+  enterTenant(await resolveTenant());
   try {
     const rows = (await sql()`
       SELECT w_approval, w_outcome, w_reliability
@@ -38,6 +40,7 @@ export async function GET() {
 
 // PUT → set + normalize reward weights (each >= 0, normalized to sum to 1).
 export async function PUT(request: Request) {
+  enterTenant(await resolveTenant());
   let body: { approval?: unknown; outcome?: unknown; reliability?: unknown };
   try {
     body = await request.json();

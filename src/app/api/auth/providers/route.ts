@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 
 function isGoogleEnabled(): boolean {
@@ -9,6 +10,7 @@ function isGoogleEnabled(): boolean {
 }
 
 export async function GET() {
+  enterTenant(await resolveTenant());
   return NextResponse.json({
     google: isGoogleEnabled(),
   });

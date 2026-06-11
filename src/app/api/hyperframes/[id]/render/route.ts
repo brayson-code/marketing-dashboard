@@ -4,16 +4,21 @@ import { getDraft, updateDraftMetadata } from '@/lib/drafts';
 import { submitRender, getRenderStatus } from '@/lib/heygen-render';
 import { isComposition, compositionFromStoryboard, type Composition } from '@/lib/hyperframes-composition';
 import { parseStoryboard } from '@/lib/hyperframes-storyboard';
+import { buildClipCatalog, makeClipResolver } from '@/lib/hyperframes-clips';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-// The composition to render: the saved one if present, else seeded from the
-// storyboard (so Render works even before the user opens the editor).
-function compositionFor(draft: { metadata: Record<string, unknown> | null; payload: string }): Composition {
+// The composition to render: the saved one if present (its backgrounds are
+// already baked in by the editor), else seeded from the storyboard — resolving
+// any clip references against the tenant's Media library so real uploaded footage
+// gets composited in. (So Render works even before the user opens the editor.)
+async function compositionFor(draft: { metadata: Record<string, unknown> | null; payload: string }): Promise<Composition> {
   const saved = (draft.metadata as { composition?: unknown } | null)?.composition;
-  return isComposition(saved) ? saved : compositionFromStoryboard(parseStoryboard(draft.payload));
+  if (isComposition(saved)) return saved;
+  const resolveClip = makeClipResolver(await buildClipCatalog());
+  return compositionFromStoryboard(parseStoryboard(draft.payload), { resolveClip });
 }
 
 // POST /api/hyperframes/:id/render — kick off a HeyGen render of the composition.
@@ -26,7 +31,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   const draft = await getDraft(draftId);
   if (!draft) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const res = await submitRender(compositionFor(draft), { title: draft.title || `Reel ${draftId}` });
+  const res = await submitRender(await compositionFor(draft), { title: draft.title || `Reel ${draftId}` });
   if (!res.ok) return NextResponse.json({ error: res.error }, { status: 400 });
 
   const render = { render_id: res.renderId, status: 'queued' as const, submitted_at: new Date().toISOString() };

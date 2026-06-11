@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { getDocument, updateDocument, deleteDocument, type DocStatus } from '@/lib/documents';
 
@@ -6,6 +7,7 @@ export const dynamic = 'force-dynamic';
 const STATUSES: DocStatus[] = ['raw', 'wiki', 'archived'];
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  enterTenant(await resolveTenant());
   const { id } = await params;
   const doc = await getDocument(id);
   if (!doc) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -13,6 +15,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  enterTenant(await resolveTenant());
   const { id } = await params;
   let body: { title?: string; content?: string; status?: string; type?: string };
   try { body = await request.json(); }
@@ -29,6 +32,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  enterTenant(await resolveTenant());
   const { id } = await params;
   const ok = await deleteDocument(id);
   return NextResponse.json({ ok }, { status: ok ? 200 : 404 });

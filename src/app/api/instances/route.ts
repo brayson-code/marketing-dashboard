@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -6,6 +7,7 @@ export const dynamic = 'force-dynamic';
 // multi-instance OpenClaw filesystem model doesn't apply here.) Auth is enforced
 // by the Supabase middleware.
 export async function GET() {
+  enterTenant(await resolveTenant());
   return NextResponse.json({
     default_instance: 'default',
     instances: [{ id: 'default', label: 'KeyPlayers' }],

@@ -14,7 +14,7 @@ These docs are written for the people who **use** KeyCommand day to day: markete
 - **Turn trends into content.** See what's hot across everything you've analyzed, generate trial reel concepts, and scan your own reels for a full optimization report.
 - **Write and record scripts.** Generate reel scripts from a kept idea or a competitor teardown, edit them, and read them off a built-in teleprompter.
 - **Run a team of agents.** A roster of specialist agents (research, content, outreach, and more) does the work; you can view, edit, and create them in the Agent Studio.
-- **Stay in control.** Everything agents produce lands in **Drafts** for your one-tap approval. You decide how much autonomy they have.
+- **Stay in control.** Everything agents produce lands in **Approvals** for your one-tap approval. You decide how much autonomy they have.
 - **Connect your stack.** Bring your own API keys and social accounts so agents act through *your* tools and *your* brand.
 
 ---
@@ -29,11 +29,12 @@ These docs are written for the people who **use** KeyCommand day to day: markete
 | [Content Lab](./content-lab.md) | Trend Radar, Trial Reel Generator, and the "Optimize my reel" scanner |
 | [Script Studio](./script-studio.md) | Edit reel scripts and read them off a teleprompter |
 | [Hyperframes](./hyperframes.md) | Turn a brief into a short-form script + storyboard, then hand it to HeyGen |
+| [Media Library](./media.md) | Drop your own a-roll, b-roll, and images for agents and reels to draw from |
 | [Connections](./connections.md) | Connect your social accounts and API keys (Apify, Deepgram, AgentMail, Instagram, and more) |
-| [Drafts](./drafts.md) | The approval queue — nothing ships without you |
+| [Approvals](./drafts.md) | The approval queue — nothing ships without you |
 | [Cron / Scheduled Jobs](./cron.md) | Run agents on a recurring schedule |
 | [Boardroom](./boardroom.md) | Chat with your lead agent and watch agents talk to each other |
-| [Goals & Missions](./goals-and-missions.md) | Set outcomes and launch multi-step campaigns |
+| [Goals, Campaigns & Missions](./goals-and-missions.md) | Set outcomes, group work into campaigns, and launch missions |
 | [Usage & Spend](./usage.md) | Track what your agents cost across Claude, Apify, and Deepgram |
 
 **Reference**

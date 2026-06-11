@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { getIssue, getIssueEvents, getIssueTask, updateIssue, type IssueStatus, type IssuePriority } from '@/lib/observability';
 
@@ -7,6 +8,7 @@ const STATUSES: IssueStatus[] = ['triage', 'assigned', 'fix_proposed', 'in_revie
 const PRIORITIES: IssuePriority[] = ['low', 'med', 'high', 'urgent'];
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  enterTenant(await resolveTenant());
   const { id } = await params;
   const issue = await getIssue(id);
   if (!issue) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -18,6 +20,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  enterTenant(await resolveTenant());
   const { id } = await params;
   let body: { status?: string; priority?: string };
   try { body = await request.json(); }

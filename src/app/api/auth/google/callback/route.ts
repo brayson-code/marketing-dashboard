@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { createSession, destroySession, recordGoogleLoginAttempt, upsertGoogleUser } from '@/lib/auth';
 
@@ -107,6 +108,7 @@ async function fetchGoogleUser(accessToken: string): Promise<GoogleUserInfo> {
 }
 
 export async function GET(request: Request) {
+  enterTenant(await resolveTenant());
   const reqUrl = new URL(request.url);
   const origin = getPublicOrigin(request);
   const code = reqUrl.searchParams.get('code');

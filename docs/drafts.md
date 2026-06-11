@@ -1,6 +1,6 @@
-# Drafts
+# Drafts & Approvals
 
-**Drafts** is your approval queue. Everything your agents create that could go out into the world — content posts, emails, meetings, campaigns — lands here first. **Nothing executes without your explicit approval.**
+**Approvals** (labelled **Approvals** in the left navigation, and still reachable at `/drafts`) is your approval queue. Everything your agents create that could go out into the world — content posts, emails, meetings, campaigns — lands here first as a **draft**. **Nothing executes without your explicit approval.**
 
 ![the Drafts page with pending items awaiting approval](images/drafts-1.png)
 
@@ -18,7 +18,7 @@ This is the safety net that lets you put agents to work without worrying they'll
 
 ## How to use it
 
-1. Open **Drafts** from the left navigation. By default it shows **pending** items.
+1. Open **Approvals** from the left navigation. By default it shows **pending** items.
 2. Click any draft's title to expand and read the full content.
 3. For each pending draft:
    - **Approve** — accept it. For posts/emails/meetings, approving unlocks the execute step.

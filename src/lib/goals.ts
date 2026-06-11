@@ -73,6 +73,49 @@ function mapGoal(row: GoalRow, progress: ProgressRow[]): Goal {
   };
 }
 
+/** A self-check directive injected at the top of every sub-agent's task message
+ *  when that agent owns an active goal. Forces the model to re-state the
+ *  success criterion verbatim and outline how the run advances it BEFORE doing
+ *  the work — a free, cold-cheap thinking aid (no second model call). The
+ *  prefer-north-star ordering means the most important goal is the one the
+ *  agent reasons against when it owns multiple. Returns '' when the agent has
+ *  no owned goal (no self-check to do). */
+export async function goalDirectiveForAgent(agentId: string): Promise<string> {
+  try {
+    const rows = (await sql()`
+      SELECT id, title, success,
+             to_char(due, 'YYYY-MM-DD') AS due,
+             metadata->>'is_north_star' AS is_north_star
+      FROM public.goals
+      WHERE tenant_id = ${tenantId()}
+        AND metadata->>'owner_agent' = ${agentId}
+        AND status IN ('active', 'pending_verification')
+      ORDER BY (metadata->>'is_north_star')::bool DESC NULLS LAST,
+               due ASC NULLS LAST
+      LIMIT 1
+    `) as unknown as Array<{ id: string; title: string; success: string; due: string | null; is_north_star: string | null }>;
+    const g = rows[0];
+    if (!g) return '';
+    const isNorthStar = g.is_north_star === 'true';
+    return [
+      `# Goal self-check (do this BEFORE the work)`,
+      `Your owned goal${isNorthStar ? ' (the North Star)' : ''}: ${g.title}`,
+      `Success criterion (verbatim — do NOT paraphrase): ${g.success}`,
+      g.due ? `Due: ${g.due}.` : '',
+      ``,
+      `Open your response with a single \`<self-check>\` block (XML-style) containing exactly three lines:`,
+      `  Step 0: Re-state the success criterion verbatim.`,
+      `  Step 1: In ≤3 short bullets, outline how THIS run advances that criterion. If it doesn't, say so plainly and propose what would.`,
+      `  Step 2: One sentence — your plan for the deliverable.`,
+      `Then close the block and produce the deliverable as you normally would. Don't repeat the self-check in the deliverable.`,
+    ].filter(Boolean).join('\n');
+  } catch (e) {
+    // Self-check is a nice-to-have; never block the run on goal lookup failures.
+    console.error('[goalDirectiveForAgent] failed:', (e as Error).message);
+    return '';
+  }
+}
+
 /** Load all goals (any status) with their progress entries, newest goal first. */
 export async function loadGoals(): Promise<Goal[]> {
   const goalRows = (await sql()`
@@ -120,14 +163,18 @@ export async function createGoal(input: {
   owner?: string;
   success: string;
   due?: string | null;
+  metadata?: Record<string, unknown>;
 }): Promise<Goal> {
   const id = genId();
   const owner = input.owner ?? 'owner';
+  // Caller-supplied metadata keys override defaults except `owner`, which always
+  // wins so the existing "owner stored in metadata.owner" invariant holds.
+  const metadata = { ...(input.metadata ?? {}), owner };
   await sql()`
     INSERT INTO goals (id, tenant_id, title, success, due, status, metadata)
     VALUES (
       ${id}, ${tenantId()}, ${input.title}, ${input.success},
-      ${input.due ?? null}, 'active', ${jsonb({ owner })}
+      ${input.due ?? null}, 'active', ${jsonb(metadata)}
     )
   `;
   const goal = await loadGoal(id);

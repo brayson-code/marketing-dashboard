@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { getGene, updateGene, setGeneStatus, listGeneEvents, type GeneStatus } from '@/lib/genes';
 
@@ -6,6 +7,7 @@ export const runtime = 'nodejs';
 
 // GET /api/genes/:id  → { gene, events }
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  enterTenant(await resolveTenant());
   const id = Number((await params).id);
   if (!Number.isFinite(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
   const gene = await getGene(id);
@@ -17,6 +19,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 // PATCH /api/genes/:id  → edit fields and/or change status
 //   { title?, body?, agentId?, status?: 'active'|'proposed'|'retired' }
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  enterTenant(await resolveTenant());
   const id = Number((await params).id);
   if (!Number.isFinite(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
   try {

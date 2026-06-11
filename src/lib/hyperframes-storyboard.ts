@@ -10,15 +10,17 @@ export interface StoryboardScene {
   visual: string;
   onScreenText: string;
   audio: string;
+  /** Optional reference to a real Media-library clip (asset id or name). */
+  clip?: string;
 }
 
 export interface Storyboard {
   platform?: string;
   length?: string;
   aspect?: string;
-  hook?: { onScreenText?: string; visual?: string; audio?: string };
+  hook?: { onScreenText?: string; visual?: string; audio?: string; clip?: string };
   scenes: StoryboardScene[];
-  cta?: { onScreenText?: string; visual?: string };
+  cta?: { onScreenText?: string; visual?: string; clip?: string };
   production?: { music?: string; pacing?: string; broll?: string; hyperframesPrompt?: string };
   risks?: string[];
   /** True when we recognized a hook, scenes, or platform — i.e. real storyboard structure. */
@@ -75,11 +77,15 @@ function parseTable(lines: string[] | undefined): StoryboardScene[] {
     const joined = cells.join(' ').toLowerCase();
     if (joined.includes('---')) continue;                                  // separator row
     if (cells[0].toLowerCase().startsWith('time') && joined.includes('visual')) continue; // header row
+    // Optional 5th "Clip" column references a real Media-library asset. Tolerate
+    // an empty cell / em-dash placeholder (no clip → undefined, behaves as before).
+    const clipCell = cells[4] && cells[4] !== '—' ? clean(cells[4]) : '';
     out.push({
       time: clean(cells[0] ?? ''),
       visual: clean(cells[1] ?? ''),
       onScreenText: cells[2] && cells[2] !== '—' ? clean(cells[2]) : '',
       audio: clean(cells[3] ?? ''),
+      ...(clipCell ? { clip: clipCell } : {}),
     });
   }
   return out;
@@ -96,16 +102,16 @@ export function parseStoryboard(md: string): Storyboard {
 
   const scenes = parseTable(sceneLines);
   const hook = hookLines
-    ? { onScreenText: bullet(hookLines, 'on-screen text'), visual: bullet(hookLines, 'visual'), audio: bullet(hookLines, 'audio') }
+    ? { onScreenText: bullet(hookLines, 'on-screen text'), visual: bullet(hookLines, 'visual'), audio: bullet(hookLines, 'audio'), clip: bullet(hookLines, 'clip') }
     : undefined;
 
   const sb: Storyboard = {
     platform: bullet(pl, 'platform'),
     length: bullet(pl, 'length'),
     aspect: bullet(pl, 'aspect'),
-    hook: hook && (hook.onScreenText || hook.visual || hook.audio) ? hook : undefined,
+    hook: hook && (hook.onScreenText || hook.visual || hook.audio || hook.clip) ? hook : undefined,
     scenes,
-    cta: ctaLines ? { onScreenText: bullet(ctaLines, 'on-screen text'), visual: bullet(ctaLines, 'visual') } : undefined,
+    cta: ctaLines ? { onScreenText: bullet(ctaLines, 'on-screen text'), visual: bullet(ctaLines, 'visual'), clip: bullet(ctaLines, 'clip') } : undefined,
     production: prodLines
       ? {
           music: bullet(prodLines, 'music'),

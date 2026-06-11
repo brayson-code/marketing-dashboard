@@ -37,7 +37,7 @@ export default function ResearchPage() {
     <div className="space-y-6 animate-in">
       <div className="panel">
         <div className="panel-header flex items-center justify-between flex-wrap gap-3">
-          <h1 className="text-xl font-semibold">Research</h1>
+          <h1 className="text-h1">Research</h1>
           <div className="flex gap-3">
             <select
               value={typeFilter}

@@ -64,3 +64,4 @@ hermes-seed-fix.bundle
 
 # Raw mascot source videos (converted to frames/webp, not shipped)
 public/sprites/_raw/
+.env*.local

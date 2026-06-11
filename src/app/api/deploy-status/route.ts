@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -7,6 +8,7 @@ export const dynamic = 'force-dynamic';
 // the managed deployment state from Vercel's build env. Shape is kept compatible
 // with the old endpoint so the /deploy page renders unchanged.
 export async function GET() {
+  enterTenant(await resolveTenant());
   const sha = process.env.VERCEL_GIT_COMMIT_SHA ?? null;
   const env = process.env.VERCEL_ENV ?? 'production';
   return NextResponse.json({

@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { runTriageSweep } from '@/lib/triage';
 
@@ -8,6 +9,7 @@ export const maxDuration = 300;
 // proxy's public set). Fire-and-forget so the button gets a fast 202; the drafts /
 // issues pages surface verdicts as they're written via their normal polling.
 export async function POST() {
+  enterTenant(await resolveTenant());
   void runTriageSweep()
     .then((r) => {
       if (r.error) console.error('[triage] sweep error:', r.error);

@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { sql, jsonb, tenantId } from '@/lib/db/client';
 import { runOrchestrator } from '@/lib/orchestrator';
@@ -15,6 +16,7 @@ export const maxDuration = 300;
 // message, run the orchestrator — which now "sees" the images — then store and
 // return its reply. Auth is enforced by the Supabase middleware (proxy.ts).
 export async function POST(request: Request) {
+  enterTenant(await resolveTenant());
   let body: { text?: string; attachments?: unknown };
   try { body = await request.json(); }
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }

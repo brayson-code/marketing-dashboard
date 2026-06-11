@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { listIssues, type IssueStatus } from '@/lib/observability';
 import { fixerCapabilities } from '@/lib/fixer';
@@ -8,6 +9,7 @@ const STATUSES: IssueStatus[] = ['triage', 'assigned', 'fix_proposed', 'in_revie
 
 // Auth enforced by the Supabase middleware (proxy.ts).
 export async function GET(request: Request) {
+  enterTenant(await resolveTenant());
   const url = new URL(request.url);
   const statusParam = url.searchParams.get('status');
   const status = statusParam && STATUSES.includes(statusParam as IssueStatus) ? (statusParam as IssueStatus) : undefined;

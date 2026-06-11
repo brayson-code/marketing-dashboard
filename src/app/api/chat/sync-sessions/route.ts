@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { sql, jsonb, tenantId } from '@/lib/db/client';
 import fs from 'fs';
@@ -37,6 +38,7 @@ interface SessionEntry {
  * comparing against the count of messages already stored for each conversation.
  */
 export async function POST(request: Request) {
+  enterTenant(await resolveTenant());
   const auth = requireApiUser(request as Request);
   if (auth) return auth;
 
@@ -174,6 +176,7 @@ export async function POST(request: Request) {
  * sync state to return.
  */
 export async function GET(request: Request) {
+  enterTenant(await resolveTenant());
   const auth = requireApiUser(request as Request);
   if (auth) return auth;
   // TODO(supabase-migration): session_sync table not yet modeled.

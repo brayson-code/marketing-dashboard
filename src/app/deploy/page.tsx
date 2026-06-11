@@ -26,7 +26,7 @@ export default function DeployPage() {
   if (loading || !data) {
     return (
       <div className="space-y-6 animate-in">
-        <h1 className="text-xl font-semibold">Deploy</h1>
+        <h1 className="text-h1">Deploy</h1>
         <div className="panel p-6 h-48 animate-pulse bg-muted/20" />
       </div>
     );
@@ -37,7 +37,7 @@ export default function DeployPage() {
 
   return (
     <div className="space-y-6 animate-in">
-      <h1 className="text-xl font-semibold">Deploy</h1>
+      <h1 className="text-h1">Deploy</h1>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <StatusCard label="Service" value={data.service.state} ok={serviceOk} />

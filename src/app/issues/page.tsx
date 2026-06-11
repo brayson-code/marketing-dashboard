@@ -95,7 +95,7 @@ export default function IssuesPage() {
     <div className="space-y-4 animate-in">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="space-y-1">
-          <h1 className="text-xl font-semibold flex items-center gap-2"><Bug size={18} className="text-primary" /> KeyWatch — Issues</h1>
+          <h1 className="text-h1 flex items-center gap-2"><Bug size={18} className="text-primary" /> KeyWatch — Issues</h1>
           <p className="text-xs text-muted-foreground">Real-time errors, deduped. Assign the Fixer to open a draft PR.</p>
         </div>
         <div className="flex items-center gap-2 text-[11px]">

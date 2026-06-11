@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextRequest, NextResponse } from 'next/server';
 import { sql, jsonb, tenantId } from '@/lib/db/client';
 import { runOrchestrator } from '@/lib/orchestrator';
@@ -47,6 +48,7 @@ function parseBridgeConversation(conversationId: string): { from_agent: string; 
 }
 
 export async function GET(request: NextRequest) {
+  enterTenant(await resolveTenant());
   const auth = requireApiAdmin(request as Request);
   if (auth) return auth;
   try {
@@ -103,6 +105,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  enterTenant(await resolveTenant());
   const auth = requireApiAdmin(request as Request);
   if (auth) return auth;
   try {

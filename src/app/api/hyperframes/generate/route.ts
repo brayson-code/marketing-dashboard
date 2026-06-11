@@ -3,6 +3,7 @@ import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { spawnSubAgent } from '@/lib/subagent';
 import { createDraft } from '@/lib/drafts';
 import { AutonomyBlockedError } from '@/lib/autonomy';
+import { buildClipCatalog, renderClipCatalogPrompt } from '@/lib/hyperframes-clips';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -28,12 +29,18 @@ export async function POST(req: Request) {
   const platform = typeof body.platform === 'string' && body.platform ? body.platform : 'instagram';
   const length = Number.isFinite(Number(body.length)) ? Number(body.length) : undefined;
 
+  // Inject the tenant's Media library so the agent can splice real uploaded clips
+  // by id/name. Empty library → '' → nothing injected (behavior unchanged).
+  const clipCatalogPrompt = renderClipCatalogPrompt(await buildClipCatalog());
+
   const task = [
     '<turn this brief into a 9:16 short-form video script + storyboard>',
     '',
     brief,
     `Platform: ${platform}`,
     length ? `Length: ${length}s` : null,
+    clipCatalogPrompt ? '' : null,
+    clipCatalogPrompt || null,
   ].filter((l) => l !== null).join('\n');
 
   try {

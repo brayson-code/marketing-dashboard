@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { getPolicy, recentRewardEvents, getOwnerWeights } from '@/lib/reward';
 
@@ -5,6 +6,7 @@ export const dynamic = 'force-dynamic';
 
 // GET /api/learning — the reward policy + recent scored runs (measurement loop).
 export async function GET() {
+  enterTenant(await resolveTenant());
   try {
     const [policy, events, weights] = await Promise.all([getPolicy(), recentRewardEvents(60), getOwnerWeights()]);
     const totalRuns = policy.reduce((s, p) => s + p.n, 0);

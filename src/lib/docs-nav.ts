@@ -26,9 +26,10 @@ export const DOCS_NAV: DocNavGroup[] = [
       { slug: 'content-lab', title: 'Content Lab', blurb: 'Trend Radar, Trial Reel Generator, and reel scans' },
       { slug: 'script-studio', title: 'Script Studio', blurb: 'Edit reel scripts and read them off a teleprompter' },
       { slug: 'hyperframes', title: 'Hyperframes', blurb: 'Turn a brief into a short-form script + storyboard, then hand it to HeyGen' },
+      { slug: 'media', title: 'Media Library', blurb: 'Drop your own a-roll, b-roll, and images for agents and reels to use' },
       { slug: 'agents', title: 'Agents & Agent Studio', blurb: 'View, edit, and create your AI specialists' },
       { slug: 'boardroom', title: 'Boardroom', blurb: 'Chat with your lead agent and watch agents collaborate' },
-      { slug: 'goals-and-missions', title: 'Goals & Missions', blurb: 'Set outcomes and launch multi-step campaigns' },
+      { slug: 'goals-and-missions', title: 'Goals, Campaigns & Missions', blurb: 'Set outcomes, group work into campaigns, and launch missions' },
     ],
   },
   {

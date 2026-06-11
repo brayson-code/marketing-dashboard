@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { listEntities, neighborsOf, remember } from '@/lib/kg';
 import { sql, tenantId } from '@/lib/db/client';
@@ -5,6 +6,7 @@ import { sql, tenantId } from '@/lib/db/client';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
+  enterTenant(await resolveTenant());
   const url = new URL(request.url);
   const kind = url.searchParams.get('kind') ?? undefined;
   const search = url.searchParams.get('q') ?? undefined;
@@ -37,6 +39,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  enterTenant(await resolveTenant());
   let body: { entities?: unknown[]; relations?: unknown[] };
   try { body = await request.json(); }
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }

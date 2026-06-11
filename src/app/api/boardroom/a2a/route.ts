@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse, after } from 'next/server';
 import { sql, tenantId } from '@/lib/db/client';
 import { squadRoster } from '@/lib/squad';
@@ -22,6 +23,7 @@ interface Row {
 }
 
 export async function GET(request: Request) {
+  enterTenant(await resolveTenant());
   const limit = Math.min(Number(new URL(request.url).searchParams.get('limit') ?? 600), 1500);
 
   const rows = (await sql()`
@@ -79,6 +81,7 @@ export async function GET(request: Request) {
 // the mc:a2a:keyplayer:<to> thread, so it appears in the A2A history. The run is
 // slow (a full agent turn), so kick it off with after() and return immediately.
 export async function POST(request: Request) {
+  enterTenant(await resolveTenant());
   let body: { to?: string; content?: string };
   try { body = await request.json(); }
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }

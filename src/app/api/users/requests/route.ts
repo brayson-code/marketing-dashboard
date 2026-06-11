@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { listGoogleLoginRequests, requireAdmin, reviewGoogleLoginRequest } from '@/lib/auth';
 
@@ -13,6 +14,7 @@ function normalizeRole(value: unknown): Role | null {
 }
 
 export async function GET(request: Request) {
+  enterTenant(await resolveTenant());
   try {
     requireAdmin(request);
     return NextResponse.json({ requests: listGoogleLoginRequests() });
@@ -25,6 +27,7 @@ export async function GET(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  enterTenant(await resolveTenant());
   try {
     requireAdmin(request);
     const body = (await request.json()) as { email?: string; action?: Action; role?: string };

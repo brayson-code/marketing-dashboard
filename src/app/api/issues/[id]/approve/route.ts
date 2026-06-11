@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { getIssue, updateIssue } from '@/lib/observability';
 import { openFixPr } from '@/lib/fixer';
@@ -10,6 +11,7 @@ export const maxDuration = 120;
 // re-run). Requires a GitHub token with write access; with a read-only token
 // this returns a clear error explaining what's needed.
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  enterTenant(await resolveTenant());
   const { id } = await params;
   const issue = await getIssue(id);
   if (!issue) return NextResponse.json({ error: 'Not found' }, { status: 404 });

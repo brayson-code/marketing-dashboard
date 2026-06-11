@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -94,6 +95,7 @@ function rowToQueueItem(row: Record<string, unknown>): QueueItem {
 }
 
 export async function GET(req: NextRequest) {
+  enterTenant(await resolveTenant());
   const auth = requireApiUser(req as unknown as Request);
   if (auth) return auth;
   const id = req.nextUrl.searchParams.get('id');
@@ -118,6 +120,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  enterTenant(await resolveTenant());
   const auth = requireApiEditor(req as unknown as Request);
   if (auth) return auth;
   try {

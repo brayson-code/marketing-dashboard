@@ -75,7 +75,7 @@ In the scene panel, **Your clips** is your workspace's media library — a-roll 
 - **Upload** adds a video or image from your computer; once it's in, it drops straight onto the current scene's background.
 - Click any thumbnail to set it as the selected scene's background.
 
-Clips are stored against your workspace and stay available across every storyboard.
+Clips are stored against your workspace and stay available across every storyboard. It's the same library you manage on the [Media](./media.md) tab — upload there ahead of time and your footage is ready to drop onto any scene.
 
 ### Render the video
 

@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { revalidateIssue } from '@/lib/revalidate';
 
@@ -7,6 +8,7 @@ export const maxDuration = 120; // one Claude pass that reads a few repo files
 // POST /api/issues/:id/revalidate — re-run the diagnostic on the CURRENT code:
 // is the issue still present, and does the proposed patch still apply? Read-only.
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  enterTenant(await resolveTenant());
   const { id } = await params;
   const r = await revalidateIssue(id);
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 });

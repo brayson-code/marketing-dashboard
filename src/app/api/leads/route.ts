@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import crypto from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { sql, tenantId } from '@/lib/db/client';
@@ -88,6 +89,7 @@ function makeLeadId(): string {
 }
 
 export async function GET(req: NextRequest) {
+  enterTenant(await resolveTenant());
   const auth = requireApiUser(req as Request);
   if (auth) return auth;
   const { searchParams } = req.nextUrl;
@@ -109,6 +111,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  enterTenant(await resolveTenant());
   const auth = requireApiEditor(req as Request);
   if (auth) return auth;
   const actor = requireUser(req as Request);
@@ -194,6 +197,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  enterTenant(await resolveTenant());
   const auth = requireApiEditor(req as Request);
   if (auth) return auth;
   const actor = requireUser(req as Request);
@@ -335,6 +339,7 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  enterTenant(await resolveTenant());
   const auth = requireApiEditor(req as Request);
   if (auth) return auth;
   const actor = requireUser(req as Request);

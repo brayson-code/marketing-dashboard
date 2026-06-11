@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { sql, tenantId } from '@/lib/db/client';
 
@@ -7,6 +8,7 @@ export const dynamic = 'force-dynamic';
 // graph + agent_memory rollups. Surfaces volume, low-confidence facts, and
 // duplicate candidates (the cloud version of the old OpenClaw memory health).
 export async function GET() {
+  enterTenant(await resolveTenant());
   const t = tenantId();
   try {
     const [docsByStatus, docDupes, kg, kgRelations, kgDupes, kgBySource, mem] = await Promise.all([

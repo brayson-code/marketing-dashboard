@@ -38,7 +38,7 @@ export default function LearningPage() {
   return (
     <div className="space-y-4 animate-in">
       <div className="space-y-1">
-        <h1 className="text-xl font-semibold flex items-center gap-2"><TrendingUp size={18} className="text-primary" /> Learning</h1>
+        <h1 className="text-h1 flex items-center gap-2"><TrendingUp size={18} className="text-primary" /> Learning</h1>
         <p className="text-xs text-muted-foreground">What&apos;s working across the agents. Each completed run is scored with the owner-weighted blend (Reliability · Approval · Outcome) and accumulated per agent.</p>
       </div>
 

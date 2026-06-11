@@ -23,6 +23,9 @@ export interface ProviderStatus {
   label: string;
   connected: boolean;
   connected_at: string | null;
+  /** True when an integration with this provider's config key exists in Nango (i.e.
+   *  the OAuth app is wired and clients can actually connect). False = "not set up yet". */
+  available: boolean;
 }
 
 /**
@@ -41,6 +44,8 @@ export const PROVIDERS: ProviderDef[] = [
   { key: 'instagram', label: 'Instagram', providerConfigKey: configKey('instagram') },
   { key: 'facebook', label: 'Facebook', providerConfigKey: configKey('facebook') },
   { key: 'x', label: 'X', providerConfigKey: configKey('x') },
+  { key: 'tiktok', label: 'TikTok', providerConfigKey: configKey('tiktok') },
+  { key: 'facebook-ads', label: 'Facebook Ads', providerConfigKey: configKey('facebook-ads') },
 ];
 
 /** True only when the Nango secret key is present in the environment. */
@@ -60,6 +65,21 @@ export function providerConfigKeyFor(key: string): string {
 }
 
 /**
+ * The set of integration ids actually configured in the Nango account. Lets us
+ * roll out providers one at a time: the Connect UI only offers integrations whose
+ * OAuth app is wired, instead of failing all-or-nothing. Best-effort — returns an
+ * empty set on error so callers can decide how to degrade.
+ */
+async function configuredIntegrationKeys(nango: Nango): Promise<Set<string>> {
+  try {
+    const res = (await nango.listIntegrations()) as { configs?: Array<{ unique_key?: string }> };
+    return new Set((res?.configs ?? []).map((c) => c.unique_key).filter((k): k is string => !!k));
+  } catch {
+    return new Set();
+  }
+}
+
+/**
  * Mint a Connect session token for the frontend Connect UI. The token scopes the
  * session to this tenant (end_user.id) and to our supported integrations only.
  * Returns null if Nango is unconfigured or the call fails.
@@ -68,12 +88,22 @@ export async function createConnectSessionToken(tenant: string): Promise<string 
   const nango = getNango();
   if (!nango) return null;
   try {
+    // Only offer integrations that are actually configured in Nango — otherwise
+    // createConnectSession rejects the whole request (referencing an integration id
+    // that doesn't exist), blocking every provider including the ones that ARE ready.
+    const configured = await configuredIntegrationKeys(nango);
+    const allowed = PROVIDERS.map((p) => p.providerConfigKey).filter((k) => configured.has(k));
+    if (allowed.length === 0) return null; // nothing wired in Nango yet
     const res = await nango.createConnectSession({
       end_user: { id: tenant },
-      allowed_integrations: PROVIDERS.map((p) => p.providerConfigKey),
+      allowed_integrations: allowed,
     });
     return res?.data?.token ?? null;
-  } catch {
+  } catch (e) {
+    // Most common during setup: allowed_integrations references integration ids
+    // that don't exist in the Nango account yet → no token mints. Surface it in
+    // the server logs so the cause is visible while wiring up the dashboard.
+    console.error('[nango] createConnectSession failed:', (e as Error)?.message ?? e);
     return null;
   }
 }
@@ -104,11 +134,22 @@ export async function listProviderStatus(): Promise<ProviderStatus[]> {
     connectedMap = new Map();
   }
 
+  // Which providers are wired in Nango (best-effort). If we can't check (Nango
+  // unconfigured or the call fails), default to available so we never hide a
+  // provider that actually works.
+  let availableKeys: Set<string> | null = null;
+  const nango = getNango();
+  if (nango) {
+    const configured = await configuredIntegrationKeys(nango);
+    if (configured.size > 0) availableKeys = configured;
+  }
+
   return PROVIDERS.map((p) => ({
     key: p.key,
     label: p.label,
     connected: connectedMap.has(p.key),
     connected_at: connectedMap.get(p.key) ?? null,
+    available: availableKeys ? availableKeys.has(p.providerConfigKey) : true,
   }));
 }
 

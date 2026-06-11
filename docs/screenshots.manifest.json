@@ -209,6 +209,17 @@
     "preAction": null
   },
   {
+    "slug": "media",
+    "index": 1,
+    "filename": "media-1.png",
+    "caption": "the Media library with uploaded clips in a thumbnail grid",
+    "route": "/content/media",
+    "fullPage": true,
+    "clipSelector": null,
+    "waitForSelector": ".border-dashed",
+    "preAction": null
+  },
+  {
     "slug": "agents",
     "index": 1,
     "filename": "agents-1.png",
@@ -245,7 +256,7 @@
     "slug": "boardroom",
     "index": 1,
     "filename": "boardroom-1.png",
-    "caption": "the Boardroom chat with a conversation in progress",
+    "caption": "the orchestrator chat with a conversation in progress",
     "route": "/boardroom",
     "fullPage": false,
     "clipSelector": ".panel.flex.flex-col",
@@ -256,7 +267,7 @@
     "slug": "boardroom",
     "index": 2,
     "filename": "boardroom-2.png",
-    "caption": "pasting a screenshot into the Boardroom for KeyPlayer to read",
+    "caption": "pasting a screenshot into the orchestrator chat for KeyPlayer to read",
     "route": "/boardroom",
     "fullPage": false,
     "clipSelector": ".panel.flex.flex-col",

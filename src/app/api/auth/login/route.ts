@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { authenticate, createSession, destroySession, seedAdmin } from '@/lib/auth';
 
@@ -21,6 +22,7 @@ function shouldUseSecureCookies(request: Request): boolean {
 }
 
 export async function POST(request: Request) {
+  enterTenant(await resolveTenant());
   try {
     seedAdmin();
   } catch (error) {

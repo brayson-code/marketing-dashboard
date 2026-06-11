@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextRequest, NextResponse } from "next/server";
 import { getSequences, updateSequenceStatus } from "@/lib/queries";
 import { writebackSequenceStatus } from "@/lib/writeback";
@@ -10,6 +11,7 @@ const LEAD_APPROVED_STATUS = "approved";
 const ALLOWED_SEQUENCE_STATUSES = new Set(["approved", "cancelled", "queued", "sent", "pending_approval"]);
 
 export async function GET(req: NextRequest) {
+  enterTenant(await resolveTenant());
   const auth = requireApiUser(req as Request);
   if (auth) return auth;
   const { searchParams } = req.nextUrl;
@@ -23,6 +25,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  enterTenant(await resolveTenant());
   const auth = requireApiEditor(req as Request);
   if (auth) return auth;
   const actor = requireUser(req as Request);

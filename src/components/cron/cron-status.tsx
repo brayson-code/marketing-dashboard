@@ -160,7 +160,7 @@ export function CronStatus() {
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium">{job.name || jobId}</span>
                           <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${theme.bg} ${theme.color}`}>
-                            {theme.emoji} {job.agentId}
+                            {job.agentId}
                           </span>
                           {job.skill && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted/30 text-muted-foreground">

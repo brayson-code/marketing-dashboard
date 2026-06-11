@@ -49,7 +49,7 @@ A two-card row that ties the Overview to your content engine:
 - **Content Lab** card — a preview of what to make next. Opens [Content Lab](./content-lab.md).
 
 ### Automation Flow
-A view of your active campaign's waves of agent work, if one is running. See [Goals & Missions](./goals-and-missions.md).
+A view of your active mission's waves of agent work, if one is running. See [Goals & Missions](./goals-and-missions.md).
 
 ### Usage / spend
 A full-width strip showing your Claude API spend so cost stays visible without leaving home. The full breakdown lives on the [Usage page](./usage.md).

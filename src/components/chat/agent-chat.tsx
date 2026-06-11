@@ -319,7 +319,6 @@ export function AgentChat() {
                       activeConv === `agent_${agent.id}` ? 'bg-primary/10 text-primary' : 'hover:bg-muted/50 text-foreground'
                     }`}
                   >
-                    <span>{agent.emoji}</span>
                     <span className="font-medium">{agent.name}</span>
                   </button>
                 ))
@@ -342,7 +341,7 @@ export function AgentChat() {
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-medium truncate">
-                          {parsed.emoji} {parsed.label}
+                          {parsed.label}
                         </span>
                         <div className="flex items-center gap-1 shrink-0 ml-1">
                           {conv.unread_count > 0 && (
@@ -392,7 +391,6 @@ export function AgentChat() {
                     const info = parseConversationName(activeConv, agents, firstOperatorMsg || null);
                     return (
                       <>
-                        <span className="text-sm">{info.emoji}</span>
                         <span className="text-sm font-medium">{info.label}</span>
                         {info.sublabel && <span className="text-[10px] text-muted-foreground">{info.sublabel}</span>}
                       </>

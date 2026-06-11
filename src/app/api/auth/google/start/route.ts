@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { randomBytes } from 'crypto';
 import { NextResponse } from 'next/server';
 
@@ -30,6 +31,7 @@ function requireGoogleEnv() {
 }
 
 export async function GET(request: Request) {
+  enterTenant(await resolveTenant());
   try {
     const { clientId, redirectUri } = requireGoogleEnv();
     const state = randomBytes(24).toString('hex');

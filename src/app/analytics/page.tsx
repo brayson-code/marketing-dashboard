@@ -18,6 +18,11 @@ import {
   UserPlus,
   UserCheck,
 } from "lucide-react";
+import { PageHeader } from "@/components/layout/page-header";
+import { YouTubePanel } from "@/components/analytics/youtube-panel";
+import { InstagramPanel } from "@/components/analytics/instagram-panel";
+import { FacebookAdsPanel } from "@/components/analytics/facebook-ads-panel";
+import { TikTokPanel } from "@/components/analytics/tiktok-panel";
 import { useSmartPoll } from "@/hooks/use-smart-poll";
 import { useDashboard } from "@/store";
 import { StatCard } from "@/components/ui/stat-card";
@@ -162,7 +167,7 @@ export default function AnalyticsPage() {
       <div className="space-y-6 animate-in">
         <div className="panel">
           <div className="panel-header">
-            <h1 className="text-xl font-semibold">Analytics</h1>
+            <h1 className="text-h1">Analytics</h1>
           </div>
           <div className="panel-body">
             <div className="text-sm text-muted-foreground">Loading…</div>
@@ -173,20 +178,24 @@ export default function AnalyticsPage() {
   }
 
   return (
-    <div className="space-y-6 animate-in">
-      <div className="panel">
-        <div className="panel-header flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-2">
-            <LineChart size={18} className="text-primary" />
-            <h1 className="text-xl font-semibold">Analytics</h1>
-          </div>
+    <div className="space-y-5 animate-in">
+      <PageHeader
+        icon={<LineChart size={18} />}
+        title="Analytics"
+        subtitle="How content, outreach, and pipeline are performing across web + social. Time-range scoped."
+        actions={
           <div className="flex items-center gap-1">
             <RangeButton active={days === 7} onClick={() => setDays(7)} label="7d" />
             <RangeButton active={days === 30} onClick={() => setDays(30)} label="30d" />
             <RangeButton active={days === 90} onClick={() => setDays(90)} label="90d" />
           </div>
-        </div>
-      </div>
+        }
+      />
+
+      {/* Internal social roll-up — the "everything across channels" view
+          leads so you see the holistic picture before drilling into a single
+          platform. Per-platform panels follow. */}
+      <SocialPanel social={data.social} series={socialSeries} />
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <WebsitePanel website={data.website} />
@@ -194,7 +203,15 @@ export default function AnalyticsPage() {
         <LinkedInPanel linkedin={data.linkedin} days={data.days} />
       </div>
 
-      <SocialPanel social={data.social} series={socialSeries} />
+      {/* YouTube panel — live channel + last 30d metrics + recent uploads. */}
+      <YouTubePanel />
+
+      {/* Instagram (real data when connected) + Facebook Ads & TikTok scaffolds. */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <InstagramPanel />
+        <FacebookAdsPanel />
+        <TikTokPanel />
+      </div>
     </div>
   );
 }

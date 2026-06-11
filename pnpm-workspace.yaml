@@ -10,3 +10,12 @@ onlyBuiltDependencies:
   - esbuild
   - sharp
   - unrs-resolver
+# Transitive-dependency CVE pins (security audit). All dev/build-time or
+# unreachable at runtime, but cheap hygiene.
+overrides:
+  minimatch: ^9.0.7
+  axios: '>=1.16.0'
+  flatted: '>=3.4.2'
+  nodemailer: '>=8.0.4'
+  picomatch@2: '>=2.3.2'
+  picomatch@4: '>=4.0.4'

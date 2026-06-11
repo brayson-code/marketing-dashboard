@@ -15,6 +15,10 @@ export function roleFor(agentId: string): AgentRole {
   switch (agentId) {
     case 'research-analyst':
     case 'lead-research':
+    case 'reel-analyst':
+      // Reverse-engineers why a competitor short-form video performed (teardown
+      // only — read-only, never publishes). Same research boundaries as the
+      // analysts: cite sources, quantify, flag what couldn't be verified.
       return 'research';
     case 'content-writer':
       return 'content';

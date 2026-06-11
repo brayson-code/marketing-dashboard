@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -7,6 +8,7 @@ import { getHermesStateDir } from '@/lib/hermes-state';
 const STATE_DIR = getHermesStateDir();
 
 export async function GET(request: Request) {
+  enterTenant(await resolveTenant());
   const auth = requireApiUser(request as Request);
   if (auth) return auth;
   const budgetPath = path.join(STATE_DIR, 'x-api-budget.json');

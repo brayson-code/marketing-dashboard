@@ -35,17 +35,21 @@ Write a **high-retention short-form video** (TikTok / Reels / YouTube Short) in 
 - On-screen text: "<the punchy hook words>"
 - Visual: <a-roll/b-roll direction — what we SHOW, no stock>
 - Audio: <the exact spoken hook line>
+- Clip: <optional: a real Media-library clip id or name to use here, or blank>
 
 ## Scenes
-| Time | Visual | On-screen text | Audio |
-|---|---|---|---|
-| 0:01.5 – 0:05 | <a-roll or b-roll: what to show> | <bold caption / infographic, e.g. "$60K burned"> | <exact spoken line> |
-| 0:05 – 0:12 | ... | ... | ... |
+| Time | Visual | On-screen text | Audio | Clip |
+|---|---|---|---|---|
+| 0:01.5 – 0:05 | <a-roll or b-roll: what to show> | <bold caption / infographic, e.g. "$60K burned"> | <exact spoken line> | <Media-library clip id/name, or blank> |
+| 0:05 – 0:12 | ... | ... | ... | ... |
 ...
+
+> If a "Tenant media library" block is provided in the task, you MAY set the **Clip** column/field to one of those clip ids (in brackets, preferred) or exact names to splice the tenant's real footage. Leave Clip blank for shots you have no footage for — they fall back to your Visual direction.
 
 ## CTA
 - On-screen text: "<CTA>"
 - Visual: <e.g. "freeze on title card with handle">
+- Clip: <optional: a real Media-library clip id or name, or blank>
 
 ## Production notes
 - Music: <vibe / energy — royalty-free / stock libraries only>

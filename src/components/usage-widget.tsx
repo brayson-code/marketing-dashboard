@@ -15,18 +15,23 @@ import {
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 
 // ── Claude theming ──────────────────────────────────────────────
+// All colors here are CSS vars defined in globals.css — they auto-flip when
+// you switch dark/light mode at the root via next-themes. No JS theme detection
+// needed, no re-render on theme change, no flicker.
 const CLAUDE = {
-  primary: '#E8835A', // signature coral-orange (brightened for the dark card)
-  accent: '#E8835A',
-  bright: '#FB923C', // vivid orange for headings on dark
-  warn: '#F87171', // over-limit warning shade (lightened for dark bg)
-  fillSoft: 'rgba(255, 255, 255, 0.08)',
-  fillSofter: 'rgba(255, 255, 255, 0.05)',
-  tint: 'rgba(234, 88, 12, 0.10)',
-  border: 'rgba(255, 255, 255, 0.12)',
-  dark: '#1A1512', // warm charcoal card fill
-  ink: '#F5F3F0', // light text on the dark card
-  inkMuted: 'rgba(245, 243, 240, 0.60)',
+  primary:    'var(--claude-primary)',
+  accent:     'var(--claude-primary)',
+  bright:     'var(--claude-bright)',
+  warn:       'var(--claude-warn)',
+  fillSoft:   'var(--claude-fill-soft)',
+  fillSofter: 'var(--claude-fill-softer)',
+  tint:       'var(--claude-tint)',
+  border:     'var(--claude-border)',
+  dark:       'var(--claude-bg)',
+  ink:        'var(--claude-ink)',
+  inkMuted:   'var(--claude-ink-muted)',
+  grid:       'var(--claude-grid)',
+  shadow:     'var(--claude-shadow)',
 };
 
 // ── Types (mirror src/lib/usage.ts) ─────────────────────────────
@@ -137,9 +142,9 @@ function LimitBar({ label, limit, mascot }: { label: string; limit: UsageLimit; 
           <div
             className="relative h-9 rounded-full overflow-hidden"
             style={{
-              background: 'rgba(255,255,255,0.08)',
+              background: CLAUDE.fillSoft,
               border: `1px solid ${CLAUDE.border}`,
-              boxShadow: 'inset 0 1px 4px rgba(0,0,0,0.45)',
+              boxShadow: 'inset 0 1px 4px color-mix(in srgb, var(--claude-ink) 25%, transparent)',
             }}
           >
             {/* gradient fill */}
@@ -148,9 +153,9 @@ function LimitBar({ label, limit, mascot }: { label: string; limit: UsageLimit; 
               style={{
                 width: `${Math.max(fillPct, 2)}%`,
                 background: over
-                  ? 'linear-gradient(90deg, #EA580C 0%, #DC2626 60%, #B91C1C 100%)'
-                  : 'linear-gradient(90deg, #EA580C 0%, #F59E0B 45%, #D97757 100%)',
-                boxShadow: `0 0 14px ${over ? 'rgba(220,38,38,0.6)' : 'rgba(234,88,12,0.55)'}`,
+                  ? `linear-gradient(90deg, ${CLAUDE.bright} 0%, ${CLAUDE.warn} 60%, ${CLAUDE.warn} 100%)`
+                  : `linear-gradient(90deg, ${CLAUDE.bright} 0%, ${CLAUDE.primary} 60%, ${CLAUDE.primary} 100%)`,
+                boxShadow: `0 0 14px color-mix(in srgb, ${over ? CLAUDE.warn : CLAUDE.primary} 55%, transparent)`,
               }}
             >
               {/* moving shimmer highlight across the fill */}
@@ -270,10 +275,10 @@ export function UsageWidget() {
         border: `2px solid ${CLAUDE.primary}`,
         borderRadius: 22,
         background: CLAUDE.dark,
-        boxShadow: '0 18px 40px -12px rgba(234,88,12,0.35), 0 10px 22px -8px rgba(0,0,0,0.30)',
+        boxShadow: CLAUDE.shadow,
       }}
     >
-      <div className="panel-header flex items-center justify-between" style={{ borderColor: 'rgba(234,88,12,0.22)' }}>
+      <div className="panel-header flex items-center justify-between" style={{ borderColor: `color-mix(in srgb, ${CLAUDE.primary} 35%, transparent)` }}>
         <h3 className="flex items-center gap-2 text-base font-extrabold tracking-tight">
           <ClaudeSpark size={17} />
           <span style={{ color: CLAUDE.bright }}>Usage</span>
@@ -331,7 +336,7 @@ export function UsageWidget() {
                           <stop offset="100%" stopColor={CLAUDE.primary} stopOpacity={0} />
                         </linearGradient>
                       </defs>
-                      <CartesianGrid stroke="rgba(255,255,255,0.08)" strokeDasharray="3 3" vertical={false} />
+                      <CartesianGrid stroke={CLAUDE.grid} strokeDasharray="3 3" vertical={false} />
                       <XAxis dataKey="day" stroke={CLAUDE.inkMuted} fontSize={10} tickLine={false} axisLine={false} />
                       <YAxis stroke={CLAUDE.inkMuted} fontSize={10} tickFormatter={fmtNum} tickLine={false} axisLine={false} width={40} />
                       <Tooltip content={<ChartTip />} cursor={{ stroke: CLAUDE.border }} />

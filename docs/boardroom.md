@@ -1,17 +1,16 @@
 # Boardroom
 
-The **Boardroom** is where you talk to your lead agent (**KeyPlayer**) and watch your agents coordinate. It's the conversational front door to KeyCommand — ask for anything, and the orchestrator figures out who should do it.
+The **Boardroom** is where you talk to your lead agent (**KeyPlayer**) and watch your agents coordinate. It's the conversational front door to KeyCommand — ask for anything, and the orchestrator figures out who should do it. You'll find it under the **Agents** section of the left nav.
 
-![the Boardroom chat with a conversation in progress](images/boardroom-1.png)
+![the orchestrator chat with a conversation in progress](images/boardroom-1.png)
 
 ---
 
 ## What it is
 
-The Boardroom has three tabs:
+The page has two tabs:
 
-- **iMessage** — chat with KeyPlayer, the orchestrator. Ask questions, request work, paste screenshots for it to read. If you've connected iMessage (via LoopMessage), you can also have these conversations from your phone.
-- **Mission Control** — the same operator-to-orchestrator chat, in-app.
+- **Orchestrator agent** — chat with KeyPlayer, the orchestrator. Ask questions, request work, paste screenshots for it to read. This conversation works right here in the app, and if you've connected iMessage (via LoopMessage) you can carry it on from your phone too — it's the same thread either way.
 - **Agent ↔ Agent** — a live view of how your agents talk to *each other* while they work.
 
 ## Why it matters
@@ -24,13 +23,13 @@ Most of KeyCommand's pages are structured tools. The Boardroom is the open-ended
 
 ### Chat with KeyPlayer
 
-1. Open **Boardroom** (you'll land on the chat tab).
+1. Open the **Boardroom** (you'll land on the **Orchestrator agent** chat tab).
 2. Type a request — *"Draft three reel hooks about our new feature,"* or *"What did our competitors post this week?"*
 3. KeyPlayer plans the work, dispatches specialists if needed, and replies. Anything it produces for action shows up in [Drafts](./drafts.md).
 
 **Send it a screenshot.** You can paste, drag-and-drop, or attach an image, and KeyPlayer can read it — handy for "here's a reel I saw, what do you think?"
 
-![pasting a screenshot into the Boardroom for KeyPlayer to read](images/boardroom-2.png)
+![pasting a screenshot into the orchestrator chat for KeyPlayer to read](images/boardroom-2.png)
 
 ### Watch agents collaborate
 
@@ -44,7 +43,7 @@ Each reply can show its token cost — click the small info icon on a message to
 
 ## Tips
 
-- **Use it as your catch-all.** When no specific page fits, describe the goal in the Boardroom and let the orchestrator pick the right specialists.
+- **Use it as your catch-all.** When no specific page fits, describe the goal to the orchestrator and let it pick the right specialists.
 - **Paste screenshots liberally.** Visual context (a competitor reel, a dashboard, a design) often gets you a much better answer.
-- **Remember the approval rule.** The Boardroom can *propose* anything, but it still routes actions through Drafts for your sign-off (unless you've raised [autonomy](./concepts.md#the-autonomy-gate)).
+- **Remember the approval rule.** The orchestrator can *propose* anything, but it still routes actions through Drafts for your sign-off (unless you've raised [autonomy](./concepts.md#the-autonomy-gate)).
 - **The Agent ↔ Agent tab is great for learning** how your team operates — and for spotting where an agent could be tuned in the [Agent Studio](./agents.md).

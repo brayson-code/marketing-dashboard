@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse, after } from 'next/server';
 import { listCronJobs, toggleCronJob, markDue, normalizeJobId } from '@/lib/cron-store';
 import { runCronJob } from '@/lib/cron-runner';
@@ -7,6 +8,7 @@ export const maxDuration = 300; // "Run now" executes a sub-agent inline via aft
 
 // GET /api/cron — list jobs in the shape the CronBoard expects.
 export async function GET() {
+  enterTenant(await resolveTenant());
   try {
     const jobs = await listCronJobs();
     // Single-owner cloud build: the authenticated owner manages their own jobs.
@@ -20,6 +22,7 @@ export async function GET() {
 // PUT /api/cron — { id, action: "toggle" | "trigger" }.
 // toggle flips enabled; trigger marks the job due and runs it immediately.
 export async function PUT(request: Request) {
+  enterTenant(await resolveTenant());
   const body = await request.json().catch(() => ({}));
   const id = normalizeJobId(body?.id ?? body?.jobId);
   const action = body?.action === 'toggle' || body?.action === 'trigger' ? body.action : null;

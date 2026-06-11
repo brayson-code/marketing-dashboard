@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { captureError } from '@/lib/observability';
 
@@ -7,6 +8,7 @@ export const dynamic = 'force-dynamic';
 // Public (see proxy.ts) so errors that happen before/around auth still report.
 // Capture is best-effort and never echoes details back.
 export async function POST(request: Request) {
+  enterTenant(await resolveTenant());
   let body: Record<string, unknown>;
   try { body = await request.json(); }
   catch { return NextResponse.json({ ok: false }, { status: 400 }); }

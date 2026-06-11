@@ -22,9 +22,9 @@ The three plain-language fields that define any agent:
 
 Editing these in the [Agent Studio](./agents.md) changes how the agent behaves — live, no redeploy.
 
-## Drafts
+## Drafts (Approvals)
 
-The **approval queue**. Anything an agent produces that could go out — a post, an email, a meeting, a script — is saved as a draft for you to approve, reject, or execute. Nothing ships without your sign-off (unless you raise autonomy). See [Drafts](./drafts.md).
+The **approval queue** — labelled **Approvals** in the navigation. Anything an agent produces that could go out — a post, an email, a meeting, a script — is saved as a draft for you to approve, reject, or execute. Nothing ships without your sign-off (unless you raise autonomy). See [Drafts & Approvals](./drafts.md).
 
 ## The autonomy gate
 
@@ -43,9 +43,9 @@ You can also set per-type overrides (e.g. auto-publish content but always approv
 
 Verifiable **outcomes** you want to reach (e.g. "1,000 subscribers"). Agents work toward them and report progress, but you confirm when a goal is actually done. See [Goals & Missions](./goals-and-missions.md).
 
-## Missions & Campaigns
+## Campaigns & Missions
 
-A **Mission** is a big request executed as a series of **waves** — rounds of coordinated agent work that build on each other toward an objective, ending in a final report. **Campaigns** are the same wave-based work viewed from a campaign angle. See [Goals & Missions](./goals-and-missions.md).
+A **Mission** is a big request executed as a series of **waves** — rounds of coordinated agent work that build on each other toward an objective, ending in a final report. A **Campaign** is a bigger container: a themed, multi-channel push toward a goal over a date range (a launch, a month of LinkedIn, a webinar promo) that bundles the missions running underneath it. See [Goals & Missions](./goals-and-missions.md).
 
 ## Cron jobs
 

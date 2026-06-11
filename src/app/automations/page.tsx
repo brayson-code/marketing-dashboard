@@ -79,7 +79,7 @@ export default function AutomationsPage() {
   if (!data || loading) {
     return (
       <div className="space-y-6 animate-in">
-        <h1 className="text-xl font-semibold">Automations</h1>
+        <h1 className="text-h1">Automations</h1>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map(i => <div key={i} className="panel h-32 animate-pulse bg-muted/20" />)}
         </div>
@@ -108,7 +108,7 @@ export default function AutomationsPage() {
 
   return (
     <div className="space-y-6 animate-in">
-      <h1 className="text-xl font-semibold">Automations</h1>
+      <h1 className="text-h1">Automations</h1>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -182,7 +182,6 @@ export default function AutomationsPage() {
                 return (
                   <span key={agent} className="flex items-center gap-1">
                     <span className={`w-3 h-0.5 rounded ${style.dotClass}`} />
-                    {meta?.emoji && <span>{meta.emoji}</span>}
                     {label}
                   </span>
                 );

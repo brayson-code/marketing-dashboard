@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
-interface CampaignListItem {
+interface MissionListItem {
   id: string;
   title: string;
   status: string;
@@ -55,7 +55,7 @@ interface Step {
 }
 
 interface Detail {
-  campaign: Record<string, unknown>;
+  mission: Record<string, unknown>;
   steps: Step[];
 }
 
@@ -90,7 +90,7 @@ function AgentDot({ ok }: { ok: boolean }) {
 }
 
 export function Pipeline() {
-  const [list, setList] = useState<CampaignListItem[]>([]);
+  const [list, setList] = useState<MissionListItem[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
@@ -105,7 +105,7 @@ export function Pipeline() {
       const r = await fetch('/api/pipeline', { cache: 'no-store' });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || 'Failed to load pipelines');
-      setList(j.campaigns ?? []);
+      setList(j.missions ?? []);
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -284,7 +284,7 @@ function Flow({
   openWave: number | null;
   onToggleWave: (idx: number) => void;
 }) {
-  const c = detail.campaign;
+  const c = detail.mission;
   const title = String(c.title ?? 'Pipeline');
   const status = String(c.status ?? 'running');
   const currentWave = Number(c.current_wave ?? 0);
@@ -292,7 +292,7 @@ function Flow({
   const goalId = (c.goal_id as string | null) ?? null;
   const goalLabel = (c.goal_title as string | null) ?? goalId; // human title when resolved
   const finalReport = (c.final_report as string | null) ?? null;
-  const campaignError = (c.error as string | null) ?? null;
+  const missionError = (c.error as string | null) ?? null;
 
   const stepsByIndex = new Map<number, Step>();
   for (const s of detail.steps) stepsByIndex.set(s.wave_index, s);
@@ -340,7 +340,7 @@ function Flow({
           </div>
           <span className={`badge ${badgeFor(status)} shrink-0`}>{status}</span>
         </div>
-        {campaignError && <div className="text-xs text-destructive">Error: {campaignError}</div>}
+        {missionError && <div className="text-xs text-destructive">Error: {missionError}</div>}
       </div>
 
       {/* Flow diagram — horizontal stages connected by arrows. Scrolls on narrow
@@ -381,19 +381,26 @@ function StageNode({ stage, open, onToggle }: { stage: Stage; open: boolean; onT
   const expandable = !!(stage.step && (stage.step.synthesis || (agents && agents.length > 0)));
 
   // Visual emphasis per state: current/running stages glow with the primary
-  // ring; upcoming stages are dimmed.
+  // ring + a soft outer aura so it actually reads as "live"; upcoming dimmed.
   const ring =
     stage.state === 'running' || stage.state === 'current'
-      ? 'border-primary/60 ring-1 ring-primary/30'
+      ? 'border-primary/60'
       : stage.state === 'error'
       ? 'border-destructive/50'
       : stage.state === 'done'
       ? 'border-emerald-500/40'
       : 'border-border/60';
   const dim = stage.state === 'upcoming' ? 'opacity-60' : '';
+  const live = stage.state === 'running' || stage.state === 'current';
+  const glow = live
+    ? '0 0 28px color-mix(in srgb, var(--primary) 22%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--primary) 35%, transparent)'
+    : undefined;
 
   return (
-    <div className={`w-52 shrink-0 rounded-lg border bg-[var(--surface-2)] ${ring} ${dim} flex flex-col`}>
+    <div
+      className={`w-52 shrink-0 rounded-lg border bg-[var(--surface-2)] ${ring} ${dim} flex flex-col`}
+      style={{ boxShadow: glow, transition: 'box-shadow var(--t-popover) var(--ease-out)' }}
+    >
       <button
         onClick={onToggle}
         disabled={!expandable}
@@ -440,10 +447,24 @@ function StageNode({ stage, open, onToggle }: { stage: Stage; open: boolean; onT
 }
 
 function Connector({ active }: { active: boolean }) {
+  if (!active) {
+    return (
+      <div className="flex items-center px-0.5 self-center" aria-hidden="true">
+        <div className="h-px w-3 bg-border" />
+        <ChevronRight size={14} className="text-muted-foreground/50" />
+      </div>
+    );
+  }
+  // Live connector — dashed segment animates forward, so flow visibly "moves"
+  // between completed waves and the next active one.
   return (
     <div className="flex items-center px-0.5 self-center" aria-hidden="true">
-      <div className={`h-px w-3 ${active ? 'bg-primary/60' : 'bg-border'}`} />
-      <ChevronRight size={14} className={active ? 'text-primary/70' : 'text-muted-foreground/50'} />
+      <svg width="40" height="12" viewBox="0 0 40 12">
+        <line x1="0" y1="6" x2="32" y2="6" stroke="var(--primary)" strokeWidth="1.4" strokeOpacity="0.75" strokeDasharray="4 3">
+          <animate attributeName="stroke-dashoffset" from="0" to="-14" dur="0.9s" repeatCount="indefinite" />
+        </line>
+        <polyline points="26,2 34,6 26,10" fill="none" stroke="var(--primary)" strokeWidth="1.4" strokeOpacity="0.85" />
+      </svg>
     </div>
   );
 }

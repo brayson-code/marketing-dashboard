@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { sql, tenantId } from '@/lib/db/client';
 import { sendIMessage, getOwnerPhone, isLoopMessageConfigured } from '@/lib/loopmessage';
@@ -16,6 +17,7 @@ interface BoardroomRow {
 }
 
 export async function GET(request: Request) {
+  enterTenant(await resolveTenant());
   const url = new URL(request.url);
   const limit = Math.min(Number(url.searchParams.get('limit') ?? 100), 500);
 
@@ -34,6 +36,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  enterTenant(await resolveTenant());
   let body: { text?: string; recipient?: string; agent?: string };
   try { body = await request.json(); }
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }

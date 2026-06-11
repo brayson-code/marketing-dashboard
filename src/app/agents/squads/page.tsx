@@ -1,7 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Bot, Loader2, Cpu, Activity, Coins } from 'lucide-react';
+import { Bot, Loader2, Cpu, Activity, Coins, Crown, Users } from 'lucide-react';
+import Link from 'next/link';
+import { type Department } from '@/components/agent-orb';
+import { AgentIcon } from '@/components/agent-icon';
 
 type Status = 'active' | 'idle' | 'error' | 'planned';
 
@@ -12,8 +15,25 @@ interface SquadAgent {
   role: string;
   model: string;
   description: string;
+  department: string | null;
+  is_executive: boolean;
   status: Status;
   stats: { runs: number; running: number; last_active: number | null; total_tokens: number; last_status: string | null };
+}
+
+// Map an agent's `role` to its department signature color. Replaces the
+// emoji-as-identity pattern with the new AgentOrb visual language.
+function deptForRole(role: string): Department {
+  switch (role) {
+    case 'orchestrator': return 'leadership';
+    case 'content':
+    case 'creative':     return 'marketing';
+    case 'outreach':
+    case 'research':     return 'revenue';
+    case 'scheduler':
+    case 'general':      return 'operations';
+    default:             return 'operations';
+  }
 }
 
 const STATUS_DOT: Record<Status, string> = {
@@ -65,15 +85,21 @@ export default function SquadsPage() {
   }, [load]);
 
   const orchestrator = agents.find((a) => a.id === 'keyplayer');
-  const rest = agents.filter((a) => a.id !== 'keyplayer');
+  // "Org chart" = the executive layer (AI CEO + the rest of the C-suite). The
+  // orchestrator sits above this row as its own highlight card.
+  const orgChart = agents
+    .filter((a) => a.is_executive && a.id !== 'keyplayer')
+    .sort((a, b) => (a.id === 'ai-ceo' ? -1 : b.id === 'ai-ceo' ? 1 : a.name.localeCompare(b.name)));
+  // "Specialists" = everyone else — the workers each exec dispatches.
+  const specialists = agents.filter((a) => !a.is_executive && a.id !== 'keyplayer');
   const activeCount = agents.filter((a) => a.status === 'active').length;
 
   return (
-    <div className="space-y-5 animate-in">
+    <div className="space-y-6 animate-in">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="space-y-1">
-          <h1 className="text-xl font-semibold flex items-center gap-2"><Bot size={18} className="text-primary" /> Squad</h1>
-          <p className="text-xs text-muted-foreground">Your orchestrator and the specialist sub-agents it dispatches.</p>
+          <h1 className="text-h1 flex items-center gap-2"><Bot size={18} className="text-primary" /> Agents</h1>
+          <p className="text-small">Click any agent to open its memory, learning, and active tasks.</p>
         </div>
         <span className="badge badge-neutral">{agents.length} agents · {activeCount} active</span>
       </div>
@@ -85,21 +111,53 @@ export default function SquadsPage() {
       ) : (
         <>
           {orchestrator && <AgentCard agent={orchestrator} highlight />}
-          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-            {rest.map((a) => <AgentCard key={a.id} agent={a} />)}
-          </div>
+
+          {orgChart.length > 0 && (
+            <section className="space-y-3">
+              <SectionHeader icon={<Crown size={14} className="text-[var(--dept-leadership)]" />} title="Org chart" count={orgChart.length} subtitle="The executive layer — strategy, oversight, and audit." />
+              <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                {orgChart.map((a) => <AgentCard key={a.id} agent={a} />)}
+              </div>
+            </section>
+          )}
+
+          {specialists.length > 0 && (
+            <section className="space-y-3">
+              <SectionHeader icon={<Users size={14} className="text-primary" />} title="Specialists" count={specialists.length} subtitle="The workers — each does one thing well." />
+              <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                {specialists.map((a) => <AgentCard key={a.id} agent={a} />)}
+              </div>
+            </section>
+          )}
         </>
       )}
     </div>
   );
 }
 
+// Small repeating section header for the two roster groups.
+function SectionHeader({ icon, title, count, subtitle }: { icon: React.ReactNode; title: string; count: number; subtitle: string }) {
+  return (
+    <div className="flex items-end justify-between gap-3">
+      <div>
+        <h2 className="text-h2 flex items-center gap-2">{icon} {title}</h2>
+        <p className="text-micro text-muted-foreground mt-0.5">{subtitle}</p>
+      </div>
+      <span className="badge badge-neutral">{count}</span>
+    </div>
+  );
+}
+
 function AgentCard({ agent, highlight }: { agent: SquadAgent; highlight?: boolean }) {
   return (
-    <div className={`panel ${highlight ? 'border-primary/40' : ''}`} style={highlight ? { boxShadow: '0 0 0 1px rgba(217,119,87,0.18) inset' } : undefined}>
+    <Link
+      href={`/agents/${agent.id}`}
+      className={`panel block card-hover ${highlight ? 'border-primary/40' : ''}`}
+      style={highlight ? { boxShadow: '0 0 0 1px rgba(217,119,87,0.18) inset' } : undefined}
+    >
       <div className="panel-body space-y-2.5">
         <div className="flex items-start gap-3">
-          <div className="text-2xl leading-none mt-0.5">{agent.emoji}</div>
+          <div className="mt-0.5 shrink-0"><AgentIcon id={agent.id} role={agent.role} department={deptForRole(agent.role)} size="md" pulse={agent.status === 'active'} /></div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-semibold truncate">{agent.name}</h3>
@@ -122,6 +180,6 @@ function AgentCard({ agent, highlight }: { agent: SquadAgent; highlight?: boolea
           <span className="ml-auto">{ago(agent.stats.last_active)}</span>
         </div>
       </div>
-    </div>
+    </Link>
   );
 }

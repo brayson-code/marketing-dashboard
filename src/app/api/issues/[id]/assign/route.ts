@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse, after } from 'next/server';
 import { getIssue, updateIssue } from '@/lib/observability';
 import { runFixer } from '@/lib/fixer';
@@ -9,6 +10,7 @@ export const maxDuration = 300;
 // draft PR) can take a while, so we kick it off with after() and return
 // immediately; the board polls for the status/PR to appear.
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  enterTenant(await resolveTenant());
   const { id } = await params;
   const issue = await getIssue(id);
   if (!issue) return NextResponse.json({ error: 'Not found' }, { status: 404 });

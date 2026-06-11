@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -27,6 +28,7 @@ function dateKey(d: Date) {
 }
 
 export async function GET(request: Request) {
+  enterTenant(await resolveTenant());
   const auth = requireApiUser(request);
   if (auth) return auth;
   try {

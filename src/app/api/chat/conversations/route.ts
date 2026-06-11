@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { sql, tenantId } from '@/lib/db/client';
 import { requireApiUser } from '@/lib/api-auth';
@@ -25,6 +26,7 @@ interface MessageRow {
 }
 
 export async function GET(request: Request) {
+  enterTenant(await resolveTenant());
   const auth = requireApiUser(request as Request);
   if (auth) return auth;
   try {

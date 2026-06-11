@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { sql, tenantId } from '@/lib/db/client';
 import { writebackLeadUpdate, writebackSequenceStatus } from '@/lib/writeback';
@@ -23,6 +24,7 @@ const ALLOWED_LEAD_STATUSES = new Set([
 ]);
 
 export async function GET(request: Request) {
+  enterTenant(await resolveTenant());
   const auth = requireApiUser(request as Request);
   if (auth) return auth;
   const { searchParams } = new URL(request.url);
@@ -177,6 +179,7 @@ export async function GET(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  enterTenant(await resolveTenant());
   const auth = requireApiEditor(request as Request);
   if (auth) return auth;
   const actor = requireUser(request as Request);

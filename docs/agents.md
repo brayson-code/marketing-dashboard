@@ -31,7 +31,11 @@ Open **Agents** from the left navigation. You'll see your roster as a grid of ca
 - A **status dot** — active, idle, error, or "not run yet".
 - Quick **stats** — how many runs, when it was last active, and tokens used.
 
-Click any agent to open its **detail page**, where you can read what it does and see its recent activity. If an agent is editable, the detail page shows an **Edit** button that takes you straight into the Agent Studio for that agent.
+Click any agent to open its **detail page**. If an agent is editable, the page shows an **Edit** button that takes you straight into the Agent Studio for that agent. The detail view is organized into three tabs:
+
+- **Memory** — what the agent is up to. A **Status** line (its rolling "pulse" — what it's focused on right now, updated at the end of each successful run), an **Activity** strip of recent heartbeats, headline counts (total runs, completed, errors), and a **Recent memory** timeline you can expand to read each past run. A collapsible **Technical details** panel tucks away raw internals (model, token usage, agent ID) for when you want them.
+- **Learning** — per-agent learnings ranked by impact. *(Coming soon.)*
+- **Tasks** — anything currently running for this agent.
 
 ![an individual agent's detail page with the Edit button](images/agents-2.png)
 

@@ -2,6 +2,9 @@ import { sql, tenantId } from './db/client';
 
 // Anthropic pricing per 1M tokens (cached 2026-04-15 — refresh from platform.claude.com)
 const PRICING: Record<string, { input: number; output: number }> = {
+  // Opus 4.8 priced same as 4.7 ($5/$25 per 1M) as a placeholder until the
+  // official rate is confirmed — refresh from platform.claude.com.
+  'claude-opus-4-8': { input: 5.0, output: 25.0 },
   'claude-opus-4-7': { input: 5.0, output: 25.0 },
   'claude-opus-4-6': { input: 5.0, output: 25.0 },
   'claude-sonnet-4-6': { input: 3.0, output: 15.0 },

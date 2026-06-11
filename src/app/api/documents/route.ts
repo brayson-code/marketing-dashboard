@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { listDocuments, createDocument, type DocStatus } from '@/lib/documents';
 
@@ -7,10 +8,12 @@ const STATUSES: DocStatus[] = ['raw', 'wiki', 'archived'];
 
 // Auth enforced by the Supabase middleware.
 export async function GET() {
+  enterTenant(await resolveTenant());
   return NextResponse.json({ documents: await listDocuments() });
 }
 
 export async function POST(request: Request) {
+  enterTenant(await resolveTenant());
   let body: { title?: string; content?: string; type?: string; status?: string };
   try { body = await request.json(); }
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }

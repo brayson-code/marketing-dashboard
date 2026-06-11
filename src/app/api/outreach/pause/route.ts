@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -9,6 +10,7 @@ const STATE_DIR = getHermesStateDir();
 const FLAG_PATH = path.join(STATE_DIR, 'sending-paused.flag');
 
 export async function POST(req: NextRequest) {
+  enterTenant(await resolveTenant());
   try {
     const user = getUserFromRequest(req);
     if (!user) {

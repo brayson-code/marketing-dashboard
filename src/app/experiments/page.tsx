@@ -29,7 +29,7 @@ export default function ExperimentsPage() {
     <div className="space-y-6 animate-in">
       <div className="panel">
         <div className="panel-header">
-          <h1 className="text-xl font-semibold">Experiments</h1>
+          <h1 className="text-h1">Experiments</h1>
         </div>
         <div className="panel-body !p-0">
           <div className="flex gap-0 border-b border-border">

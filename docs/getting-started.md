@@ -72,7 +72,7 @@ Now you're set up. Here's the fastest path to seeing value:
 1. **Analyze a competitor reel.** Go to **Competitors**, paste any Instagram reel link into the **Analyze reels** box, and click **Analyze**. Watch the live board scrape it and tear down *why it won*. → [Competitor Reel Intel](./competitors.md)
 2. **Generate content ideas.** Go to **Content Lab** and hit **Generate ideas** to spin up trial reel concepts based on what's trending. → [Content Lab](./content-lab.md)
 3. **Write a script.** Keep an idea you like and click **Write script**, then open **Script Studio** to edit it and run the teleprompter. → [Script Studio](./script-studio.md)
-4. **Check your Drafts.** Anything your agents create for approval waits in **Drafts**. Approve what you like; reject the rest. → [Drafts](./drafts.md)
+4. **Check your Approvals.** Anything your agents create for approval waits in **Approvals**. Approve what you like; reject the rest. → [Approvals](./drafts.md)
 
 ---
 

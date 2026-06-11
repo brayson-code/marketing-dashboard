@@ -1,8 +1,10 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextRequest, NextResponse } from 'next/server';
 import { getOverviewStats, getAlerts, getActivityLog, getDailyMetrics } from '@/lib/queries';
 import { sql, tenantId } from '@/lib/db/client';
 import { getAgents, ACTION_TO_AGENT } from '@/lib/agent-config';
 import { requireApiUser } from '@/lib/api-auth';
+import { memo } from '@/lib/cache';
 
 interface AgentBrief {
   id: string;
@@ -163,15 +165,24 @@ async function getActionItems(): Promise<ActionItem[]> {
 }
 
 export async function GET(req: NextRequest) {
+  enterTenant(await resolveTenant());
   const auth = requireApiUser(req as Request);
   if (auth) return auth;
   const real = req.nextUrl.searchParams.get('real') === 'true';
-  const stats = await getOverviewStats({ excludeSeed: real });
-  const alerts = await getAlerts({ excludeSeed: real });
-  const recentActivity = await getActivityLog({ limit: 20, excludeSeed: real });
-  const metrics = await getDailyMetrics(84, { excludeSeed: real }); // 12 weeks
-  const agents = await getAgentBriefs();
-  const action_items = await getActionItems();
 
-  return NextResponse.json({ stats, alerts, recentActivity, metrics, agents, action_items });
+  const data = await memo(`overview:${tenantId()}:${real}`, 15000, async () => {
+    // These six are independent — run them concurrently (pure latency win).
+    const [stats, alerts, recentActivity, metrics, agents, action_items] = await Promise.all([
+      getOverviewStats({ excludeSeed: real }),
+      getAlerts({ excludeSeed: real }),
+      getActivityLog({ limit: 20, excludeSeed: real }),
+      getDailyMetrics(84, { excludeSeed: real }), // 12 weeks
+      getAgentBriefs(),
+      getActionItems(),
+    ]);
+
+    return { stats, alerts, recentActivity, metrics, agents, action_items };
+  });
+
+  return NextResponse.json(data);
 }

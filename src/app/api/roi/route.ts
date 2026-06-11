@@ -1,15 +1,17 @@
 import { NextResponse } from 'next/server';
 import { getRoiSummary, saveKeyAudit, logTimeSaving } from '@/lib/roi';
-import { resolveTenant } from '@/lib/with-tenant';
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
+import { tenantId } from '@/lib/db/client';
+import { memo } from '@/lib/cache';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 // GET /api/roi → full ROI summary (audit + hours/value saved + breakdowns)
 export async function GET() {
-  await resolveTenant();
+  enterTenant(await resolveTenant());
   try {
-    return NextResponse.json(await getRoiSummary());
+    return NextResponse.json(await memo(`roi:${tenantId()}`, 30000, () => getRoiSummary()));
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
@@ -17,7 +19,7 @@ export async function GET() {
 
 // PUT /api/roi → save the Key Audit inputs and/or editable presets
 export async function PUT(request: Request) {
-  await resolveTenant();
+  enterTenant(await resolveTenant());
   try {
     const b = await request.json();
     const audit = await saveKeyAudit({
@@ -35,7 +37,7 @@ export async function PUT(request: Request) {
 
 // POST /api/roi → manual time-saving log (VA: "the agent saved me N minutes")
 export async function POST(request: Request) {
-  await resolveTenant();
+  enterTenant(await resolveTenant());
   try {
     const b = await request.json();
     if (!b.actionType) return NextResponse.json({ error: 'actionType required' }, { status: 400 });

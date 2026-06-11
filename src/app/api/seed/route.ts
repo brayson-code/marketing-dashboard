@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { requireApiUser } from '@/lib/api-auth';
 
@@ -7,6 +8,7 @@ export const dynamic = 'force-dynamic';
 // The seed concept is a no-op now — nothing is tracked as seeded demo data — so
 // this endpoint always reports no seed data.
 export async function GET(request: Request) {
+  enterTenant(await resolveTenant());
   const auth = requireApiUser(request as Request);
   if (auth) return auth;
 

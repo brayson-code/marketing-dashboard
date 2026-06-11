@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { getSquad } from '@/lib/squad';
 
@@ -9,6 +10,7 @@ export const dynamic = 'force-dynamic';
 // Returns a flat array (the shape existing consumers expect). Auth is enforced
 // by the Supabase middleware.
 export async function GET() {
+  enterTenant(await resolveTenant());
   const squad = await getSquad();
   const agents = squad.map((a) => ({
     id: a.id,

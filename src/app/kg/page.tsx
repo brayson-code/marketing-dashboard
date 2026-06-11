@@ -10,7 +10,13 @@ interface Neighbor { entity: Entity; relation: KgRelation; direction: 'in' | 'ou
 interface KindCount { kind: string; n: number }
 interface GraphRelation { from_id: number; to_id: number; label: string }
 
+import { UpgradeGate } from '@/components/upgrade-gate';
+
 export default function KgPage() {
+  return <UpgradeGate feature="kg" title="Knowledge Graph"><KgContent /></UpgradeGate>;
+}
+
+function KgContent() {
   const [entities, setEntities] = useState<Entity[]>([]);
   const [relations, setRelations] = useState<GraphRelation[]>([]);
   const [counts, setCounts] = useState<KindCount[]>([]);
@@ -47,7 +53,7 @@ export default function KgPage() {
     <div className="space-y-4 animate-in">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="space-y-1">
-          <h1 className="text-xl font-semibold">Knowledge Graph</h1>
+          <h1 className="text-h1">Knowledge Graph</h1>
           <p className="text-xs text-muted-foreground">
             Entities + relations KeyPlayer + sub-agents accumulate over time.
             <span className="ml-2 badge badge-neutral">{entities.length} entities · {relCount} relations</span>

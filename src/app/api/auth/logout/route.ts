@@ -1,3 +1,4 @@
+import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { destroySession } from '@/lib/auth';
 
@@ -20,6 +21,7 @@ function shouldUseSecureCookies(request: Request): boolean {
 }
 
 export async function POST(request: Request) {
+  enterTenant(await resolveTenant());
   const cookie = request.headers.get('cookie') || '';
   const match = cookie.match(/(?:^|;\s*)hermes-session=([^;]*)/);
   const token = match ? decodeURIComponent(match[1]) : null;

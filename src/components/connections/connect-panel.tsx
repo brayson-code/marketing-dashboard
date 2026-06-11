@@ -2,50 +2,14 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Plug, RefreshCw, Link2, Unlink, AlertCircle, Check, Loader2 } from 'lucide-react';
+import { BrandLogo } from '@/components/connections/brand-logo';
 
 interface ProviderStatus {
   key: string;
   label: string;
   connected: boolean;
   connected_at: string | null;
-}
-
-// Brand marks via the simple-icons CDN (crisp SVG, brand-colored). Monochrome
-// marks (X, Threads) are forced light so they read on the dark glass tiles.
-const LOGO: Record<string, { slug: string; color?: string }> = {
-  youtube: { slug: 'youtube' },
-  linkedin: { slug: 'linkedin' },
-  instagram: { slug: 'instagram' },
-  facebook: { slug: 'facebook' },
-  x: { slug: 'x', color: 'ffffff' },
-  googleads: { slug: 'googleads' },
-  google: { slug: 'google' },
-  tiktok: { slug: 'tiktok', color: 'ffffff' },
-};
-function logoUrl(key: string): string | null {
-  const l = LOGO[key];
-  if (!l) return null;
-  return `https://cdn.simpleicons.org/${l.slug}${l.color ? `/${l.color}` : ''}`;
-}
-
-// Provider logo with a graceful fallback to the first letter if the icon fails.
-function Logo({ p }: { p: ProviderStatus }) {
-  const [failed, setFailed] = useState(false);
-  const url = logoUrl(p.key);
-  if (url && !failed) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={url}
-        alt={p.label}
-        width={18}
-        height={18}
-        className="h-[18px] w-[18px] object-contain"
-        onError={() => setFailed(true)}
-      />
-    );
-  }
-  return <span className="text-xs font-semibold uppercase">{p.label.charAt(0)}</span>;
+  available?: boolean; // OAuth app wired in Nango — false = "not set up yet"
 }
 
 // We dynamically import @nangohq/frontend so it never loads on the server or when
@@ -199,25 +163,26 @@ export default function ConnectPanel() {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
         {providers.map((p) => {
           const isBusy = busy === p.key;
+          const ready = configured && p.available !== false;
           return (
             <div key={p.key} className="panel p-3 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 min-w-0">
-                <div className="h-8 w-8 shrink-0 rounded-lg bg-[var(--surface-2)] border border-border flex items-center justify-center">
-                  <Logo p={p} />
+                <div className="h-8 w-8 shrink-0 rounded-lg bg-[var(--surface-2)] border border-border flex items-center justify-center text-foreground">
+                  <BrandLogo provider={p.key} size={18} />
                 </div>
                 <div className="min-w-0">
                   <div className="text-sm font-medium truncate">{p.label}</div>
-                  <span className={`badge ${p.connected ? 'badge-success' : 'badge-neutral'}`}>
-                    {p.connected ? 'connected' : 'not connected'}
+                  <span className={`badge ${p.connected ? 'badge-success' : ready ? 'badge-neutral' : 'badge-neutral'}`}>
+                    {p.connected ? 'connected' : ready ? 'not connected' : 'not set up yet'}
                   </span>
                 </div>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
                 <button
                   onClick={() => connect(p)}
-                  disabled={isBusy || !configured}
+                  disabled={isBusy || !ready}
                   className="btn btn-primary btn-sm"
-                  title={!configured ? 'OAuth apps not linked yet' : undefined}
+                  title={!ready ? 'This platform’s OAuth app isn’t set up yet' : undefined}
                 >
                   {isBusy ? <Loader2 size={12} className="animate-spin" /> : <Link2 size={12} />}
                   {p.connected ? 'Reconnect' : 'Connect'}
