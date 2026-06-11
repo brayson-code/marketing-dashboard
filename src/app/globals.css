@@ -742,16 +742,11 @@ textarea:focus {
   animation: coachmark-in var(--t-popover) var(--ease-out) both;
   will-change: transform, opacity;
 }
-/* Soft ring on the anchored target so the eye finds it. Keeps a visible ring at
-   rest and gently breathes outward — never fully invisible at its peak. */
-@keyframes coachmark-pulse {
-  0%, 100% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 38%, transparent); }
-  50%      { box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary) 12%, transparent); }
-}
+/* Subtle STATIC ring on the anchored target — draws the eye without the pulsing
+   "glow" that read as the page flashing (especially on large container targets). */
 .coachmark-target {
   border-radius: var(--radius);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 38%, transparent);
-  animation: coachmark-pulse 2s var(--ease-in-out) infinite;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 40%, transparent);
 }
 
 /* Stagger helper — apply `data-stagger` to a parent grid and direct children

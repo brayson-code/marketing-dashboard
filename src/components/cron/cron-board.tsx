@@ -466,7 +466,7 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
         </div>
       </div>
 
-      <div className={variant === 'page' ? innerGridClass : `panel-body ${innerGridClass}`} data-walkthrough="enable-execs">
+      <div className={variant === 'page' ? innerGridClass : `panel-body ${innerGridClass}`}>
         {loading && jobs.length === 0
           ? Array.from({ length: 4 }).map((_, i) => (
               <div key={`sk-${i}`} className="panel">

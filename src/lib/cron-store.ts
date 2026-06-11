@@ -10,6 +10,40 @@ import { computeNextRun, isValidCron } from './cron-expr';
 
 export const KNOWN_AGENTS = Object.keys(SUBAGENT_REGISTRY);
 
+// The seeded C-suite executive crons. They're seeded DISABLED + dormant; the owner
+// turns them all on at once via the "Activate your AI executives" card.
+export const EXEC_AGENT_IDS = ['ai-ceo', 'ai-cmo', 'ai-coo', 'ai-cro', 'ai-cxo'];
+
+/** Enable + schedule all C-suite exec crons for the active tenant (idempotent).
+ *  Returns how many were activated. This is the cost-bearing opt-in — it puts the
+ *  AI executives on their schedule, spending the tenant's connected Claude credits. */
+export async function activateExecCrons(): Promise<number> {
+  const rows = (await sql()`
+    SELECT id, schedule_expr, schedule_tz FROM public.cron_jobs
+    WHERE tenant_id = ${tenantId()} AND agent_id = ANY(${EXEC_AGENT_IDS})
+  `) as unknown as Array<{ id: string; schedule_expr: string; schedule_tz: string }>;
+  let count = 0;
+  for (const r of rows) {
+    const next = computeNextRun(r.schedule_expr, r.schedule_tz);
+    await sql()`
+      UPDATE public.cron_jobs
+      SET enabled = true, next_run_at = ${next ? next.toISOString() : null}, updated_at = now()
+      WHERE tenant_id = ${tenantId()} AND id = ${r.id}
+    `;
+    count++;
+  }
+  return count;
+}
+
+/** How many exec crons are currently enabled (so the activation card can self-hide). */
+export async function execsEnabledCount(): Promise<number> {
+  const rows = (await sql()`
+    SELECT count(*)::int AS n FROM public.cron_jobs
+    WHERE tenant_id = ${tenantId()} AND agent_id = ANY(${EXEC_AGENT_IDS}) AND enabled = true
+  `) as unknown as Array<{ n: number }>;
+  return rows[0]?.n ?? 0;
+}
+
 export function normalizeJobId(value: unknown): string | null {
   const id = String(value ?? '').trim();
   if (!id || id.length > 128) return null;
