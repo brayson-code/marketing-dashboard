@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import { Loader2, AlertCircle, CheckCircle2, Inbox, Activity, Sparkles, Check, X } from 'lucide-react';
 import Link from 'next/link';
 import { AgentOrb, type Department } from '@/components/agent-orb';
+import { TaskDetailDrawer } from '@/components/tasks/task-detail-drawer';
 
 // Real-time kanban for the Tasks page. Four columns, four states the operator
 // actually cares about:
@@ -26,6 +27,8 @@ interface AgentTask {
   id: number; agent_id: string; task: string; status: TaskStatus;
   started_at: string | number; completed_at: string | number | null;
   error?: string | null;
+  result?: string | null; stream_text?: string | null;
+  input_tokens?: number | null; output_tokens?: number | null;
 }
 interface Draft {
   id: number; type: string; title: string; status: DraftStatus;
@@ -76,6 +79,7 @@ export function KanbanBoard() {
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [agents, setAgents] = useState<AgentLite[]>([]);
   const [busy, setBusy] = useState<number | null>(null);
+  const [selected, setSelected] = useState<{ kind: 'task' | 'draft'; id: number } | null>(null);
   const liveRef = useRef(true);
 
   // Initial agents fetch (slow-changing, used to color orbs by department).
@@ -167,7 +171,17 @@ export function KanbanBoard() {
     } finally { setBusy(null); }
   }
 
+  // Live-resolve the open item from polled state, so a running task's drawer keeps
+  // streaming as the 3s poll refreshes.
+  const selTask = selected?.kind === 'task' ? tasks.find((t) => t.id === selected.id) ?? null : null;
+  const selDraft = selected?.kind === 'draft' ? drafts.find((d) => d.id === selected.id) ?? null : null;
+  const selAgent = selTask ? agentMap.get(selTask.agent_id) : undefined;
+  const selLabel = selTask
+    ? (selAgent?.role_title ?? selAgent?.name ?? selTask.agent_id)
+    : (selDraft ? prettyType(selDraft.type) : '');
+
   return (
+    <>
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
       {COLUMNS.map((col) => {
         const Icon = col.icon;
@@ -196,6 +210,7 @@ export function KanbanBoard() {
                     agent={agentMap.get(c.agent_id)}
                     onApprove={c.draft_id ? () => actOnDraft(c.draft_id!, 'approve') : undefined}
                     onReject={c.draft_id ? () => actOnDraft(c.draft_id!, 'reject') : undefined}
+                    onOpen={() => setSelected({ kind: c.kind, id: (c.task_id ?? c.draft_id)! })}
                     busy={c.draft_id === busy}
                     accent={col.accent}
                   />
@@ -206,16 +221,28 @@ export function KanbanBoard() {
         );
       })}
     </div>
+    <TaskDetailDrawer
+      task={selTask}
+      draft={selDraft}
+      agentLabel={selLabel}
+      department={selAgent?.department ?? undefined}
+      onClose={() => setSelected(null)}
+      onDispatched={() => { /* the 3s poll refreshes the board */ }}
+      onApprove={selDraft ? () => actOnDraft(selDraft.id, 'approve') : undefined}
+      onReject={selDraft ? () => actOnDraft(selDraft.id, 'reject') : undefined}
+    />
+    </>
   );
 }
 
-function KanbanCard({ card, agent, onApprove, onReject, busy, accent }:
-  { card: Card; agent?: AgentLite; onApprove?: () => void; onReject?: () => void; busy: boolean; accent: string }) {
+function KanbanCard({ card, agent, onApprove, onReject, onOpen, busy, accent }:
+  { card: Card; agent?: AgentLite; onApprove?: () => void; onReject?: () => void; onOpen: () => void; busy: boolean; accent: string }) {
   const dept = agent?.department ?? undefined;
   const isRunning = card.column === 'doing';
   return (
     <div
-      className={`rounded-lg border p-3 space-y-2 bg-[color-mix(in_srgb,var(--surface-2)_60%,transparent)] ${isRunning ? 'panel--sweep' : ''}`}
+      onClick={onOpen}
+      className={`rounded-lg border p-3 space-y-2 bg-[color-mix(in_srgb,var(--surface-2)_60%,transparent)] cursor-pointer hover:border-[color-mix(in_srgb,var(--primary)_45%,var(--border))] ${isRunning ? 'panel--sweep' : ''}`}
       data-live={isRunning ? 'true' : undefined}
       style={{
         borderColor: 'color-mix(in srgb, var(--border) 80%, transparent)',
@@ -236,16 +263,16 @@ function KanbanCard({ card, agent, onApprove, onReject, busy, accent }:
       </div>
       {card.draft_id && card.column === 'todo' && (
         <div className="flex items-center gap-1.5 pt-1 border-t border-border/40">
-          <button onClick={onApprove} disabled={busy} className="btn btn-success btn-sm flex-1">
+          <button onClick={(e) => { e.stopPropagation(); onApprove?.(); }} disabled={busy} className="btn btn-success btn-sm flex-1">
             {busy ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />} Approve
           </button>
-          <button onClick={onReject} disabled={busy} className="btn btn-ghost btn-sm">
+          <button onClick={(e) => { e.stopPropagation(); onReject?.(); }} disabled={busy} className="btn btn-ghost btn-sm">
             <X size={11} />
           </button>
         </div>
       )}
       {card.draft_id && card.column !== 'todo' && (
-        <Link href={`/drafts`} className="block text-micro text-muted-foreground hover:text-foreground">View draft →</Link>
+        <Link href={`/drafts`} onClick={(e) => e.stopPropagation()} className="block text-micro text-muted-foreground hover:text-foreground">View draft →</Link>
       )}
     </div>
   );
