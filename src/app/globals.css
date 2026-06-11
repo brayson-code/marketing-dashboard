@@ -515,16 +515,18 @@ select {
   padding: 6px 10px;
 }
 
-/* Native dropdown options were white-on-white in dark mode. Chrome ignores
- * `background-color` on <option> in the native popup — the lever that actually
- * paints the popup dark is `color-scheme` on the <select>. The dashboard is
- * dark-first, so force it (light mode falls back to a light popup). The option
- * colors below additionally fix Firefox, which DOES honor them. */
-select { color-scheme: dark !important; }
+/* The native dropdown popup is painted by `color-scheme` (Chrome ignores
+ * `background-color` on <option> in the native popup). It MUST track the active
+ * theme: forcing it dark unconditionally made every <select> popup unreadable in
+ * LIGHT mode — dark option text on a dark popup, the "white-on-white" dropdown bug.
+ * So: light popup in light mode, dark popup under html.dark. The option colors
+ * below additionally fix Firefox, which DOES honor them. */
+select { color-scheme: light; }
+html.dark select { color-scheme: dark; }
 select option,
 select optgroup {
-  background-color: var(--surface-1) !important;
-  color: var(--foreground) !important;
+  background-color: var(--surface-1);
+  color: var(--foreground);
 }
 
 /* ─── Rotating-light CTA (discoverability) ──────────────────────────────────

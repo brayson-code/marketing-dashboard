@@ -51,19 +51,28 @@ export default function MissionsPage() {
 
   const loadList = useCallback(async () => {
     try {
-      const r = await fetch('/api/missions', { cache: 'no-store' });
+      // Bound the request so a stalled fetch can't leave the page skeleton-loading
+      // forever — listLoading flips false in the finally regardless, but the abort
+      // guarantees the await actually settles even if the network hangs.
+      const r = await fetch('/api/missions', { cache: 'no-store', signal: AbortSignal.timeout(15_000) });
       if (r.ok) setList((await r.json()).missions ?? []);
+    } catch {
+      /* timeout / network — fall through to the empty state, not an endless skeleton */
     } finally {
       setListLoading(false);
     }
   }, []);
 
   const loadDetail = useCallback(async (id: string) => {
-    const r = await fetch(`/api/missions/${id}`, { cache: 'no-store' });
-    if (r.ok) {
-      const j = await r.json();
-      // Only apply if this is still the mission we're viewing.
-      setDetail((prev) => (j?.campaign?.id === id ? j : prev));
+    try {
+      const r = await fetch(`/api/missions/${id}`, { cache: 'no-store', signal: AbortSignal.timeout(15_000) });
+      if (r.ok) {
+        const j = await r.json();
+        // Only apply if this is still the mission we're viewing.
+        setDetail((prev) => (j?.campaign?.id === id ? j : prev));
+      }
+    } catch {
+      /* timeout / network — leave prior detail; the poll will retry */
     }
   }, []);
 
