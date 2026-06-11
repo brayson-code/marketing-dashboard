@@ -8,6 +8,7 @@ import {
 import { toast } from '@/components/ui/toast';
 import { WalkthroughSettings } from '@/components/walkthrough/walkthrough-settings';
 import { ClientsAdminLink } from '@/components/clients/clients-admin-link';
+import { PlaybookCard } from '@/components/playbook/playbook-card';
 import { timeAgo } from '@/lib/utils';
 import { getRoleMatrix } from '@/lib/rbac';
 import pkg from '../../../package.json';
@@ -487,6 +488,7 @@ export default function SettingsPage() {
       {/* Database Info */}
       {activeTab === 'general' && (
       <>
+      <PlaybookCard />
       <ClientsAdminLink />
       <WalkthroughSettings />
       <div className="panel p-5 space-y-4">

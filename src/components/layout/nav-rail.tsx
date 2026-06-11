@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
   Gauge, Bot, Mail, Contact, Zap,
-  Search, BarChart3, LineChart, BrainCircuit, Rocket, Clock, List, Settings,
+  Search, BarChart3, LineChart, FileText, Rocket, Clock, List, Settings,
   FolderOpen, MessagesSquare, Activity, Target, Inbox, Network, DollarSign, Bug,
   Waves, TrendingUp, Dna, Timer, Link2, Sparkles, ChevronDown, ChevronRight,
   FlaskConical, BookOpen, ArrowUpRight,
@@ -91,7 +91,7 @@ const OPS: NavGroup = {
   collapsible: true,
   items: [
     { href: '/agents/workspace', label: 'Workspace', icon: FolderOpen },
-    { href: '/memory', label: 'Memory', icon: BrainCircuit },
+    { href: '/memory', label: 'Reports', icon: FileText },
     { href: '/learning', label: 'Learning', icon: TrendingUp },
     { href: '/genes', label: 'Genes', icon: Dna },
     { href: '/issues', label: 'Issues', icon: Bug },

@@ -87,10 +87,10 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
     title: 'Write your company brief',
     body: 'Answer a few questions and we write the brief every agent reads first — so your whole AI team knows your objective, audience, and voice instead of sounding generic. (Each agent also gets its own playbook in Agent Studio.)',
     icon: BookText,
-    cta: { label: 'Write brief', href: '/memory' },
+    cta: { label: 'Write brief', href: '/settings' },
     required: true,
-    routes: ['/memory'],
-    anchor: 'playbook-tab',
+    routes: ['/settings'],
+    anchor: 'company-playbook',
   },
   {
     id: 'socials',
