@@ -28,7 +28,7 @@ export function TeardownModal({ teardown, handle, onClose }: { teardown: string;
       aria-label="Why it Won"
     >
       <div
-        className="panel relative w-full max-w-lg max-h-[82vh] flex flex-col overflow-hidden"
+        className="panel modal-surface relative w-full max-w-lg max-h-[82vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="panel-header flex items-center gap-2">

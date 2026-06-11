@@ -348,7 +348,7 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
             className="absolute inset-0 bg-black/40"
             onClick={() => setEditOpen(false)}
           />
-          <div className="panel relative w-full max-w-3xl" role="dialog" aria-modal="true" aria-labelledby="cron-edit-title">
+          <div className="panel modal-surface relative w-full max-w-3xl" role="dialog" aria-modal="true" aria-labelledby="cron-edit-title">
             <div className="panel-header flex items-center justify-between gap-3">
               <div>
                 <h2 id="cron-edit-title" className="text-sm font-medium">

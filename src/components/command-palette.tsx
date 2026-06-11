@@ -242,7 +242,7 @@ export function CommandPalette() {
 
       {/* Palette */}
       <div className="fixed top-[20%] left-1/2 -translate-x-1/2 w-full max-w-lg z-50 animate-in">
-        <div className="glass-strong rounded-xl border border-border/50 shadow-2xl overflow-hidden">
+        <div className="glass-strong modal-surface rounded-xl border border-border/50 shadow-2xl overflow-hidden">
           {/* Input */}
           <div className="flex items-center gap-3 px-4 py-3 border-b border-border/30">
               <Search size={18} className="text-muted-foreground shrink-0" />

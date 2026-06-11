@@ -299,7 +299,7 @@ export default function CrmPage() {
             className="absolute inset-0 bg-black/40"
             onClick={() => setCreateOpen(false)}
           />
-          <div className="panel relative w-full max-w-xl" role="dialog" aria-modal="true" aria-labelledby="crm-add-lead-title">
+          <div className="panel modal-surface relative w-full max-w-xl" role="dialog" aria-modal="true" aria-labelledby="crm-add-lead-title">
             <div className="panel-header flex items-center justify-between">
               <h2 id="crm-add-lead-title" className="text-sm font-medium">Add Lead</h2>
               <button type="button" aria-label="Close add lead" onClick={() => setCreateOpen(false)} className="text-muted-foreground hover:text-foreground">

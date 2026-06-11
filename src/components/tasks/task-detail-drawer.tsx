@@ -103,7 +103,7 @@ export function TaskDetailDrawer({
       <aside
         role="dialog"
         aria-label="Task detail"
-        className="fixed top-0 right-0 bottom-0 z-[90] w-full max-w-[480px] bg-card border-l border-border flex flex-col"
+        className="fixed top-0 right-0 bottom-0 z-[90] w-full max-w-[480px] modal-surface border-l border-border flex flex-col"
         style={{
           transform: open ? 'translateX(0)' : 'translateX(100%)',
           transition: 'transform var(--t-modal) var(--ease-drawer)',

@@ -54,6 +54,10 @@
   --surface-1: #fafafa;
   --surface-2: #f4f4f5;
   --surface-3: #e5e7eb;
+  /* OPAQUE elevated surface for OVERLAYS (modals, dropdown popups, popovers).
+     Page panels stay frosted/translucent over the solid body bg; overlays sit over
+     dimmed content and MUST be opaque or the page bleeds through (unreadable). */
+  --overlay-bg: #ffffff;
 }
 
 .dark {
@@ -85,6 +89,10 @@
   --surface-1: rgba(255, 255, 255, 0.03);
   --surface-2: rgba(255, 255, 255, 0.055);
   --surface-3: rgba(255, 255, 255, 0.10);
+  /* OPAQUE elevated surface for overlays — solid (not the translucent --card), so
+     modals + dropdown popups don't show the page through them. Slightly lifted
+     from the near-black --surface-0 so an overlay reads as elevated. */
+  --overlay-bg: #15151b;
 
   /* Claude usage widget palette — DARK mode (warm charcoal card, cream ink).
      Light-mode equivalents are defined in the :root block below. The widget
@@ -523,10 +531,14 @@ select {
  * below additionally fix Firefox, which DOES honor them. */
 select { color-scheme: light; }
 html.dark select { color-scheme: dark; }
+/* Options MUST use an OPAQUE background. --surface-1 is rgba(...,0.03) in dark mode
+   (near-transparent), which is what made the open dropdown's options unreadable —
+   faint text over the page bleeding through. Solid --overlay-bg + foreground, and
+   !important to beat the UA option styling. */
 select option,
 select optgroup {
-  background-color: var(--surface-1);
-  color: var(--foreground);
+  background-color: var(--overlay-bg) !important;
+  color: var(--foreground) !important;
 }
 
 /* ─── Rotating-light CTA (discoverability) ──────────────────────────────────
@@ -633,6 +645,16 @@ textarea:focus {
   backdrop-filter: blur(12px) saturate(1.1);
   -webkit-backdrop-filter: blur(12px) saturate(1.1);
 }
+
+/* OVERLAY surfaces (modals, slide-overs). Add alongside .panel on anything that
+   floats over dimmed page content: forces an OPAQUE background so the page can't
+   bleed through (the frosted .panel look is for page cards over the solid body —
+   over a modal backdrop it reads as see-through/unreadable). */
+.modal-surface {
+  background: var(--overlay-bg) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
 .dark .panel {
   /* lift the glass off the backdrop with a soft inner highlight + shadow */
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 24px -16px rgba(0, 0, 0, 0.7);
@@ -704,10 +726,10 @@ textarea:focus {
   to   { opacity: 1; transform: scale(1); }
 }
 .popover {
-  /* Popovers must be readable — override .card's translucent surface with a
-     solid background. The previous frosted treatment let the dashboard show
-     through and made the notification list + logout button hard to read. */
-  background: var(--card);
+  /* Popovers/menus/dropdown panels must be readable — use the OPAQUE overlay
+     surface. (--card is translucent in dark mode, which let the dashboard show
+     through and made dropdown options + menus unreadable — the 2-week bug.) */
+  background: var(--overlay-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow:

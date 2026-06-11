@@ -159,7 +159,7 @@ export function MobileNav() {
           <div className="absolute inset-0 bg-black/40" />
           <div
             ref={sheetRef}
-            className="absolute bottom-0 left-0 right-0 bg-card rounded-t-2xl max-h-[72vh] overflow-y-auto safe-area-bottom border-t border-border/70 animate-slide-in"
+            className="absolute bottom-0 left-0 right-0 modal-surface rounded-t-2xl max-h-[72vh] overflow-y-auto safe-area-bottom border-t border-border/70 animate-slide-in"
           >
             <div className="flex justify-center pt-3 pb-1">
               <div className="w-10 h-1 rounded-full bg-muted-foreground/25" />

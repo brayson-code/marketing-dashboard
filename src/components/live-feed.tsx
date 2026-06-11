@@ -55,7 +55,7 @@ export function LiveFeed({ open, onClose }: { open: boolean; onClose: () => void
       {/* Sidebar */}
       <aside
         className={`fixed top-[var(--header-height)] right-0 bottom-0 w-full sm:w-80 z-40
-          glass-strong border-l border-border/50 flex flex-col
+          glass-strong modal-surface border-l border-border/50 flex flex-col
           transition-transform duration-300 ease-out
           ${open ? 'translate-x-0' : 'translate-x-full'}`}
       >

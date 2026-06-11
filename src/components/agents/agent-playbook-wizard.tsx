@@ -51,7 +51,7 @@ export function AgentPlaybookWizard({
 
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-background/70 backdrop-blur-sm p-4" onClick={() => !busy && onClose()}>
-      <div className="panel w-full max-w-xl animate-in max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+      <div className="panel modal-surface w-full max-w-xl animate-in max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="panel-header flex items-center justify-between">
           <div className="text-sm font-medium flex items-center gap-2">
             <Wand2 size={14} className="text-primary" /> Generate playbook — {agentName}
