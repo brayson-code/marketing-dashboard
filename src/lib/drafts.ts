@@ -308,6 +308,43 @@ export async function publishContent(id: number, note?: string): Promise<Execute
     }
   }
 
+  if (platform === 'youtube_video') {
+    const vmeta = (meta as { youtube?: { title?: string; description?: string; tags?: string[]; privacy?: string }; video?: { blob_url?: string } }).video;
+    const yt = (meta as { youtube?: { title?: string; description?: string; tags?: string[]; privacy?: string } }).youtube;
+    const blobUrl = vmeta?.blob_url;
+    if (!blobUrl) return { ok: false, error: 'youtube_video publish failed: missing video.blob_url in draft metadata' };
+    try {
+      const { uploadVideo } = await import('./youtube-upload');
+      const result = await uploadVideo({
+        videoUrl: blobUrl,
+        title: yt?.title ?? draft.title,
+        description: yt?.description,
+        tags: yt?.tags,
+        privacy: yt?.privacy as 'public' | 'unlisted' | 'private' | undefined,
+      });
+      return await executeApproved(id, 'published', note ?? `youtube video ${result.video_id} — ${result.url}`);
+    } catch (e) {
+      return { ok: false, error: `youtube_video publish failed: ${(e as Error).message}` };
+    }
+  }
+
+  if (platform === 'instagram_reel') {
+    const vmeta = (meta as { instagram?: { caption?: string }; video?: { blob_url?: string } }).video;
+    const ig = (meta as { instagram?: { caption?: string } }).instagram;
+    const blobUrl = vmeta?.blob_url;
+    if (!blobUrl) return { ok: false, error: 'instagram_reel publish failed: missing video.blob_url in draft metadata' };
+    try {
+      const { publishReel } = await import('./instagram-publish');
+      const result = await publishReel({
+        videoUrl: blobUrl,
+        caption: ig?.caption,
+      });
+      return await executeApproved(id, 'published', note ?? `instagram reel ${result.media_id} — ${result.permalink ?? '(no permalink)'}`);
+    } catch (e) {
+      return { ok: false, error: `instagram_reel publish failed: ${(e as Error).message}` };
+    }
+  }
+
   // Unknown/untagged platform (TikTok, drafts created before platform tagging,
   // …) — flip the status for auditability but say plainly that nothing went out.
   return executeApproved(id, 'published', note ?? '(simulated — no external API wired yet)');

@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import {
   ArrowLeft, Save, Loader2, Plus, Trash2, Type, ChevronUp, ChevronDown,
   AlignLeft, AlignCenter, AlignRight, ExternalLink, Film, Clapperboard, Play, Download, Upload, ImageIcon, Video,
-  X, Hash, ListChecks, BarChart3,
+  X, Hash, ListChecks, BarChart3, Send,
 } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { parseStoryboard } from '@/lib/hyperframes-storyboard';
@@ -65,6 +65,17 @@ export default function HyperframesEditorPage() {
   const [showPreview, setShowPreview] = useState(false);
   const [needsSeed, setNeedsSeed] = useState(false);
   const [autobuilding, setAutobuilding] = useState(false);
+
+  // Publish panel state
+  const [showPublish, setShowPublish] = useState(false);
+  const [publishPlatform, setPublishPlatform] = useState<'youtube_video' | 'instagram_reel'>('youtube_video');
+  const [publishTitle, setPublishTitle] = useState('');
+  const [publishDesc, setPublishDesc] = useState('');
+  const [publishCaption, setPublishCaption] = useState('');
+  const [publishPrivacy, setPublishPrivacy] = useState<'public' | 'unlisted' | 'private'>('public');
+  const [publishing, setPublishing] = useState(false);
+  const [publishResult, setPublishResult] = useState<{ link: string | null; message: string } | null>(null);
+  const [publishError, setPublishError] = useState<string | null>(null);
 
   // Load the draft. A saved composition opens directly; a first open offers the
   // agent auto-build (rich reel) vs the plain storyboard seed — see needsSeed.
@@ -290,6 +301,46 @@ export default function HyperframesEditorPage() {
     }
   }, [rendering, render, save, id]);
 
+  // Pre-fill publish title whenever the render completes or the draft loads.
+  useEffect(() => {
+    if (render?.status === 'completed' && !publishTitle) {
+      setPublishTitle(draft?.title || '');
+    }
+  }, [render?.status, draft?.title]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const publishNow = useCallback(async () => {
+    if (publishing) return;
+    setPublishing(true);
+    setPublishError(null);
+    setPublishResult(null);
+    try {
+      const body: Record<string, unknown> = { platform: publishPlatform };
+      if (publishPlatform === 'youtube_video') {
+        body.title = publishTitle || draft?.title || `Reel ${id}`;
+        body.description = publishDesc;
+        body.privacy = publishPrivacy;
+      } else {
+        body.caption = publishCaption;
+      }
+      const res = await fetch(`/api/hyperframes/${id}/publish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const j = await res.json();
+      if (!res.ok || !j.ok) {
+        setPublishError(j.error ?? 'Publish failed');
+      } else {
+        setPublishResult({ link: j.result?.link ?? null, message: j.message ?? 'Published!' });
+        toast.success(j.message ?? 'Published!');
+      }
+    } catch (e) {
+      setPublishError((e as Error).message);
+    } finally {
+      setPublishing(false);
+    }
+  }, [publishing, publishPlatform, publishTitle, publishDesc, publishCaption, publishPrivacy, draft, id]);
+
   // While a render is queued/rendering, poll HeyGen for status; stop when terminal.
   useEffect(() => {
     if (!isActiveRender(render)) return;
@@ -350,6 +401,14 @@ export default function HyperframesEditorPage() {
           {render?.status === 'completed' && render.video_url && (
             <button className="btn btn-ghost btn-sm" onClick={() => setShowPreview(true)}><Play size={13} /> Preview</button>
           )}
+          {render?.status === 'completed' && (
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => { setShowPublish((v) => !v); setPublishError(null); setPublishResult(null); }}
+            >
+              <Send size={13} /> Publish
+            </button>
+          )}
           <button
             className="btn btn-secondary btn-sm"
             onClick={renderNow}
@@ -365,6 +424,117 @@ export default function HyperframesEditorPage() {
           </button>
         </div>
       </div>
+
+      {/* Publish panel — shown when the user toggles Publish in the top bar */}
+      {showPublish && render?.status === 'completed' && (
+        <div className="border-b border-border/60 bg-[color-mix(in_srgb,var(--surface-2)_50%,transparent)] px-4 py-3 shrink-0">
+          <div className="max-w-2xl space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold">Publish to channel</span>
+              <button className="btn btn-ghost btn-xs" onClick={() => setShowPublish(false)}><X size={12} /></button>
+            </div>
+
+            {publishResult ? (
+              <div className="rounded-md border border-[color-mix(in_srgb,var(--primary)_35%,transparent)] bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] px-3 py-2.5 text-sm space-y-1">
+                <p className="font-medium text-[var(--primary)]">{publishResult.message}</p>
+                {publishResult.link && (
+                  <a href={publishResult.link} target="_blank" rel="noreferrer" className="text-xs underline break-all text-[var(--primary)]">
+                    {publishResult.link} <ExternalLink size={11} className="inline" />
+                  </a>
+                )}
+                <button className="btn btn-ghost btn-xs mt-1" onClick={() => setPublishResult(null)}>Publish to another platform</button>
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-wrap gap-3 items-start">
+                  {/* Platform */}
+                  <label className="block min-w-[160px]">
+                    <span className="text-[10px] text-muted-foreground block mb-1">Platform</span>
+                    <select
+                      value={publishPlatform}
+                      onChange={(e) => { setPublishPlatform(e.target.value as 'youtube_video' | 'instagram_reel'); setPublishError(null); setPublishResult(null); }}
+                      className="text-xs px-2 w-full"
+                    >
+                      <option value="youtube_video">YouTube Video</option>
+                      <option value="instagram_reel">Instagram Reel (reconnect if scopes updated)</option>
+                    </select>
+                  </label>
+
+                  {/* YouTube-only: privacy */}
+                  {publishPlatform === 'youtube_video' && (
+                    <label className="block min-w-[120px]">
+                      <span className="text-[10px] text-muted-foreground block mb-1">Visibility</span>
+                      <select value={publishPrivacy} onChange={(e) => setPublishPrivacy(e.target.value as typeof publishPrivacy)} className="text-xs px-2 w-full">
+                        <option value="public">Public</option>
+                        <option value="unlisted">Unlisted</option>
+                        <option value="private">Private</option>
+                      </select>
+                    </label>
+                  )}
+                </div>
+
+                {/* YouTube: title + description */}
+                {publishPlatform === 'youtube_video' && (
+                  <div className="space-y-2">
+                    <label className="block">
+                      <span className="text-[10px] text-muted-foreground block mb-1">Title</span>
+                      <input
+                        value={publishTitle}
+                        onChange={(e) => setPublishTitle(e.target.value)}
+                        placeholder={draft?.title || 'Video title'}
+                        className="w-full text-xs px-2"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-[10px] text-muted-foreground block mb-1">Description</span>
+                      <textarea
+                        value={publishDesc}
+                        onChange={(e) => setPublishDesc(e.target.value)}
+                        rows={2}
+                        placeholder="Optional description…"
+                        className="w-full text-xs resize-y"
+                      />
+                    </label>
+                  </div>
+                )}
+
+                {/* Instagram: caption */}
+                {publishPlatform === 'instagram_reel' && (
+                  <label className="block">
+                    <span className="text-[10px] text-muted-foreground block mb-1">Caption</span>
+                    <textarea
+                      value={publishCaption}
+                      onChange={(e) => setPublishCaption(e.target.value)}
+                      rows={2}
+                      placeholder="Optional caption (hashtags welcome)…"
+                      className="w-full text-xs resize-y"
+                    />
+                  </label>
+                )}
+
+                {publishError && (
+                  <p className="text-xs text-destructive rounded-md border border-[color-mix(in_srgb,var(--destructive)_30%,transparent)] bg-[color-mix(in_srgb,var(--destructive)_7%,transparent)] px-2.5 py-1.5 font-mono break-all">
+                    {publishError}
+                  </p>
+                )}
+
+                <div className="flex items-center gap-2">
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={publishNow}
+                    disabled={publishing}
+                  >
+                    {publishing
+                      ? <><Loader2 size={13} className="animate-spin" /> Publishing — IG can take a couple of minutes…</>
+                      : <><Send size={13} /> Publish</>}
+                  </button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setShowPublish(false)}>Cancel</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 min-h-0 grid grid-cols-[210px_minmax(0,1fr)_300px]">
         {/* Scene strip */}

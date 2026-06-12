@@ -92,6 +92,23 @@ The **HeyGen** button still opens [HeyGen Hyperframes](https://hyperframes.heyge
 - **Copy** grabs the **Hyperframes prompt** when one exists, or the full storyboard otherwise — ready to paste.
 - **HeyGen** opens [HeyGen Hyperframes](https://hyperframes.heygen.com) in a new tab, where you produce the actual video.
 
+### Publish your reel
+
+Once a render is complete you can publish straight from the editor — no downloading and re-uploading required.
+
+1. **Connect your channel** on the [Connections page](./connections.md) — YouTube or Instagram. If you connected Instagram a while ago, reconnect it so the latest publishing scopes are included.
+2. **Render** the composition as normal. Wait for the **Rendering…** button to settle and the preview to appear.
+3. Click **Publish** in the editor top bar. A panel opens below the toolbar.
+4. Choose your **platform** — YouTube Video or Instagram Reel.
+   - For **YouTube**: set a title (pre-filled from the storyboard), an optional description, and visibility (Public / Unlisted / Private, default Public).
+   - For **Instagram Reel**: write an optional caption (hashtags included here).
+5. Click **Publish**. The button shows *Publishing — IG can take a couple of minutes…* while it works; Instagram's Content Publishing API processes the video asynchronously, which can take a minute or two.
+6. When it succeeds, a confirmation shows the live link. Click it to open the post on the platform.
+
+**Where it lands:** YouTube videos appear on your connected channel immediately (subject to YouTube's processing time). Instagram Reels appear on your connected Business or Creator account's profile and Reels tab.
+
+If the publish fails (tagged error shown in the panel), the system has already approved the draft internally — you can click **Publish** again to retry without re-rendering.
+
 ---
 
 ## Tips
