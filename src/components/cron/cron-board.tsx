@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Play, Pause, RotateCcw, History, Pencil, Plus, Trash2, X, BookmarkPlus, Wand2 } from 'lucide-react';
+import { RotateCcw, History, Pencil, Plus, Trash2, X, BookmarkPlus, Wand2 } from 'lucide-react';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { toast } from '@/components/ui/toast';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cronToHuman, SCHEDULE_PRESETS } from '@/lib/cron-human';
 
 interface CronJob {
   id: string;
@@ -48,6 +49,23 @@ interface CronRun {
   nextRunAtMs?: number | null;
 }
 
+// ── Category resolver ─────────────────────────────────────────────────────────
+
+type Category = 'Executive suite' | 'Research & intel' | 'Content' | 'Operations' | 'Custom';
+
+const CATEGORY_ORDER: Category[] = ['Executive suite', 'Research & intel', 'Content', 'Operations', 'Custom'];
+
+function resolveCategory(agentId?: string): Category {
+  const id = agentId ?? '';
+  if (id.startsWith('ai-')) return 'Executive suite';
+  if (['research-analyst', 'reel-analyst', 'lead-research'].includes(id)) return 'Research & intel';
+  if (['content-writer', 'hyperframes-agent', 'reel-ideator', 'thumbnail-generator', 'content-cascade', 'carousel-generator'].includes(id)) return 'Content';
+  if (['fixer', 'improver', 'memory-compactor', 'keyplayer'].includes(id)) return 'Operations';
+  return 'Custom';
+}
+
+// ── Formatters ────────────────────────────────────────────────────────────────
+
 function formatTime(ms?: number) {
   if (!ms) return '—';
   return new Date(ms).toLocaleString();
@@ -60,6 +78,83 @@ function formatRunTs(ts?: number | string | null) {
   return Number.isNaN(d.getTime()) ? String(ts) : d.toLocaleString();
 }
 
+// ── Schedule editor sub-component ─────────────────────────────────────────────
+
+function isSubHourMinuteStep(expr: string): boolean {
+  const parts = expr.trim().split(/\s+/);
+  if (parts.length !== 5) return false;
+  const m = parts[0].match(/^\*\/(\d+)$/);
+  if (!m) return false;
+  const step = parseInt(m[1], 10);
+  return step > 0 && step < 60;
+}
+
+interface ScheduleEditorProps {
+  value: string;
+  onChange: (expr: string) => void;
+  tz?: string;
+}
+
+function ScheduleEditor({ value, onChange, tz }: ScheduleEditorProps) {
+  const isCustom = !SCHEDULE_PRESETS.some((p) => p.expr === value);
+  const [showCustom, setShowCustom] = useState(isCustom);
+
+  const humanPreview = cronToHuman(value, tz);
+  const subHour = isSubHourMinuteStep(value);
+
+  return (
+    <div className="space-y-2">
+      {/* Preset chips */}
+      <div className="flex flex-wrap gap-1.5">
+        {SCHEDULE_PRESETS.map((p) => (
+          <button
+            key={p.expr}
+            type="button"
+            className={`tab${value === p.expr && !showCustom ? ' active' : ''}`}
+            onClick={() => {
+              onChange(p.expr);
+              setShowCustom(false);
+            }}
+          >
+            {p.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          className={`tab${showCustom ? ' active' : ''}`}
+          onClick={() => setShowCustom(true)}
+        >
+          Custom
+        </button>
+      </div>
+
+      {/* Custom raw input */}
+      {showCustom && (
+        <input
+          className="input font-mono text-xs w-full"
+          placeholder="e.g. 0 9 * * 1-5"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          aria-label="Custom cron expression"
+        />
+      )}
+
+      {/* Live preview */}
+      <div className="text-[11px] text-muted-foreground flex flex-wrap items-center gap-1">
+        <span>= {humanPreview}</span>
+        {subHour && (
+          <span className="text-warning">(runs hourly — sub-hour schedules round up)</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Schedule section in the JSON editor
+// When user edits the JSON textarea directly, we also show a helper above it.
+
+// ── CronBoard ─────────────────────────────────────────────────────────────────
+
 export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedded' }) {
   const [refreshKey, setRefreshKey] = useState(0);
   const { data, loading } = useSmartPoll<CronStatusPayload>(
@@ -67,8 +162,6 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
     { interval: 30_000, key: refreshKey },
   );
   const [pending, setPending] = useState<Record<string, boolean>>({});
-  // Optimistic enabled-state overrides, keyed by job id. Cleared once the poll
-  // catches up (handled inside runAction) or on revert.
   const [optimisticEnabled, setOptimisticEnabled] = useState<Record<string, boolean>>({});
   const [runs, setRuns] = useState<Record<string, CronRun[]>>({});
   const [openRuns, setOpenRuns] = useState<Record<string, boolean>>({});
@@ -84,6 +177,16 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
   const [nlPrompt, setNlPrompt] = useState('');
   const [nlBusy, setNlBusy] = useState(false);
 
+  // Parsed schedule.expr from the JSON editor for the live schedule preview
+  const editorScheduleExpr = useMemo(() => {
+    try {
+      const parsed = JSON.parse(editJson) as { schedule?: { expr?: string } };
+      return parsed?.schedule?.expr ?? '';
+    } catch {
+      return '';
+    }
+  }, [editJson]);
+
   const jobs = useMemo(() => {
     const base = data?.jobs ?? [];
     if (Object.keys(optimisticEnabled).length === 0) return base;
@@ -94,13 +197,23 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
 
   const summary = useMemo(() => {
     const total = jobs.length;
-    // 'running' is in-progress, not an error — only count true error states.
     const errors = jobs.filter(j => {
       const s = j.state?.lastStatus;
       return j.enabled !== false && !!s && s !== 'ok' && s !== 'running';
     }).length;
     const disabled = jobs.filter(j => j.enabled === false).length;
     return { total, errors, disabled };
+  }, [jobs]);
+
+  // Group jobs by category
+  const grouped = useMemo(() => {
+    const map = new Map<Category, CronJob[]>();
+    for (const cat of CATEGORY_ORDER) map.set(cat, []);
+    for (const job of jobs) {
+      const cat = resolveCategory(job.agentId);
+      map.get(cat)!.push(job);
+    }
+    return map;
   }, [jobs]);
 
   const refreshTemplates = async () => {
@@ -122,8 +235,6 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
     refreshTemplates();
   }, [editOpen]);
 
-  // Reconcile optimistic toggle overrides with fresh poll data: once the server
-  // reports the same enabled value we optimistically set, drop the override.
   useEffect(() => {
     const fresh = data?.jobs;
     if (!fresh) return;
@@ -143,12 +254,10 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
 
   const runAction = async (id: string, action: 'toggle' | 'trigger') => {
     setPending((p) => ({ ...p, [id]: true }));
-    // Optimistic: flip the enabled/status pill instantly for toggle. The PUT
-    // almost always succeeds; revert the override (and toast) on failure.
     let applied = false;
     if (action === 'toggle') {
       const current = jobs.find((j) => j.id === id);
-      const nextEnabled = current?.enabled === false; // currently disabled -> enabling
+      const nextEnabled = current?.enabled === false;
       setOptimisticEnabled((m) => ({ ...m, [id]: nextEnabled }));
       applied = true;
     }
@@ -160,11 +269,9 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
       });
       if (!res.ok) throw new Error('Request failed');
       toast.success(action === 'trigger' ? 'Cron triggered' : 'Cron toggled');
-      // Refresh; the override is cleared once the poll returns fresh data.
       setRefreshKey((k) => k + 1);
     } catch {
       if (applied) {
-        // Revert the optimistic flip.
         setOptimisticEnabled((m) => {
           const next = { ...m };
           delete next[id];
@@ -190,9 +297,6 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
       enabled: true,
       schedule: { expr: '0 9 * * *', tz: 'America/New_York' },
       payload: {
-        // kind:'watchlist' makes the dispatcher sweep every due competitor —
-        // scrape their recent reels and tear down the top new performer(s) —
-        // instead of spawning a single agent off `message`.
         kind: 'watchlist',
         message: 'Sweep the competitor watchlist: fetch each due competitor\'s recent reels and analyze the top new performer(s).',
         saveToKb: false,
@@ -208,7 +312,6 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
     setEditJobId(job.id);
     setTemplateId('');
     setNlPrompt('');
-    // Strip transient fields added by the Hermes API enrichment.
     const rest: Record<string, unknown> = { ...job };
     delete rest.lastRun;
     delete rest.lastResult;
@@ -335,11 +438,216 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
     }
   };
 
-  const wrapperClass = variant === 'page' ? 'space-y-6 animate-in' : 'panel';
-  const innerGridClass = variant === 'page' ? 'grid grid-cols-1 lg:grid-cols-2 gap-4' : 'grid grid-cols-1 lg:grid-cols-2 gap-4';
+  const wrapperClass = variant === 'page' ? 'space-y-4 animate-in' : 'panel';
+
+  // ── Render a single job row ───────────────────────────────────────────────
+
+  function JobRow({ job }: { job: CronJob }) {
+    const lastStatus = job.state?.lastStatus;
+    const running = lastStatus === 'running';
+    const ok = lastStatus === 'ok';
+    const isError = (!!lastStatus && !ok && !running) || !!job.state?.lastError;
+    const statusClass = running
+      ? 'status-pill status-neutral'
+      : ok
+        ? 'status-pill status-ok'
+        : isError
+          ? 'status-pill status-danger'
+          : 'status-pill status-neutral';
+    const statusLabel = running ? 'running…' : (lastStatus || 'idle');
+    const busy = !!pending[job.id];
+    const isDisabled = job.enabled === false;
+    const runList = runs[job.id] || [];
+    const expr = job.schedule?.expr ?? '';
+    const tz = job.schedule?.tz;
+    const humanSchedule = expr ? cronToHuman(expr, tz) : '—';
+    const scheduleIsRaw = humanSchedule === expr && !!expr;
+
+    return (
+      <>
+        {/* Main row */}
+        <div
+          className="grid items-center gap-x-3 px-3 hover:bg-[color-mix(in_srgb,var(--muted)_40%,transparent)] transition-colors"
+          style={{
+            gridTemplateColumns: '2.5rem 1fr 14rem 10rem 6rem',
+            minHeight: '44px',
+            transitionProperty: 'background-color',
+            transitionDuration: 'var(--t-press)',
+            transitionTimingFunction: 'var(--ease-out)',
+          }}
+        >
+          {/* Toggle */}
+          <div className="flex items-center justify-center">
+            <button
+              type="button"
+              onClick={() => runAction(job.id, 'toggle')}
+              disabled={busy}
+              aria-label={isDisabled ? 'Enable cron job' : 'Disable cron job'}
+              className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed"
+              style={{
+                backgroundColor: isDisabled
+                  ? 'color-mix(in srgb, var(--border) 80%, transparent)'
+                  : 'var(--primary)',
+                transitionProperty: 'background-color',
+                transitionDuration: 'var(--t-press)',
+                transitionTimingFunction: 'var(--ease-out)',
+              }}
+            >
+              <span
+                className="pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm"
+                style={{
+                  transform: isDisabled ? 'translateX(0)' : 'translateX(1rem)',
+                  transitionProperty: 'transform',
+                  transitionDuration: 'var(--t-press)',
+                  transitionTimingFunction: 'var(--ease-out)',
+                }}
+              />
+            </button>
+          </div>
+
+          {/* Name + agent */}
+          <div className="min-w-0 py-1">
+            <div className="text-xs font-medium truncate leading-tight">{job.name || job.id}</div>
+            {job.agentId && (
+              <div className="text-[10px] text-muted-foreground truncate leading-tight">{job.agentId}{job.skill ? ` · ${job.skill}` : ''}</div>
+            )}
+          </div>
+
+          {/* Human schedule */}
+          <div className="text-xs text-muted-foreground truncate" title={scheduleIsRaw ? expr : `${expr}${tz ? ` (${tz})` : ''}`}>
+            {scheduleIsRaw
+              ? <span className="font-mono text-[10px]">{expr}</span>
+              : humanSchedule}
+          </div>
+
+          {/* Next run / status */}
+          <div className="text-[10px] text-muted-foreground truncate">
+            {job.state?.nextRunAtMs
+              ? formatTime(job.state.nextRunAtMs)
+              : <span className={statusClass}>{statusLabel}</span>}
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center gap-0.5 justify-end">
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm text-[10px] px-1.5"
+              onClick={() => runAction(job.id, 'trigger')}
+              disabled={busy}
+              title="Run now"
+              aria-label="Run now"
+            >
+              <RotateCcw size={11} />
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm text-[10px] px-1.5"
+              onClick={() => toggleRuns(job.id)}
+              title="Run history"
+              aria-label="Run history"
+            >
+              <History size={11} />
+            </button>
+            {canWrite && (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm text-[10px] px-1.5"
+                  onClick={() => openEdit(job)}
+                  aria-label="Edit cron job"
+                  title="Edit"
+                >
+                  <Pencil size={11} />
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm text-[10px] px-1.5 text-destructive"
+                  onClick={() => deleteJob(job.id)}
+                  aria-label="Delete cron job"
+                  title="Delete"
+                >
+                  <Trash2 size={11} />
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Status/error drilldown (inline below the row) */}
+        {isError && (
+          <div className="mx-3 mb-1 bg-destructive/10 border border-destructive/30 rounded-md p-2 text-[11px] space-y-1">
+            <span className="text-destructive font-medium">Error · </span>
+            <span className="text-muted-foreground font-mono">{job.state?.lastStatus || 'unknown'}</span>
+            {job.state?.lastError && <div className="text-destructive">{job.state.lastError}</div>}
+          </div>
+        )}
+
+        {/* Run history drawer */}
+        {openRuns[job.id] && (
+          <div className="mx-3 mb-2 bg-muted/20 border border-border/40 rounded-md p-3 text-xs space-y-2">
+            {runList.length === 0 ? (
+              <div className="text-muted-foreground">No recent runs</div>
+            ) : (
+              runList.map((r, idx) => (
+                <div key={idx} className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-mono text-[10px]">{formatRunTs(r.ts)}</div>
+                    {r.summary && (
+                      <div className="text-[11px] text-muted-foreground line-clamp-2">{r.summary}</div>
+                    )}
+                    {r.error && (
+                      <div className="text-[11px] text-destructive">{r.error}</div>
+                    )}
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className={r.status === 'ok' ? 'status-pill status-ok' : 'status-pill status-danger'}>{r.status || 'unknown'}</div>
+                    <div className="text-[10px] text-muted-foreground mt-1">
+                      {r.durationMs ? `${Math.round(r.durationMs / 1000)}s` : '—'}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </>
+    );
+  }
+
+  // ── Category section ─────────────────────────────────────────────────────
+
+  function CategorySection({ category, catJobs }: { category: Category; catJobs: CronJob[] }) {
+    return (
+      <div>
+        {/* Section header */}
+        <div className="flex items-center gap-2 px-3 py-1.5">
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{category}</span>
+          <span className="text-[10px] text-muted-foreground">({catJobs.length})</span>
+        </div>
+
+        {/* Column header row */}
+        <div
+          className="grid gap-x-3 px-3 pb-1 border-b border-border/60"
+          style={{ gridTemplateColumns: '2.5rem 1fr 14rem 10rem 6rem' }}
+        >
+          <div />
+          <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60">Job</div>
+          <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60">Schedule</div>
+          <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60">Next run</div>
+          <div />
+        </div>
+
+        {/* Job rows */}
+        <div className="divide-y divide-border/40">
+          {catJobs.map((job) => <JobRow key={job.id} job={job} />)}
+        </div>
+      </div>
+    );
+  }
 
   return (
-      <div className={wrapperClass}>
+    <div className={wrapperClass}>
+      {/* Modal editor */}
       {editOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <button
@@ -369,6 +677,7 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
                 </div>
               )}
 
+              {/* NL generate */}
               <div className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-2">
                 <label className="text-[11px] font-medium flex items-center gap-1.5">
                   <Wand2 size={13} className="text-primary" /> Describe it in plain English
@@ -394,6 +703,7 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
                 </div>
               </div>
 
+              {/* Templates */}
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-2 flex-wrap">
                   <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Templates</label>
@@ -426,8 +736,30 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
                 )}
               </div>
 
+              {/* Schedule preset chips + live preview */}
+              <div className="space-y-1.5">
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Schedule</div>
+                <ScheduleEditor
+                  value={editorScheduleExpr}
+                  tz={(() => {
+                    try { return (JSON.parse(editJson) as { schedule?: { tz?: string } })?.schedule?.tz; } catch { return undefined; }
+                  })()}
+                  onChange={(expr) => {
+                    try {
+                      const parsed = JSON.parse(editJson) as Record<string, unknown>;
+                      const sched = (parsed.schedule as Record<string, unknown>) ?? {};
+                      parsed.schedule = { ...sched, expr };
+                      setEditJson(JSON.stringify(parsed, null, 2));
+                    } catch {
+                      // If JSON is invalid, just let the textarea reflect changes naturally
+                    }
+                  }}
+                />
+              </div>
+
+              {/* Raw JSON editor */}
               <textarea
-                className="w-full min-h-[34vh] input font-mono text-xs leading-relaxed"
+                className="w-full min-h-[28vh] input font-mono text-xs leading-relaxed"
                 value={editJson}
                 onChange={(e) => setEditJson(e.target.value)}
                 aria-label="Cron job JSON editor"
@@ -443,6 +775,7 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
         </div>
       )}
 
+      {/* Page header */}
       <div className={variant === 'page' ? 'panel' : 'panel-header'}>
         <div className={variant === 'page' ? 'panel-header flex items-center justify-between flex-wrap gap-3' : 'flex items-center justify-between flex-wrap gap-3'}>
           <div>
@@ -466,210 +799,34 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
         </div>
       </div>
 
-      <div className={variant === 'page' ? innerGridClass : `panel-body ${innerGridClass}`}>
-        {loading && jobs.length === 0
-          ? Array.from({ length: 4 }).map((_, i) => (
-              <div key={`sk-${i}`} className="panel">
-                <div className="panel-header">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="space-y-1.5">
-                      <Skeleton className="h-3.5 w-36" />
-                      <Skeleton className="h-3 w-24" />
-                    </div>
-                    <Skeleton className="h-5 w-14 rounded-full" />
-                  </div>
+      {/* Job table, grouped by category */}
+      <div className="panel overflow-hidden">
+        {loading && jobs.length === 0 ? (
+          <div className="p-4 space-y-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={`sk-${i}`} className="flex items-center gap-3">
+                <Skeleton className="h-5 w-9 rounded-full" />
+                <div className="flex-1 space-y-1">
+                  <Skeleton className="h-3 w-40" />
+                  <Skeleton className="h-2.5 w-24" />
                 </div>
-                <div className="panel-body space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    {Array.from({ length: 4 }).map((__, j) => (
-                      <div key={j} className="space-y-1.5">
-                        <Skeleton className="h-2.5 w-16" />
-                        <Skeleton className="h-3 w-20" />
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex gap-2">
-                    <Skeleton className="h-7 w-20 rounded-md" />
-                    <Skeleton className="h-7 w-20 rounded-md" />
-                    <Skeleton className="h-7 w-16 rounded-md" />
-                  </div>
-                </div>
+                <Skeleton className="h-3 w-28" />
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-5 w-16 rounded-md" />
               </div>
-            ))
-          : jobs.map(job => {
-          const lastStatus = job.state?.lastStatus;
-          const running = lastStatus === 'running';
-          const ok = lastStatus === 'ok';
-          // An actual failure is any status that isn't ok and isn't the
-          // transient 'running', or an explicit lastError.
-          const isError = (!!lastStatus && !ok && !running) || !!job.state?.lastError;
-          const statusClass = running
-            ? 'status-pill status-neutral'
-            : ok
-              ? 'status-pill status-ok'
-              : isError
-                ? 'status-pill status-danger'
-                : 'status-pill status-neutral';
-          const statusLabel = running ? 'running…' : (lastStatus || 'idle');
-          const busy = !!pending[job.id];
-          const isDisabled = job.enabled === false;
-          const runList = runs[job.id] || [];
-          const message = typeof job.payload?.message === 'string' ? job.payload.message : '';
-          return (
-            <div key={job.id} className="panel">
-              <div className="panel-header">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="font-medium text-sm">{job.name || job.id}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {job.agentId ? `${job.agentId} · ` : ''}{job.skill || 'cron'}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={statusClass}>{statusLabel}</span>
-                    {isDisabled && <span className="status-pill status-warn">disabled</span>}
-                  </div>
-                </div>
-              </div>
-              <div className="panel-body space-y-3">
-                {message && (
-                  <details className="text-xs">
-                    <summary className="cursor-pointer text-muted-foreground">What it does</summary>
-                    <div className="mt-2 bg-muted/20 border border-border/40 rounded-md p-2 space-y-2">
-                      <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Payload message</div>
-                      <pre className="whitespace-pre-wrap bg-muted/30 border border-border/30 rounded-md p-2 max-h-56 overflow-y-auto">
-                        {message}
-                      </pre>
-                    </div>
-                  </details>
-                )}
-
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div>
-                    <div className="text-muted-foreground">Schedule</div>
-                    <div className="font-mono">{job.schedule?.expr || '—'}</div>
-                    <div className="text-muted-foreground">{job.schedule?.tz || ''}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Next Run</div>
-                    <div className="font-mono">{formatTime(job.state?.nextRunAtMs)}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Last Run</div>
-                    <div className="font-mono">{formatTime(job.state?.lastRunAtMs)}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground">Duration</div>
-                    <div className="font-mono">{job.state?.lastDurationMs ? `${Math.round(job.state.lastDurationMs / 1000)}s` : '—'}</div>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm text-xs"
-                    onClick={() => runAction(job.id, 'trigger')}
-                    disabled={busy}
-                  >
-                    <RotateCcw size={12} /> Run now
-                  </button>
-                  <button
-                    type="button"
-                    className={`btn btn-sm text-xs ${isDisabled ? 'bg-success/15 text-success hover:bg-success/25' : 'bg-warning/15 text-warning hover:bg-warning/25'}`}
-                    onClick={() => runAction(job.id, 'toggle')}
-                    disabled={busy}
-                  >
-                    {isDisabled ? <Play size={12} /> : <Pause size={12} />}
-                    {isDisabled ? 'Enable' : 'Disable'}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm text-xs"
-                    onClick={() => toggleRuns(job.id)}
-                  >
-                    <History size={12} /> Runs
-                  </button>
-                  {canWrite && (
-                    <>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm text-xs"
-                        onClick={() => openEdit(job)}
-                        aria-label="Edit cron job"
-                      >
-                        <Pencil size={12} /> Edit
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm text-xs text-destructive"
-                        onClick={() => deleteJob(job.id)}
-                        aria-label="Delete cron job"
-                      >
-                        <Trash2 size={12} /> Delete
-                      </button>
-                    </>
-                  )}
-                </div>
-
-                {openRuns[job.id] && (
-                  <div className="bg-muted/20 border border-border/40 rounded-md p-3 text-xs space-y-2">
-                    {runList.length === 0 ? (
-                      <div className="text-muted-foreground">No recent runs</div>
-                    ) : (
-                      runList.map((r, idx) => (
-                        <div key={idx} className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="font-mono">{formatRunTs(r.ts)}</div>
-                            {r.summary && (
-                              <div className="text-[11px] text-muted-foreground line-clamp-2">{r.summary}</div>
-                            )}
-                            {r.error && (
-                              <div className="text-[11px] text-destructive">{r.error}</div>
-                            )}
-                          </div>
-                          <div className="text-right">
-                            <div className={r.status === 'ok' ? 'status-pill status-ok' : 'status-pill status-danger'}>{r.status || 'unknown'}</div>
-                            <div className="text-[10px] text-muted-foreground mt-1">
-                              {r.durationMs ? `${Math.round(r.durationMs / 1000)}s` : '—'}
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
-
-                {isError ? (
-                  <details className="text-xs">
-                    <summary className="cursor-pointer text-destructive">Error drilldown</summary>
-                    <div className="mt-2 bg-destructive/10 border border-destructive/30 rounded-md p-2 space-y-2">
-                      <div className="text-[11px]">
-                        Last status: <span className="font-mono">{job.state?.lastStatus || 'unknown'}</span>
-                      </div>
-                      {job.state?.lastError && (
-                        <div className="text-[11px] text-destructive">{job.state.lastError}</div>
-                      )}
-                      {job.lastResult && (
-                        <pre className="whitespace-pre-wrap bg-muted/30 border border-border/30 rounded-md p-2 max-h-40 overflow-y-auto">
-                          {job.lastResult}
-                        </pre>
-                      )}
-                    </div>
-                  </details>
-                ) : null}
-
-                {job.lastResult && (
-                  <details className="text-xs">
-                    <summary className="cursor-pointer text-muted-foreground">Last log snippet</summary>
-                    <pre className="mt-2 whitespace-pre-wrap bg-muted/30 border border-border/30 rounded-md p-2 max-h-40 overflow-y-auto">
-                      {job.lastResult}
-                    </pre>
-                  </details>
-                )}
-              </div>
-            </div>
-          );
-        })}
+            ))}
+          </div>
+        ) : jobs.length === 0 ? (
+          <div className="p-8 text-center text-sm text-muted-foreground">No cron jobs yet.</div>
+        ) : (
+          <div className="divide-y divide-border/40">
+            {CATEGORY_ORDER.map((cat) => {
+              const catJobs = grouped.get(cat) ?? [];
+              if (catJobs.length === 0) return null;
+              return <CategorySection key={cat} category={cat} catJobs={catJobs} />;
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
