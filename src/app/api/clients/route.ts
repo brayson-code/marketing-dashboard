@@ -4,6 +4,7 @@ import { sql, tenantId } from '@/lib/db/client';
 import { currentUserId, DEFAULT_TENANT_ID, NO_TENANT_ID } from '@/lib/tenant';
 import { supabaseAdmin, findUserByEmail } from '@/lib/supabase/admin';
 import { createWorkspace } from '@/lib/workspace';
+import { sendTransactionalEmail, renderInviteEmail } from '@/lib/transactional-email';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -115,13 +116,13 @@ export async function POST(request: Request) {
       );
     }
 
-    // 4) Best-effort invite link for the owner to share (email delivery is out of
-    //    scope; failure here doesn't undo provisioning). We generate a RECOVERY token
-    //    and point the link at our OWN /auth/confirm route (which verifies the
-    //    token_hash server-side and sets the session cookie) → /auth/set-password.
-    //    This avoids client-side fragment/PKCE parsing and the Supabase redirect
-    //    allow-list entirely, and lets the client set a FIRST password without a
-    //    current one — even with "Secure password change" enabled.
+    // 4) Best-effort invite link for the owner to share (failure here doesn't undo
+    //    provisioning). We generate a RECOVERY token and point the link at our OWN
+    //    /auth/confirm route (which verifies the token_hash server-side and sets the
+    //    session cookie) → /auth/set-password. This avoids client-side fragment/PKCE
+    //    parsing and the Supabase redirect allow-list entirely, and lets the client
+    //    set a FIRST password without a current one — even with "Secure password
+    //    change" enabled.
     let inviteLink: string | null = null;
     try {
       const origin = request.headers.get('origin') || new URL(request.url).origin;
@@ -132,7 +133,34 @@ export async function POST(request: Request) {
         : ((link?.properties?.action_link as string | undefined) ?? null);
     } catch { /* owner can re-send later */ }
 
-    return NextResponse.json({ ok: true, tenantId: newTenantId, userId, email, inviteLink });
+    // 5) Best-effort email delivery of that link. Provisioning NEVER fails on email —
+    //    when no provider is configured (or the send bounces) the admin UI falls back
+    //    to showing the copyable link, and we say so honestly via emailed/email_reason.
+    let emailed = false;
+    let emailReason: string | undefined;
+    if (inviteLink) {
+      const { html, text } = renderInviteEmail({
+        heading: `You've been invited to the ${name} workspace`,
+        body: `Your ${name} workspace on KeyPlayers Command Center is ready — your own AI team, data, and dashboard. Click below to sign in and set your password.`,
+        ctaLabel: 'Accept your invite',
+        link: inviteLink,
+      });
+      const result = await sendTransactionalEmail({
+        to: email,
+        subject: `You've been invited to the ${name} workspace on KeyPlayers Command Center`,
+        html,
+        text,
+      }).catch((e) => ({ sent: false, reason: (e as Error).message } as const));
+      emailed = result.sent;
+      emailReason = result.reason;
+    } else {
+      emailReason = 'no invite link generated';
+    }
+
+    return NextResponse.json({
+      ok: true, tenantId: newTenantId, userId, email, inviteLink,
+      emailed, email_reason: emailReason ?? null,
+    });
   } catch (error) {
     console.error('[clients POST]', error);
     return NextResponse.json({ error: (error as Error).message || 'Provisioning failed' }, { status: 500 });

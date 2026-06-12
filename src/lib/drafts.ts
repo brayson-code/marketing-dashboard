@@ -67,9 +67,10 @@ export async function createDraft(input: {
   // for a type the owner kept gated).
   if (decision === 'draft') return draft;
 
-  // 'execute' = auto-approve and run the appropriate executor. The executors
-  // currently simulate (no external API wired yet) but flip status correctly,
-  // so the audit trail is right when the real APIs land.
+  // 'execute' = auto-approve and run the appropriate executor. Content posts
+  // publish for real on connected platforms (YouTube/IG replies, X, LinkedIn,
+  // Facebook Pages) and email sends for real via AgentMail; everything else
+  // still simulates but flips status correctly so the audit trail holds.
   await approveDraft(draft.id, '(auto-approved by autonomy mode)');
   const note = `(auto-executed — autonomy: ${config.level})`;
   switch (input.type) {
@@ -217,9 +218,11 @@ export interface ExecuteResult {
 }
 
 /**
- * Mark an approved draft as executed. In V1 we don't actually post/send — we just
- * flip the status so the system tracks intent + auditability. Real external API
- * wiring (X, LinkedIn, Gmail, Google Calendar) goes here later.
+ * Flip an approved draft to its executed status and stamp the audit note. The
+ * real external calls live in the callers (publishContent / sendEmail) — they
+ * invoke this only AFTER the platform API succeeded, so 'published'/'sent'
+ * always reflects something that actually happened (or an explicitly
+ * "(simulated …)" note for platforms with no connector yet).
  */
 async function executeApproved(id: number, executedStatus: DraftStatus, note?: string): Promise<ExecuteResult> {
   const draft = await getDraft(id);
@@ -243,9 +246,11 @@ export async function publishContent(id: number, note?: string): Promise<Execute
   }
 
   // Route by platform — read from metadata.platform (set when the draft was
-  // created). Today YouTube + Instagram comment replies are wired end-to-end;
-  // other platforms still simulate so the autonomy flow keeps working until
-  // those connectors land.
+  // created). Wired end-to-end today: YouTube + Instagram comment replies, and
+  // top-level posts to X, LinkedIn (member feed), and Facebook Pages. Anything
+  // else still simulates so the autonomy flow keeps working until a connector
+  // lands. Each branch fails closed: a connector error returns ok:false with
+  // the tagged cause and the draft stays 'approved' for a retry.
   const meta = (draft.metadata ?? {}) as {
     platform?: string;
     youtube?: { parent_comment_id?: string };
@@ -273,7 +278,38 @@ export async function publishContent(id: number, note?: string): Promise<Execute
     }
   }
 
-  // TODO: wire X / LinkedIn / FB once those connectors land.
+  if (platform === 'x') {
+    try {
+      const { postTweet } = await import('./x');
+      const tweetId = await postTweet(draft.payload);
+      return await executeApproved(id, 'published', note ?? `x post ${tweetId}`);
+    } catch (e) {
+      return { ok: false, error: `x publish failed: ${(e as Error).message}` };
+    }
+  }
+
+  if (platform === 'linkedin') {
+    try {
+      const { createPost } = await import('./linkedin');
+      const postUrn = await createPost(draft.payload);
+      return await executeApproved(id, 'published', note ?? `linkedin post ${postUrn}`);
+    } catch (e) {
+      return { ok: false, error: `linkedin publish failed: ${(e as Error).message}` };
+    }
+  }
+
+  if (platform === 'facebook') {
+    try {
+      const { createPagePost } = await import('./facebook');
+      const postId = await createPagePost(draft.payload);
+      return await executeApproved(id, 'published', note ?? `facebook post ${postId}`);
+    } catch (e) {
+      return { ok: false, error: `facebook publish failed: ${(e as Error).message}` };
+    }
+  }
+
+  // Unknown/untagged platform (TikTok, drafts created before platform tagging,
+  // …) — flip the status for auditability but say plainly that nothing went out.
   return executeApproved(id, 'published', note ?? '(simulated — no external API wired yet)');
 }
 
@@ -313,11 +349,17 @@ export async function sendEmail(id: number, note?: string): Promise<ExecuteResul
     }
   }
 
-  // TODO: wire Gmail / SMTP for non-AgentMail email drafts.
+  // AgentMail is the real send path. There is NO per-tenant Gmail/SMTP send
+  // credential in this codebase today (/api/integrations/gmail is a legacy
+  // env-var IMAP reader), so generic email drafts simulate until a proper
+  // credential model exists — don't wire one ad hoc here.
   return executeApproved(id, 'sent', note ?? '(simulated — no external API wired yet)');
 }
 
 export async function confirmMeeting(id: number, note?: string): Promise<ExecuteResult> {
-  // TODO: wire Google Calendar
+  // Still simulated: creating a real calendar event needs a Google OAuth
+  // connection (calendar scope) that doesn't exist yet — there's no 'google'
+  // provider in the Nango set today. The status flip keeps the audit trail
+  // honest in the meantime.
   return executeApproved(id, 'confirmed', note ?? '(simulated — no external API wired yet)');
 }

@@ -76,6 +76,14 @@ interface CronExec {
   schedule: string;
 }
 
+// What /api/invite reported back: emailed ✓, or a link to share manually when
+// no email provider is configured, or an error to surface.
+interface InviteResult {
+  emailed: boolean;
+  link: string | null;
+  error: string | null;
+}
+
 interface WizardData {
   role: Role | null;
   agencySize: AgencySize | null;
@@ -186,6 +194,10 @@ export function OnboardingWizard({ onDone }: { onDone?: () => void } = {}) {
   // intentionally don't block earlier steps on this fetch.
   const [csuite, setCsuite] = useState<CronExec[] | null>(null);
   const [csuiteLoaded, setCsuiteLoaded] = useState(false);
+
+  // Outcome of the teammate invite (legacy step, kept wired for /settings reuse):
+  // emailed ✓, or a copyable link when no email provider is configured.
+  const [inviteResult, setInviteResult] = useState<InviteResult | null>(null);
 
   // Prefill from the workspace + skip the wizard entirely if already onboarded.
   useEffect(() => {
@@ -362,14 +374,21 @@ export function OnboardingWizard({ onDone }: { onDone?: () => void } = {}) {
     const email = data.inviteEmail.trim();
     if (!email) return;
     try {
-      // TODO(api): no /api/invite endpoint yet. POST to a stubbed path so the
-      // wizard's wiring is in place; the parent will add the route + email send.
-      await fetch('/api/invite', {
+      // /api/invite is real now: it creates the user + membership and tries to
+      // email the sign-in link. We keep the result so InviteStep can say
+      // honestly whether the email went out or the link must be shared by hand.
+      const res = await fetch('/api/invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
       });
-    } catch { /* non-blocking — stubbed endpoint */ }
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setInviteResult({ emailed: false, link: null, error: j.error || 'Invite failed' });
+        return;
+      }
+      setInviteResult({ emailed: !!j.emailed, link: j.inviteLink ?? null, error: null });
+    } catch { /* non-blocking — the wizard never gates on the invite */ }
   }, [data.inviteEmail]);
 
   // Drops the free-form seed into a KB document named "Agency profile" via the
@@ -1029,7 +1048,11 @@ function PrefsStep({ value, onChange }: { value: OwnerPrefs; onChange: (v: Owner
 }
 
 // ─── Step 10: Invite teammate ─────────────────────────────────────────────────
-function InviteStep({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function InviteStep({ value, onChange, result }: {
+  value: string;
+  onChange: (v: string) => void;
+  result?: InviteResult | null;
+}) {
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold">Bring someone in?</h1>
@@ -1048,6 +1071,26 @@ function InviteStep({ value, onChange }: { value: string; onChange: (v: string) 
           inputMode="email"
         />
       </label>
+
+      {/* Honest invite outcome: emailed ✓, or hand them the link yourself. */}
+      {result && (
+        result.error ? (
+          <p className="text-xs text-destructive">{result.error}</p>
+        ) : result.emailed ? (
+          <p className="text-xs text-[var(--success)]">Invite emailed ✓</p>
+        ) : result.link ? (
+          <div className="space-y-1">
+            <input readOnly className={INPUT} value={result.link} onFocus={(e) => e.currentTarget.select()} />
+            <p className="text-[11px] text-muted-foreground">
+              Email not configured — copy this sign-in link and send it to them yourself.
+            </p>
+          </div>
+        ) : (
+          <p className="text-[11px] text-muted-foreground">
+            Invite recorded, but no email was sent and no link could be generated — re-invite from Settings → Team.
+          </p>
+        )
+      )}
 
       <div className="flex items-center gap-2 rounded-xl border border-border bg-[var(--surface-2)] p-3 text-xs text-muted-foreground">
         <UserPlus size={14} className="text-[var(--primary)]" />

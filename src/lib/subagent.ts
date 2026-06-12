@@ -111,6 +111,81 @@ export const SUBAGENT_REGISTRY: Record<string, SubAgentSpec> = {
     ratePerHour: 20,
     description: 'Deep optimizer for the owner OWN short-form reel: scores it, finds timestamped weak points, and writes goal-tailored Currently/Try/Expected-impact rewrites from its transcript + real IG metrics.',
   },
+  'content-cascade': {
+    id: 'content-cascade',
+    model: 'claude-sonnet-4-6',
+    maxTokens: 4096,
+    ratePerHour: 12,
+    description: 'Repurposes ONE pillar piece into five platform-native drafts (X thread, LinkedIn post, IG caption + hashtags, YouTube Short beat sheet, newsletter blurb) — one ## section per platform for splitting into content_post drafts. Drafts only — never publishes.',
+  },
+  'carousel-generator': {
+    id: 'carousel-generator',
+    model: 'claude-sonnet-4-6',
+    maxTokens: 4096,
+    ratePerHour: 20,
+    description: 'Turns a topic or pillar piece into a 6-10 slide IG/LinkedIn carousel script (hook slide -> value arc -> CTA, with per-slide visual notes for thumbnail-generator). Script only - never publishes.',
+  },
+  'inbox-triage': {
+    id: 'inbox-triage',
+    // Classification over email rows it's already handed — Haiku's lane.
+    // Spawn it TOOL-FREE (single turn): the batch arrives in the prompt,
+    // there is nothing to fetch.
+    model: 'claude-haiku-4-5',
+    maxTokens: 2048,
+    ratePerHour: 30,
+    description: 'Triages a batch of inbound emails (act_now / draft_reply / delegate / archive / spam) with one-line reasoning + suggested replies for the draft-worthy ones. Verdicts only — never sends; KeyPlayer turns draft_reply rows into drafts.',
+  },
+  'client-onboarding-doc': {
+    id: 'client-onboarding-doc',
+    // Low rate on purpose: this runs roughly once per newly signed client
+    // (plus the occasional regenerate), and each run is a long-form Sonnet doc.
+    model: 'claude-sonnet-4-6',
+    maxTokens: 6144,
+    ratePerHour: 6,
+    description: 'Drafts the client-facing onboarding document (welcome, cadence + channels, first-30-days plan, needs-from-client checklist, key contacts, success metrics tied to goals) from the company brief + intake answers. Returns a KB draft for owner approval + PDF export — never sends.',
+  },
+  'scope-of-work': {
+    id: 'scope-of-work',
+    model: 'claude-sonnet-4-6',
+    maxTokens: 4096,
+    ratePerHour: 10,
+    description: 'Drafts a markdown scope-of-work from a goal/brief: objectives, itemized deliverables (quantities + cadence), explicit out-of-scope list, milestones, revision policy, and a pricing table with {{PRICE_*}} placeholders. Draft only — never sends, never invents prices or legal terms.',
+  },
+  'weekly-client-status': {
+    id: 'weekly-client-status',
+    model: 'claude-sonnet-4-6',
+    maxTokens: 4096,
+    ratePerHour: 10,
+    description: 'Composes the weekly client status report (wins, in-flight, blocked + asks, next-week plan, metrics snapshot) from the structured weekly context it is handed. Email-ready markdown draft — never sends; flags missing data instead of inventing it.',
+  },
+  'deliverable-qa': {
+    id: 'deliverable-qa',
+    model: 'claude-sonnet-4-6',
+    maxTokens: 3072,
+    ratePerHour: 30,
+    description: 'Adversarial QA of a deliverable draft against the company brief, brand voice and original task. Returns a ship/fix/redo verdict + scored rubric + diff-style line edits — flags unverifiable claims, never publishes or approves.',
+  },
+  'pipeline-review': {
+    id: 'pipeline-review',
+    model: 'claude-sonnet-4-6',
+    maxTokens: 3072,
+    ratePerHour: 12,
+    description: 'Reviews a CRM pipeline snapshot handed in the prompt: stalled deals (>14d idle) with unstick actions, stage-conversion red flags, top-5 focus list (expected value × momentum), one-paragraph forecast. Brief only — never touches the CRM.',
+  },
+  'sponsor-pitch': {
+    id: 'sponsor-pitch',
+    model: 'claude-sonnet-4-6',
+    maxTokens: 4096,
+    ratePerHour: 10,
+    description: 'Builds a sponsor pitch one-pager from supplied audience stats + a brand-fit hypothesis: positioning line, honest numbers (flags stats >90 days old), three packages with placeholder pricing, single next step. Draft only — never sends.',
+  },
+  'community-pulse': {
+    id: 'community-pulse',
+    model: 'claude-haiku-4-5',
+    maxTokens: 2500,
+    ratePerHour: 12,
+    description: 'Digests a batch of community signals (YouTube/IG comments, DMs, mentions handed in the prompt) into one markdown pulse: 1–10 sentiment temperature + trend vs last digest, top themes with verbatim quotes, reply-worthy members, and content the community is implicitly asking for. Digest only — never replies or posts.',
+  },
 };
 
 // In-memory rate limit window. Resets on server restart, which is fine for V1.

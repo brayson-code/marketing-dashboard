@@ -19,7 +19,7 @@ export default function ClientsPage() {
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [invite, setInvite] = useState<{ email: string; link: string | null } | null>(null);
+  const [invite, setInvite] = useState<{ email: string; link: string | null; emailed: boolean } | null>(null);
   const [copied, setCopied] = useState(false);
 
   const load = useCallback(async () => {
@@ -42,7 +42,7 @@ export default function ClientsPage() {
       });
       const j = await r.json();
       if (!r.ok) { setError(j.error || 'Failed to add client'); return; }
-      setInvite({ email: j.email, link: j.inviteLink ?? null });
+      setInvite({ email: j.email, link: j.inviteLink ?? null, emailed: !!j.emailed });
       setName(''); setEmail('');
       await load();
     } catch (err) {
@@ -104,7 +104,9 @@ export default function ClientsPage() {
 
         {invite && (
           <div className="panel p-3 mt-1" style={{ background: 'color-mix(in srgb, var(--success) 8%, transparent)', borderColor: 'color-mix(in srgb, var(--success) 25%, transparent)' }}>
-            <p className="text-xs font-medium text-[var(--success)]">Workspace created for {invite.email}.</p>
+            <p className="text-xs font-medium text-[var(--success)]">
+              Workspace created for {invite.email}.{invite.emailed && ' Invite emailed ✓'}
+            </p>
             {invite.link ? (
               <div className="mt-2 flex items-center gap-2">
                 <input readOnly value={invite.link} style={{ width: '100%' }} className="text-[11px] font-mono" onFocus={(e) => e.currentTarget.select()} />
@@ -115,7 +117,11 @@ export default function ClientsPage() {
             ) : (
               <p className="text-[11px] text-muted-foreground mt-1">Send them a magic link from Supabase, or they can sign in once email is wired.</p>
             )}
-            <p className="text-[10px] text-muted-foreground mt-1.5">Share this one-time sign-in link with your client.</p>
+            <p className="text-[10px] text-muted-foreground mt-1.5">
+              {invite.emailed
+                ? 'They were emailed this one-time sign-in link — copy it here if you’d rather share it yourself.'
+                : 'Email not configured — copy this one-time sign-in link and send it to your client yourself.'}
+            </p>
           </div>
         )}
       </form>

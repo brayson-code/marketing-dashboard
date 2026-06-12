@@ -37,3 +37,13 @@ Same as KeyPlayer — `{{CLIENT_NAME}}`, `{{OWNER_FIRST_NAME}}`, `{{OWNER_PHONE}
 | `thumbnail-generator` | TBD | Visual covers for content |
 | `hyperframes-agent` | TBD | Short-form video editing via HeyGen Hyperframes |
 | `memory-compactor` | TBD | Roll up chat history into structured notes |
+| `content-cascade` | ✅ built | Repurpose one pillar piece into five platform-native drafts (X thread, LinkedIn, IG, Short beat sheet, newsletter) |
+| `carousel-generator` | ✅ built | Turn a topic or pillar piece into a 6–10 slide IG/LinkedIn carousel script (hook → CTA) with per-slide visual notes for thumbnail-generator |
+| `inbox-triage` | ✅ built | Triage inbound email batches into act_now / draft_reply / delegate / archive / spam with suggested replies — never sends |
+| `client-onboarding-doc` | ✅ built | Draft the new-client onboarding doc (welcome, cadence, 30-day plan, access checklist, contacts, success metrics) |
+| `scope-of-work` | ✅ built | Draft scope-of-work documents — itemized deliverables, explicit exclusions, milestones, placeholder pricing |
+| `weekly-client-status` | ✅ built | Weekly client status report (wins / in-flight / blocked + asks / next week / metrics) from the week's structured context |
+| `deliverable-qa` | ✅ built | Adversarial QA gate: ship/fix/redo verdict + scored rubric + line-level edits on any draft |
+| `pipeline-review` | ✅ built | Pipeline snapshot review — stalled deals + unstick actions, stage red flags, weekly focus list, forecast |
+| `sponsor-pitch` | ✅ built | Sponsor pitch one-pager from audience stats + brand-fit hypothesis — honest numbers, 3 packages, deck-ready |
+| `community-pulse` | ✅ built | Digest community signals into a sentiment-temperature pulse: themes, reply-worthy members, content asks |

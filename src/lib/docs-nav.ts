@@ -36,6 +36,7 @@ export const DOCS_NAV: DocNavGroup[] = [
     group: 'Setup & control',
     items: [
       { slug: 'connections', title: 'Connections', blurb: 'Connect your social accounts and API keys' },
+      { slug: 'invite-emails', title: 'Invite Emails', blurb: 'How invites reach clients and teammates, and how to enable sending' },
       { slug: 'drafts', title: 'Drafts & Approvals', blurb: 'The approval queue — nothing ships without you' },
       { slug: 'cron', title: 'Scheduled Jobs', blurb: 'Run agents on a recurring schedule' },
       { slug: 'usage', title: 'Usage & Spend', blurb: 'Track what your agents cost' },
