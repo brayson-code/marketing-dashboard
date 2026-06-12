@@ -27,9 +27,12 @@ export const DOCS_NAV: DocNavGroup[] = [
       { slug: 'script-studio', title: 'Script Studio', blurb: 'Edit reel scripts and read them off a teleprompter' },
       { slug: 'hyperframes', title: 'Hyperframes', blurb: 'Turn a brief into a short-form script + storyboard, then hand it to HeyGen' },
       { slug: 'media', title: 'Media Library', blurb: 'Drop your own a-roll, b-roll, and images for agents and reels to use' },
+      { slug: 'engagement', title: 'Engagement', blurb: 'Triage YouTube/Instagram comments and inbound email, with one-click AI replies' },
       { slug: 'agents', title: 'Agents & Agent Studio', blurb: 'View, edit, and create your AI specialists' },
       { slug: 'boardroom', title: 'Boardroom', blurb: 'Chat with your lead agent and watch agents collaborate' },
+      { slug: 'tasks', title: 'Tasks Board', blurb: 'Watch every agent run live and steer the work' },
       { slug: 'goals-and-missions', title: 'Goals, Campaigns & Missions', blurb: 'Set outcomes, group work into campaigns, and launch missions' },
+      { slug: 'analytics', title: 'Analytics', blurb: 'Web + social performance — YouTube, Instagram, Facebook Ads, and TikTok' },
     ],
   },
   {

@@ -35,7 +35,7 @@ The setting that controls **how much agents can do on their own**, found on the 
 - **Act + Notify** — agents auto-run the draft types you specifically approve; the rest still wait as drafts.
 - **Full Auto** — agents run every executable action end-to-end, hands-off.
 
-You can also set per-type overrides (e.g. auto-publish content but always approve emails). The autonomy gate is your master dial for trust: start at **Propose**, raise it as you get comfortable. See the [autonomy controls](./drafts.md) and Concepts above.
+You can also set per-type overrides (e.g. auto-publish content but always approve emails). The autonomy gate is your master dial for trust: start at **Propose**, raise it as you get comfortable. The higher levels are part of higher plans — the Autonomy page shows which ones your plan includes. See the [autonomy controls](./drafts.md) and Concepts above.
 
 ![the Autonomy page with the four levels](images/concepts-1.png)
 
@@ -45,7 +45,9 @@ The **active tour** that runs the first time you open a new workspace. A coachin
 
 ## Company Playbook
 
-A short **business brief** that every agent — and the orchestrator — reads before doing any work. You answer a few questions in **Memory → Playbook** (what you do, your objective, your ideal customer, your value, your channels, your voice, your guardrails) and KeyCommand writes a tight playbook from them. Because that brief is injected into every agent's instructions, your team works from *your* objectives, audience, and voice instead of sounding generic. You can regenerate or edit it anytime. It's part of your guided setup. See [Getting Started](./getting-started.md#5-build-your-company-playbook).
+A short **business brief** that every agent — and the orchestrator — reads before doing any work. You answer a few questions in the **Company brief** card on **Settings** (what you do, your objective, your ideal customer, your value, your channels, your voice, your guardrails) and KeyCommand writes a tight playbook from them. Because that brief is injected into every agent's instructions, your team works from *your* objectives, audience, and voice instead of sounding generic. You can regenerate or edit it anytime. It's part of your guided setup. See [Getting Started](./getting-started.md#5-build-your-company-playbook).
+
+On top of the company-wide brief, each agent can have its **own playbook** — a generated Soul / Agent / Skills definition tuned to that one agent's job. You build those in the [Agent Studio](./agents.md#generate-an-agents-playbook).
 
 ## Goals
 

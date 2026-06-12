@@ -8,12 +8,12 @@ This page walks you through your first session in KeyCommand: signing in, gettin
 
 ## 1. Sign in
 
-KeyCommand opens to a sign-in screen.
+KeyCommand opens to a sign-in screen. There are two ways in:
 
-1. Enter the **email** and **password** for your KeyCommand account.
-2. Click **Sign in**.
+- **Email + password** — enter the credentials for your KeyCommand account and click **Sign in**.
+- **Continue with Google** — sign in with the Google account that uses the **same email** as your KeyCommand account. The first time, it links to your existing account automatically, and your password keeps working alongside it.
 
-If you don't have an account yet, ask your KeyCommand administrator to create one for you. Each account belongs to a single workspace — everything you create (competitors, scripts, drafts, connections) stays private to your workspace.
+If you don't have an account yet, ask your KeyCommand administrator to create one for you — KeyCommand is invite-only, so signing in with a brand-new Google account won't create a workspace either. Each account belongs to a single workspace — everything you create (competitors, scripts, drafts, connections) stays private to your workspace.
 
 > **Forgot your password or can't get in?** Contact whoever set up your workspace. There's no public self-serve signup.
 
@@ -23,7 +23,7 @@ If you don't have an account yet, ask your KeyCommand administrator to create on
 
 After you sign in, you land on the **Overview** — your home base. From top to bottom you'll see:
 
-- **Lens tabs** at the very top let you switch which part of the team you're looking at (Leadership, Marketing, Revenue, Operations).
+- **Lens tabs** at the very top let you switch which part of the team you're looking at (Leadership, Marketing, Revenue, Operations, Client Experience).
 - A **status strip** of key metrics.
 - A **72-hour activation card** that nudges you through your first wins (it disappears once you're set up).
 - Your **goals** and **top priorities**.
@@ -60,7 +60,7 @@ You don't have to follow it in lockstep — click **Skip** on any step or **Turn
 
 ## 5. Build your company playbook
 
-Open **Memory → Playbook** and answer a few short questions about your business — what you do, your #1 objective, your ideal customer, your voice, and your hard no-gos. KeyCommand turns those answers into a tight **business brief** that **every agent and the orchestrator read before doing any work**, so your AI team sounds like *your* business instead of generic. You can regenerate or hand-edit it anytime. See [the company playbook in Concepts](./concepts.md#company-playbook).
+Open **Settings** — the **Company brief** card sits at the top — and answer a few short questions about your business: what you do, your #1 objective, your ideal customer, your voice, and your hard no-gos. KeyCommand turns those answers into a tight **business brief** that **every agent and the orchestrator read before doing any work**, so your AI team sounds like *your* business instead of generic. You can regenerate or hand-edit it anytime. See [the company playbook in Concepts](./concepts.md#company-playbook).
 
 ---
 
@@ -87,9 +87,9 @@ See the [Connections page](./connections.md) for what every connection unlocks a
 
 Now you're set up. Here's the fastest path to seeing value:
 
-1. **Analyze a competitor reel.** Go to **Competitors**, paste any Instagram reel link into the **Analyze reels** box, and click **Analyze**. Watch the live board scrape it and tear down *why it won*. → [Competitor Reel Intel](./competitors.md)
-2. **Generate content ideas.** Go to **Content Lab** and hit **Generate ideas** to spin up trial reel concepts based on what's trending. → [Content Lab](./content-lab.md)
-3. **Write a script.** Keep an idea you like and click **Write script**, then open **Script Studio** to edit it and run the teleprompter. → [Script Studio](./script-studio.md)
+1. **Analyze a competitor reel.** Open **Content → Competitors**, paste any Instagram reel link into the **Analyze reels** box, and click **Analyze**. Watch the live board scrape it and tear down *why it won*. → [Competitor Reel Intel](./competitors.md)
+2. **Generate content ideas.** Open **Content → Ideas** and hit **Generate ideas** to spin up trial reel concepts based on what's trending. → [Content Lab](./content-lab.md)
+3. **Write a script.** Keep an idea you like and click **Write script**, then open **Content → Scripts** to edit it and run the teleprompter. → [Script Studio](./script-studio.md)
 4. **Check your Approvals.** Anything your agents create for approval waits in **Approvals**. Approve what you like; reject the rest. → [Approvals](./drafts.md)
 
 ---

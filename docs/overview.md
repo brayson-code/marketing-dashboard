@@ -19,7 +19,7 @@ Instead of hunting through pages, the Overview surfaces the few things that actu
 ## The pieces, top to bottom
 
 ### Lens tabs
-At the very top, the lens tabs switch which slice of your team and metrics you're viewing — **Leadership**, **Marketing**, **Revenue**, and **Operations**. Everything below the tabs (the status strip, the agent cards, the operator queue) re-filters to match the lens you choose.
+At the very top, the lens tabs switch which slice of your team and metrics you're viewing — **Leadership**, **Marketing**, **Revenue**, **Operations**, and **Client Experience**. Everything below the tabs (the status strip, the agent cards, the operator queue) re-filters to match the lens you choose.
 
 ### Status strip
 A row of key metric cells for the active lens — a quick read on how things are trending.

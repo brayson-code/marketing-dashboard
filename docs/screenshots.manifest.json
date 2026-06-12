@@ -374,6 +374,39 @@
     "preAction": "click button:has-text('Add')"
   },
   {
+    "slug": "engagement",
+    "index": 1,
+    "filename": "engagement-1.png",
+    "caption": "the Engagement page with the YouTube comments lane open",
+    "route": "/engagement",
+    "fullPage": true,
+    "clipSelector": null,
+    "waitForSelector": ".tab.active",
+    "preAction": null
+  },
+  {
+    "slug": "analytics",
+    "index": 1,
+    "filename": "analytics-1.png",
+    "caption": "the Analytics page with the social roll-up and per-platform panels",
+    "route": "/analytics",
+    "fullPage": true,
+    "clipSelector": null,
+    "waitForSelector": ".panel-body",
+    "preAction": null
+  },
+  {
+    "slug": "tasks",
+    "index": 1,
+    "filename": "tasks-1.png",
+    "caption": "the Tasks board with the four kanban columns",
+    "route": "/tasks",
+    "fullPage": true,
+    "clipSelector": null,
+    "waitForSelector": ".panel",
+    "preAction": null
+  },
+  {
     "slug": "usage",
     "index": 1,
     "filename": "usage-1.png",

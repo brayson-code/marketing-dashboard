@@ -15,6 +15,7 @@ These docs are written for the people who **use** KeyCommand day to day: markete
 - **Write and record scripts.** Generate reel scripts from a kept idea or a competitor teardown, edit them, and read them off a built-in teleprompter.
 - **Run a team of agents.** A roster of specialist agents (research, content, outreach, and more) does the work; you can view, edit, and create them in the Agent Studio.
 - **Stay in control.** Everything agents produce lands in **Approvals** for your one-tap approval. You decide how much autonomy they have.
+- **Reply where it counts.** Triage YouTube and Instagram comments and inbound email with one-click AI-drafted replies — approved by you, posted through your own accounts.
 - **Connect your stack.** Bring your own API keys and social accounts so agents act through *your* tools and *your* brand. Your AI team runs on your own Claude key — connect it first and your agents come to life.
 - **Teach the team your business once.** A short **company playbook** captures your objective, audience, and voice, and every agent reads it before doing any work.
 
@@ -31,6 +32,9 @@ These docs are written for the people who **use** KeyCommand day to day: markete
 | [Script Studio](./script-studio.md) | Edit reel scripts and read them off a teleprompter |
 | [Hyperframes](./hyperframes.md) | Turn a brief into a short-form script + storyboard, then hand it to HeyGen |
 | [Media Library](./media.md) | Drop your own a-roll, b-roll, and images for agents and reels to draw from |
+| [Engagement](./engagement.md) | Triage YouTube/Instagram comments and inbound email with one-click AI replies |
+| [Tasks Board](./tasks.md) | Watch every agent run live and steer the work from a kanban board |
+| [Analytics](./analytics.md) | Web + social performance — YouTube, Instagram, Facebook Ads, and TikTok |
 | [Connections](./connections.md) | Connect your social accounts and API keys (Apify, Deepgram, AgentMail, Instagram, and more) |
 | [Approvals](./drafts.md) | The approval queue — nothing ships without you |
 | [Cron / Scheduled Jobs](./cron.md) | Run agents on a recurring schedule |

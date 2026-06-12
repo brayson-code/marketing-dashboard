@@ -30,6 +30,10 @@ This is the safety net that lets you put agents to work without worrying they'll
 
 Use the **pending / approved / all** tabs at the top to change what you're looking at.
 
+### Publishing is real
+
+When the platform is [connected](./connections.md), **Publish** actually ships it: posts tagged for **X**, **LinkedIn**, or **Facebook** go out through your own connected account (long X posts become a thread automatically), comment replies post back to the original **YouTube** or **Instagram** comment, and **Send** delivers email through your AgentMail account. Platforms that aren't wired up yet still flip the draft's status but stamp a clear *"simulated"* note, so the record never pretends something went out. If a real publish fails (an expired connection, a missing permission), the draft **stays approved** with the error noted — fix the connection and click Publish again.
+
 ![an expanded draft showing Approve / Reject buttons](images/drafts-2.png)
 
 ### Keeping the queue clean
