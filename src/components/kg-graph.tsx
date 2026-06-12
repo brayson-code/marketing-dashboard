@@ -142,15 +142,26 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
   );
 
   // Track container width so the canvas fills the panel responsively.
-  useEffect(() => {
-    const el = containerRef.current;
+  //
+  // CALLBACK ref, not an effect: on first render the data hasn't loaded yet, so
+  // this component returns the "No graph yet" branch and the container div does
+  // not exist. A mount-time effect would find containerRef.current === null and
+  // never observe anything — leaving the canvas at the 640px initial width,
+  // pinned left inside the panel (the long-standing "graph isn't centered" bug).
+  // The callback ref attaches the observer whenever the container actually
+  // appears, and disconnects when it unmounts (React calls it with null).
+  const roRef = useRef<ResizeObserver | null>(null);
+  const attachContainer = useCallback((el: HTMLDivElement | null) => {
+    containerRef.current = el;
+    roRef.current?.disconnect();
+    roRef.current = null;
     if (!el || typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver((ents) => {
       const w = ents[0].contentRect.width;
       if (w > 0) setWidth(Math.max(220, Math.round(w)));
     });
     ro.observe(el);
-    return () => ro.disconnect();
+    roRef.current = ro;
   }, []);
 
   // Fit = center the whole graph in view. zoomToFit needs the live instance, which
@@ -258,7 +269,7 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
   }
 
   return (
-    <div ref={containerRef} style={{ width: '100%', position: 'relative' }}>
+    <div ref={attachContainer} style={{ width: '100%', position: 'relative' }}>
       <div style={{ borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--card)', overflow: 'hidden' }}>
         <ForceGraph2D
           onReady={handleReady}
