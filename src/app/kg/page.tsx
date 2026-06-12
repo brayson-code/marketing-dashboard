@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { Network, Search, ArrowRight, ArrowLeft } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Network, Search, ArrowRight, ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
 import KnowledgeGraph from '@/components/kg-graph';
+import { timeAgo } from '@/lib/utils';
 
-interface Entity { id: number; kind: string; name: string; attributes: Record<string, unknown>; created_at: number; updated_at: number }
+interface Entity { id: number; kind: string; name: string; attributes: Record<string, unknown>; created_at: string; updated_at: string }
 interface KgRelation { id: number; from_id: number; to_id: number; label: string; attributes: Record<string, unknown> }
 interface Neighbor { entity: Entity; relation: KgRelation; direction: 'in' | 'out' }
 interface KindCount { kind: string; n: number }
@@ -16,6 +17,9 @@ export default function KgPage() {
   return <UpgradeGate feature="kg" title="Knowledge Graph"><KgContent /></UpgradeGate>;
 }
 
+type SortOption = 'connections' | 'updated' | 'name';
+const PAGE_SIZE = 25;
+
 function KgContent() {
   const [entities, setEntities] = useState<Entity[]>([]);
   const [relations, setRelations] = useState<GraphRelation[]>([]);
@@ -25,6 +29,8 @@ function KgContent() {
   const [neighbors, setNeighbors] = useState<Neighbor[]>([]);
   const [search, setSearch] = useState('');
   const [kindFilter, setKindFilter] = useState<string | null>(null);
+  const [sort, setSort] = useState<SortOption>('connections');
+  const [page, setPage] = useState(0);
 
   const load = useCallback(async () => {
     const qs = new URLSearchParams();
@@ -49,6 +55,40 @@ function KgContent() {
 
   const selected = entities.find((e) => e.id === selectedId);
 
+  // Degree map: count how many times each entity id appears in relations
+  const degreeMap = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const r of relations) {
+      m.set(r.from_id, (m.get(r.from_id) ?? 0) + 1);
+      m.set(r.to_id, (m.get(r.to_id) ?? 0) + 1);
+    }
+    return m;
+  }, [relations]);
+
+  const sortedEntities = useMemo(() => {
+    const copy = [...entities];
+    if (sort === 'connections') {
+      copy.sort((a, b) => {
+        const diff = (degreeMap.get(b.id) ?? 0) - (degreeMap.get(a.id) ?? 0);
+        return diff !== 0 ? diff : a.name.localeCompare(b.name);
+      });
+    } else if (sort === 'updated') {
+      copy.sort((a, b) => {
+        const ta = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+        const tb = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+        return tb - ta;
+      });
+    } else {
+      copy.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    return copy;
+  }, [entities, sort, degreeMap]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedEntities.length / PAGE_SIZE));
+  const pageStart = page * PAGE_SIZE;
+  const pageEnd = Math.min(pageStart + PAGE_SIZE, sortedEntities.length);
+  const pageEntities = sortedEntities.slice(pageStart, pageEnd);
+
   return (
     <div className="space-y-4 animate-in">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -66,60 +106,133 @@ function KgContent() {
           <h3 className="section-title">Graph</h3>
         </div>
         <div className="panel-body">
-          <KnowledgeGraph entities={entities} relations={relations} onSelect={loadNeighbors} />
+          <KnowledgeGraph entities={entities} relations={relations} onSelect={loadNeighbors} focusId={selectedId} />
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-1 space-y-3">
-          <div className="panel p-3 space-y-2">
-            <div className="relative">
-              <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by name…"
-                className="pl-7"
-                style={{ width: '100%' }}
-              />
+        {/* ── Left: compact entity browser ── */}
+        <div className="lg:col-span-1">
+          <div className="panel" style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="panel-header">
+              <h3 className="section-title">Entities</h3>
             </div>
-            <div className="flex flex-wrap gap-1">
-              <button onClick={() => setKindFilter(null)} className={`tab ${!kindFilter ? 'active' : ''}`}>all</button>
-              {counts.map((c) => (
-                <button key={c.kind} onClick={() => setKindFilter(c.kind)} className={`tab ${kindFilter === c.kind ? 'active' : ''}`}>
-                  {c.kind} <span className="opacity-70">({c.n})</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            {entities.length === 0 && (
-              <div className="panel p-4 text-xs text-muted-foreground text-center">
-                No entities yet. KeyPlayer adds them via the <code>kg_remember</code> tool as it learns things.
-              </div>
-            )}
-            {entities.map((e) => (
-              <button
-                key={e.id}
-                onClick={() => loadNeighbors(e.id)}
-                className={`panel p-3 w-full text-left card-hover ${selectedId === e.id ? 'border-primary' : ''}`}
-                style={selectedId === e.id ? { borderColor: 'var(--primary)' } : {}}
-              >
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="badge badge-neutral">{e.kind}</span>
-                  <span className="font-medium">{e.name}</span>
+            <div className="panel-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {/* Search + Sort row */}
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <div className="relative" style={{ flex: 1 }}>
+                  <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    value={search}
+                    onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+                    placeholder="Search by name…"
+                    className="pl-7"
+                    style={{ width: '100%' }}
+                  />
                 </div>
-                {Object.keys(e.attributes).length > 0 && (
-                  <div className="text-[10px] text-muted-foreground mt-1 line-clamp-2">
-                    {Object.entries(e.attributes).slice(0, 3).map(([k, v]) => `${k}: ${String(v)}`).join(' · ')}
+                <select
+                  value={sort}
+                  onChange={(e) => { setSort(e.target.value as SortOption); setPage(0); }}
+                  style={{ flexShrink: 0, fontSize: '0.75rem' }}
+                >
+                  <option value="connections">Most connected</option>
+                  <option value="updated">Recently updated</option>
+                  <option value="name">Name A–Z</option>
+                </select>
+              </div>
+
+              {/* Kind filter chips */}
+              <div className="flex flex-wrap gap-1">
+                <button onClick={() => { setKindFilter(null); setPage(0); }} className={`tab ${!kindFilter ? 'active' : ''}`}>all</button>
+                {counts.map((c) => (
+                  <button key={c.kind} onClick={() => { setKindFilter(c.kind); setPage(0); }} className={`tab ${kindFilter === c.kind ? 'active' : ''}`}>
+                    {c.kind} <span className="opacity-70">({c.n})</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Dense table */}
+              {entities.length === 0 ? (
+                <div className="text-xs text-muted-foreground text-center" style={{ padding: '1rem 0' }}>
+                  No entities yet. KeyPlayer adds them via the <code>kg_remember</code> tool as it learns things.
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--muted-foreground)' }}>
+                        <th style={{ textAlign: 'left', padding: '0.25rem 0.5rem', fontWeight: 500 }}>Entity</th>
+                        <th style={{ textAlign: 'right', padding: '0.25rem 0.5rem', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>Conn.</th>
+                        <th className="hidden-sm" style={{ textAlign: 'right', padding: '0.25rem 0.5rem', fontWeight: 500 }}>Updated</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pageEntities.map((e) => {
+                        const isSelected = selectedId === e.id;
+                        return (
+                          <tr
+                            key={e.id}
+                            onClick={() => loadNeighbors(e.id)}
+                            style={{
+                              cursor: 'pointer',
+                              borderLeft: isSelected ? '2px solid var(--primary)' : '2px solid transparent',
+                              background: isSelected ? 'var(--primary-muted, color-mix(in srgb, var(--primary) 10%, transparent))' : undefined,
+                            }}
+                            className="kg-entity-row"
+                          >
+                            <td style={{ padding: '0.375rem 0.5rem', maxWidth: 0, width: '99%' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', overflow: 'hidden' }}>
+                                <span className="badge badge-neutral" style={{ flexShrink: 0 }}>{e.kind}</span>
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: isSelected ? 500 : undefined }}>{e.name}</span>
+                              </div>
+                            </td>
+                            <td style={{ padding: '0.375rem 0.5rem', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--muted-foreground)', whiteSpace: 'nowrap' }}>
+                              {degreeMap.get(e.id) ?? 0}
+                            </td>
+                            <td className="hidden-sm" style={{ padding: '0.375rem 0.5rem', textAlign: 'right', color: 'var(--muted-foreground)', whiteSpace: 'nowrap' }}>
+                              {timeAgo(e.updated_at)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Pagination footer */}
+              {entities.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '0.25rem', borderTop: '1px solid var(--border)', marginTop: '0.25rem' }}>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--muted-foreground)' }}>
+                    {sortedEntities.length === 0
+                      ? '0 of 0'
+                      : `${pageStart + 1}–${pageEnd} of ${sortedEntities.length}`}
+                  </span>
+                  <div style={{ display: 'flex', gap: '0.25rem' }}>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => setPage((p) => Math.max(0, p - 1))}
+                      disabled={page === 0}
+                      aria-label="Previous page"
+                    >
+                      <ChevronLeft size={14} />
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                      disabled={page >= totalPages - 1}
+                      aria-label="Next page"
+                    >
+                      <ChevronRight size={14} />
+                    </button>
                   </div>
-                )}
-              </button>
-            ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
+        {/* ── Right: selected entity details + connections (unchanged) ── */}
         <div className="lg:col-span-2 space-y-3">
           {!selected ? (
             <div className="panel p-6 text-center text-xs text-muted-foreground">
@@ -169,6 +282,15 @@ function KgContent() {
           )}
         </div>
       </div>
+
+      <style>{`
+        .kg-entity-row:hover {
+          background: var(--muted);
+        }
+        @media (max-width: 639px) {
+          .hidden-sm { display: none; }
+        }
+      `}</style>
     </div>
   );
 }

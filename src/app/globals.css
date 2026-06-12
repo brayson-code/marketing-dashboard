@@ -357,6 +357,17 @@ h1, h2, h3, .section-title {
   animation: border-glow 2.4s var(--ease-in-out) infinite;
 }
 
+/* Opaque chrome surface for FIXED bars (header, nav rail, mobile nav). The
+   dark theme's --card is a translucent glass tint (rgba ~4.5% white) — right
+   for panels over the page background, but on position:fixed chrome it lets
+   scrolled content ghost through. Composite the same card tint OVER the opaque
+   page background so the bars keep their exact resting tone but never show
+   what scrolls beneath them. */
+.surface-opaque {
+  background-color: var(--background);
+  background-image: linear-gradient(var(--card), var(--card));
+}
+
 /* Diagonal shimmer that sweeps across a panel — applied via class. Used on
    hero/agent cards when their agent is actively running to convey energy. */
 @keyframes shimmer-sweep {

@@ -124,7 +124,7 @@ export function NavRail() {
   }, [pathname]);
 
   return (
-    <nav className="nav-rail fixed left-0 top-[var(--header-height)] bottom-0 w-[var(--nav-width)] bg-card border-r border-border z-40 hidden md:flex flex-col">
+    <nav className="nav-rail fixed left-0 top-[var(--header-height)] bottom-0 w-[var(--nav-width)] surface-opaque border-r border-border z-40 hidden md:flex flex-col">
       <div className="flex-1 overflow-y-auto px-2 py-3">
         {PRIMARY.map((group, idx) => (
           <NavGroupBlock

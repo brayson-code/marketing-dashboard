@@ -34,6 +34,7 @@ interface KnowledgeGraphProps {
   relations: KgGraphRelation[];
   compact?: boolean;
   onSelect?: (id: number) => void;
+  focusId?: number | null;
 }
 
 // Palette keyed by entity kind. Falls back to a neutral accent.
@@ -71,7 +72,7 @@ function cssVar(name: string, fallback: string): string {
   return v || fallback;
 }
 
-export default function KnowledgeGraph({ entities, relations, compact = false, onSelect }: KnowledgeGraphProps) {
+export default function KnowledgeGraph({ entities, relations, compact = false, onSelect, focusId = null }: KnowledgeGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fgRef = useRef<ForceGraphMethods<GNode, GLink> | undefined>(undefined);
   const height = compact ? 220 : 480;
@@ -185,6 +186,25 @@ export default function KnowledgeGraph({ entities, relations, compact = false, o
     const timers = [300, 1000, 2500, 4500].map((ms) => setTimeout(fit, ms));
     return () => timers.forEach(clearTimeout);
   }, [graphData, width, height, fit]);
+
+  // Pan + zoom to a specific node when focusId changes.
+  // Guards: fgRef not ready, node not in graph, x/y not yet assigned by sim → no-op.
+  // We depend on `sig` (not graphData.nodes) to avoid a ref-in-deps lint error while
+  // still re-running when the node set changes.
+  useEffect(() => {
+    if (focusId === null || focusId === undefined) return;
+    const fg = fgRef.current;
+    if (!fg) return;
+    const nodes: GNode[] = cache.current.data.nodes;
+    const node = nodes.find((n) => n.id === focusId);
+    if (!node) return;
+    const nx = node.x;
+    const ny = node.y;
+    if (nx === undefined || nx === null || ny === undefined || ny === null) return;
+    fg.centerAt(nx, ny, 600);
+    const currentZoom = fg.zoom();
+    fg.zoom(Math.max(typeof currentZoom === 'number' ? currentZoom : 1, 1.6), 600);
+  }, [focusId, sig]);
 
   const nodeR = compact ? 4 : 6;
 

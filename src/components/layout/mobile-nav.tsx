@@ -112,7 +112,7 @@ export function MobileNav() {
 
   return (
     <>
-      <nav className="mobile-nav md:hidden fixed bottom-0 left-0 right-0 bg-card/95 backdrop-blur-lg z-50 border-t border-border/70 safe-area-bottom">
+      <nav className="mobile-nav md:hidden fixed bottom-0 left-0 right-0 surface-opaque z-50 border-t border-border/70 safe-area-bottom">
         <div className="flex items-center justify-around h-14 px-1 pb-[env(safe-area-inset-bottom)]">
           {priorityItems.map((item) => {
             const active = isActive(pathname, item.href);

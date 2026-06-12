@@ -16,7 +16,7 @@ import type { Notification } from '@/types';
 
 export function HeaderBar() {
   return (
-    <header className="fixed top-0 left-0 right-0 h-[var(--header-height)] bg-card border-b border-border flex items-center justify-between gap-3 px-3 sm:px-4 z-50">
+    <header className="fixed top-0 left-0 right-0 h-[var(--header-height)] surface-opaque border-b border-border flex items-center justify-between gap-3 px-3 sm:px-4 z-50">
       <Brand />
       <div className="hidden md:block flex-1 max-w-xl">
         <SearchTrigger />
