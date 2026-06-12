@@ -307,10 +307,23 @@ async function persistMemoryRollup(rollupText: string): Promise<void> {
 }
 
 export async function spawnSubAgent(type: string, task: string, parentTaskId?: number, opts?: { variant?: string; maxTurns?: number; model?: string; tools?: 'all' | 'none' }): Promise<SpawnResult> {
+  // Audience gate: hq-only agents cannot be spawned by non-HQ tenants.
+  // Checked FIRST — before any DB call — so the error is deterministic even
+  // when the agent id is not in SUBAGENT_REGISTRY (e.g. fixer / improver, which
+  // live in the static roster but not the spawn registry).
+  // Import lazily to avoid a circular-dependency at module load time
+  // (squad.ts imports SUBAGENT_REGISTRY from here; we only need isAudienceAllowed
+  // at call-time, not at import time).
+  const { isAudienceAllowed } = await import('./squad');
+  if (!isAudienceAllowed(type)) {
+    return { ok: false, error: `${type}: this agent is not available in this workspace` };
+  }
+
   // Resolve the spec from the live DB roster (Agent Studio); fall back to the
   // hardcoded registry for builtins that haven't been seeded into the DB.
   const spec = (await getSpawnSpec(type).catch(() => null)) ?? SUBAGENT_REGISTRY[type];
   if (!spec) return { ok: false, error: `Unknown sub-agent type: ${type}. Available: ${Object.keys(SUBAGENT_REGISTRY).join(', ')}` };
+
   let variant = opts?.variant ?? 'base';
 
   const rate = checkRate(type);

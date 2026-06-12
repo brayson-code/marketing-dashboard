@@ -1,7 +1,7 @@
 import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse, after } from 'next/server';
 import { listMissions, runAndChain } from '@/lib/waves';
-import { launchResearchCampaign } from '@/lib/campaign-intake';
+import { launchCampaign, previewCampaignPlan } from '@/lib/campaign-intake';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // kickoff runs wave 1 in the background via after()
@@ -16,10 +16,15 @@ export async function GET() {
   }
 }
 
-// POST /api/missions — { request, campaign_id? } → intake brief + goal + 4-wave
-// mission; wave 1 starts immediately in the background. Owner advances later
-// waves. When `campaign_id` is supplied the new mission is tagged to that
-// Campaign container so it rolls up under it on /campaigns/[id].
+// POST /api/missions — generalizes any objective into a wave plan.
+//   { action: 'plan', request }                  → PREVIEW: drafts the brief +
+//        composes the wave plan and returns it WITHOUT launching (no goal/mission
+//        created). Lets the owner see the planned waves + agents before committing.
+//   { request, campaign_id? }                     → LAUNCH: intake brief + goal +
+//        composed plan → mission; wave 1 starts in the background. The launch
+//        response also carries the composed `plan` so the UI can render it.
+// When `campaign_id` is supplied the new mission is tagged to that Campaign
+// container so it rolls up under it on /campaigns/[id].
 export async function POST(request: Request) {
   enterTenant(await resolveTenant());
   const body = await request.json().catch(() => ({}));
@@ -27,8 +32,19 @@ export async function POST(request: Request) {
   const campaignId = typeof body?.campaign_id === 'string' && body.campaign_id.trim()
     ? body.campaign_id.trim()
     : null;
+
+  // Plan-preview: compose and return the plan without launching anything.
+  if (body?.action === 'plan') {
+    try {
+      const preview = await previewCampaignPlan(req);
+      return NextResponse.json(preview);
+    } catch (error) {
+      return NextResponse.json({ error: (error as Error).message }, { status: 400 });
+    }
+  }
+
   try {
-    const launched = await launchResearchCampaign(req, { campaignId });
+    const launched = await launchCampaign(req, { campaignId });
     after(async () => {
       try {
         await runAndChain(launched.id); // wave 1 now; the rest auto-advance to completion

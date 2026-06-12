@@ -14,6 +14,7 @@ import {
   compositionFromStoryboard, isComposition, newScene, newTextLayer, formatMs, DEFAULT_ACCENT, SCENE_TRANSITIONS,
   type BrollOverlay, type CaptionStyle, type Composition, type CompositionScene, type Infographic, type SceneTransition, type TextLayer,
 } from '@/lib/hyperframes-composition';
+import { Timeline, type TimelineSelection } from '@/components/hyperframes/timeline';
 import type { DraftRow } from '@/lib/drafts';
 
 interface RenderInfo {
@@ -65,6 +66,7 @@ export default function HyperframesEditorPage() {
   const [showPreview, setShowPreview] = useState(false);
   const [needsSeed, setNeedsSeed] = useState(false);
   const [autobuilding, setAutobuilding] = useState(false);
+  const [viewMode, setViewMode] = useState<'simple' | 'timeline'>('simple');
 
   // Publish panel state
   const [showPublish, setShowPublish] = useState(false);
@@ -163,6 +165,39 @@ export default function HyperframesEditorPage() {
   const setCaptionStyle = useCallback((cs: CaptionStyle) => {
     setComp((c) => c && { ...c, caption_style: cs });
     setDirty(true);
+  }, []);
+
+  // Timeline view: wholesale composition replacement from timeline ops (pure fns
+  // already return new objects — just push through the same dirty flag).
+  const handleTimelineChange = useCallback((next: Composition) => {
+    setComp(next);
+    setDirty(true);
+  }, []);
+
+  // Timeline view: map timeline selection identifiers back to the editor's own
+  // selection state so the properties panel stays in sync.
+  const handleTimelineSelect = useCallback((sel: TimelineSelection) => {
+    if (sel.kind === 'scene') {
+      setSceneIdx(sel.sceneIdx);
+      setSelectedLayerId(null);
+      setSelectedIg(null);
+    } else if (sel.kind === 'layer') {
+      setSceneIdx(sel.sceneIdx);
+      setSelectedLayerId(sel.layerId);
+      setSelectedIg(null);
+    } else if (sel.kind === 'infographic') {
+      setSceneIdx(sel.sceneIdx);
+      setSelectedIg(sel.igIdx);
+      setSelectedLayerId(null);
+    } else if (sel.kind === 'overlay') {
+      setSceneIdx(sel.sceneIdx);
+      setSelectedLayerId(null);
+      setSelectedIg(null);
+    } else if (sel.kind === 'punch') {
+      setSceneIdx(sel.sceneIdx);
+      setSelectedLayerId(null);
+      setSelectedIg(null);
+    }
   }, []);
 
   // ── drag a text layer or infographic on the canvas ────────────────────────
@@ -536,9 +571,35 @@ export default function HyperframesEditorPage() {
         </div>
       )}
 
-      <div className="flex-1 min-h-0 grid grid-cols-[210px_minmax(0,1fr)_300px]">
-        {/* Scene strip */}
-        <div className="border-r border-border/60 overflow-y-auto p-2 space-y-2">
+      <div className="flex-1 min-h-0 flex flex-col">
+        {/* View-mode toggle — lives above the content area */}
+        <div className="flex items-center gap-1 px-4 py-1.5 border-b border-border/40 shrink-0 bg-[color-mix(in_srgb,var(--surface-2)_25%,transparent)]">
+          <span className="text-[9px] uppercase tracking-wider text-muted-foreground/50 mr-1">View</span>
+          {(['simple', 'timeline'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setViewMode(m)}
+              className="btn btn-ghost btn-xs capitalize"
+              style={{
+                fontSize: 10, minHeight: 20, padding: '1px 10px',
+                background: viewMode === m ? 'color-mix(in srgb, var(--primary) 14%, transparent)' : 'transparent',
+                color: viewMode === m ? 'var(--primary)' : 'var(--muted-foreground)',
+              }}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex-1 min-h-0 flex flex-col">
+          {/* Main editor row: scene strip (simple only) + canvas + props */}
+          <div
+            className="flex-1 min-h-0 grid"
+            style={{ gridTemplateColumns: viewMode === 'simple' ? '210px minmax(0,1fr) 300px' : 'minmax(0,1fr) 300px' }}
+          >
+          {/* Scene strip — simple mode only */}
+          {viewMode === 'simple' && (
+          <div className="border-r border-border/60 overflow-y-auto p-2 space-y-2">
           {comp.scenes.map((s, i) => (
             <SceneThumb
               key={s.id} scene={s} index={i} active={i === sceneIdx}
@@ -550,7 +611,8 @@ export default function HyperframesEditorPage() {
           <button onClick={addScene} className="w-full btn btn-ghost btn-sm justify-center border border-dashed border-border/60">
             <Plus size={13} /> Add scene
           </button>
-        </div>
+          </div>
+          )}
 
         {/* Canvas */}
         <div className="overflow-auto flex items-center justify-center p-6 bg-[color-mix(in_srgb,var(--surface-2)_40%,transparent)]">
@@ -677,7 +739,23 @@ export default function HyperframesEditorPage() {
             </>
           )}
         </div>
-      </div>
+        </div>{/* end grid */}
+
+        {/* Timeline view — shown when viewMode === 'timeline' */}
+        {viewMode === 'timeline' && (
+          <div className="shrink-0" style={{ height: 180, borderTop: '1px solid var(--border)' }}>
+            <Timeline
+              comp={comp}
+              sceneIdx={sceneIdx}
+              selectedLayerId={selectedLayerId}
+              selectedIg={selectedIg}
+              onChange={handleTimelineChange}
+              onSelect={handleTimelineSelect}
+            />
+          </div>
+        )}
+        </div>{/* end inner flex-col */}
+      </div>{/* end outer flex-col */}
 
       {showPreview && render?.video_url && (
         <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-6" onClick={() => setShowPreview(false)}>

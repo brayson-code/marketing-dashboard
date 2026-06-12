@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Waves, Loader2, Play, ChevronDown, FileText, Target, AlertTriangle, Layers } from 'lucide-react';
+import { Waves, Loader2, Play, ChevronDown, FileText, Target, AlertTriangle, Layers, ListChecks, Users, X } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Explainer } from '@/components/ui/explainer';
@@ -32,6 +32,13 @@ interface Campaign {
   campaign_id?: string | null;
 }
 interface Detail { campaign: Campaign; steps: Step[] }
+
+// A composed wave plan returned by the plan-preview step (POST /api/missions
+// { action: 'plan' }). Surfaced before launch so the owner sees which waves +
+// agents will run for their objective.
+interface PlannedWave { title: string; goal: string; agent_ids: string[]; prompt_directives: string }
+interface WavePlan { objective_type: string; waves: PlannedWave[]; final_deliverable: string }
+interface PlanPreview { title: string; brief: Brief & { objective_type?: string }; plan: WavePlan }
 
 // Tiny module-level cache so we fetch each campaign's title at most once across
 // chip renders (the missions page can show many missions tagged to the same one).
@@ -80,6 +87,8 @@ export default function MissionsPage() {
   const [request, setRequest] = useState('');
   const [launching, setLaunching] = useState(false);
   const [advancing, setAdvancing] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [preview, setPreview] = useState<PlanPreview | null>(null);
   const [openWave, setOpenWave] = useState<number | null>(null);
   const [listLoading, setListLoading] = useState(true);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -125,6 +134,26 @@ export default function MissionsPage() {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [activeId, detail?.campaign.status, detail?.steps, loadDetail, loadList]);
 
+  // Plan-preview: compose the wave plan WITHOUT launching, so the owner sees the
+  // waves + agents that will run for their objective before committing.
+  async function previewPlan() {
+    if (!request.trim() || previewing || launching) return;
+    setPreviewing(true);
+    try {
+      const r = await fetch('/api/missions', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'plan', request: request.trim() }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Could not plan that');
+      setPreview(j as PlanPreview);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setPreviewing(false);
+    }
+  }
+
   async function launch() {
     if (!request.trim() || launching) return;
     setLaunching(true);
@@ -137,6 +166,7 @@ export default function MissionsPage() {
       if (!r.ok) throw new Error(j.error || 'Launch failed');
       toast.success('Mission launched — wave 1 running');
       setRequest('');
+      setPreview(null);
       setActiveId(j.id);
       await loadList();
     } catch (e) {
@@ -199,13 +229,54 @@ export default function MissionsPage() {
           className="w-full input text-sm min-h-[60px]"
           placeholder="e.g. Research the US market for AI-powered email outreach tools for small B2B agencies — sizing, top competitors, pricing, and the best channel to reach buyers."
           value={request}
-          onChange={(e) => setRequest(e.target.value)}
+          onChange={(e) => { setRequest(e.target.value); if (preview) setPreview(null); }}
         />
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          <button className="btn btn-ghost btn-sm" onClick={previewPlan} disabled={previewing || launching || !request.trim()}>
+            {previewing ? <Loader2 size={14} className="animate-spin" /> : <ListChecks size={14} />} Preview plan
+          </button>
           <button className="btn btn-primary btn-sm" onClick={launch} disabled={launching || !request.trim()}>
             {launching ? <Loader2 size={14} className="animate-spin" /> : <Waves size={14} />} Launch mission
           </button>
         </div>
+
+        {/* Plan preview — the composed waves + agents for this objective, shown
+            before launch so the owner confirms the team and order. */}
+        {preview && (
+          <div className="rounded-md border border-border/60 bg-[var(--surface-2)] p-3 space-y-2 animate-in">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold truncate">{preview.title}</div>
+                <div className="text-[11px] text-muted-foreground mt-0.5">
+                  <span className="badge badge-neutral">{preview.plan.objective_type}</span>
+                  <span className="ml-1.5">{preview.plan.waves.length} waves · delivers: {preview.plan.final_deliverable}</span>
+                </div>
+              </div>
+              <button className="btn btn-ghost btn-sm px-1.5" onClick={() => setPreview(null)} aria-label="Dismiss plan preview">
+                <X size={14} />
+              </button>
+            </div>
+            <ol className="space-y-1.5">
+              {preview.plan.waves.map((w, i) => (
+                <li key={i} className="rounded-md bg-[var(--surface-1)] p-2">
+                  <div className="text-xs font-medium">{w.title}</div>
+                  <div className="text-[11px] text-muted-foreground">{w.goal}</div>
+                  <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px]">
+                    <Users size={10} className="text-muted-foreground" />
+                    {w.agent_ids.map((a, j) => (
+                      <span key={j} className="badge badge-info">{a}</span>
+                    ))}
+                  </div>
+                </li>
+              ))}
+            </ol>
+            <div className="flex justify-end">
+              <button className="btn btn-primary btn-sm" onClick={launch} disabled={launching}>
+                {launching ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Launch this plan
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4">

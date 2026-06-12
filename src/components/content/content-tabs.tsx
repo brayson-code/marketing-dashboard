@@ -41,13 +41,20 @@ export function ContentTabs() {
 
   // Park the indicator under the active tab on mount + whenever the route
   // changes. useLayoutEffect so there's no flash of an un-anchored strip.
+  // scrollLeft must be added back: getBoundingClientRect() returns *visual*
+  // coordinates (after scroll), but the indicator is positioned relative to
+  // the scroll-content box — so on narrow screens where the strip scrolls
+  // horizontally the indicator would sit at the wrong place without this.
+  // We also scroll the active tab into view so it's always fully visible.
   useLayoutEffect(() => {
     const btn = tabRefs.current.get(active);
     const c = containerRef.current;
     if (!btn || !c) return;
     const cb = c.getBoundingClientRect();
     const bb = btn.getBoundingClientRect();
-    setInd({ left: bb.left - cb.left, width: bb.width });
+    setInd({ left: bb.left - cb.left + c.scrollLeft, width: bb.width });
+    // Scroll active tab into view (centre it) without jarring full-page scroll.
+    btn.scrollIntoView({ block: 'nearest', inline: 'center' });
   }, [active]);
 
   return (

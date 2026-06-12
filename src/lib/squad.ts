@@ -2,8 +2,39 @@
 // metadata + live stats from agent_tasks. Replaces the legacy OpenClaw-config
 // agent list. Keep the sub-agent ids in sync with subagent.ts SUBAGENT_REGISTRY.
 
-import { sql, tenantId } from './db/client';
+import { sql, tenantId, DEFAULT_TENANT_ID } from './db/client';
 import { SUBAGENT_REGISTRY } from './subagent';
+
+// ---------------------------------------------------------------------------
+// Audience gating
+// ---------------------------------------------------------------------------
+// 'hq'    → visible and spawnable only when tenantId() === DEFAULT_TENANT_ID
+// 'client' → visible and spawnable to every tenant (the default)
+//
+// This is the SINGLE source of truth for audience. Add/move ids here only.
+// ---------------------------------------------------------------------------
+export type AgentAudience = 'client' | 'hq';
+
+export const AUDIENCE: Record<string, AgentAudience> = {
+  fixer:                  'hq',
+  improver:               'hq',
+  'client-onboarding-doc': 'hq',
+  'scope-of-work':        'hq',
+  'weekly-client-status': 'hq',
+  'sponsor-pitch':        'hq',
+};
+
+/** Returns the audience for a given agent id; absent ids default to 'client'. */
+export function audienceFor(id: string): AgentAudience {
+  return AUDIENCE[id] ?? 'client';
+}
+
+/** True when the current tenant context is allowed to see/spawn `id`. */
+export function isAudienceAllowed(id: string): boolean {
+  if (audienceFor(id) === 'client') return true;
+  // 'hq' agents: only the default (HQ) tenant may access them.
+  return tenantId() === DEFAULT_TENANT_ID;
+}
 
 export interface SquadAgentMeta {
   id: string;
@@ -52,7 +83,8 @@ function titleize(id: string): string {
 }
 
 /** The static fallback roster: orchestrator + bundled sub-agents + system agents.
- *  Used to backfill agents that aren't (yet) present in agent_defs for this tenant. */
+ *  Used to backfill agents that aren't (yet) present in agent_defs for this tenant.
+ *  Automatically filters out hq-audience agents when the caller is not the HQ tenant. */
 export function squadRoster(): SquadAgentMeta[] {
   const roster: SquadAgentMeta[] = [
     {
@@ -66,6 +98,7 @@ export function squadRoster(): SquadAgentMeta[] {
   ];
 
   for (const spec of Object.values(SUBAGENT_REGISTRY)) {
+    if (!isAudienceAllowed(spec.id)) continue;
     const meta = META[spec.id];
     roster.push({
       id: spec.id,
@@ -79,10 +112,17 @@ export function squadRoster(): SquadAgentMeta[] {
     });
   }
 
-  roster.push(
-    { id: 'fixer', ...META.fixer, model: 'claude-sonnet-4-6', description: 'Reads the repo via GitHub, diagnoses bugs caught by KeyWatch, and opens draft PRs for review.', department: 'operations', is_executive: false },
-    { id: 'improver', ...META.improver, model: 'claude-sonnet-4-6', description: 'Reviews the business + system state on a schedule and files improvement proposals as drafts.', department: 'operations', is_executive: false },
-  );
+  // fixer + improver are hq-only; only push them when allowed.
+  if (isAudienceAllowed('fixer')) {
+    roster.push(
+      { id: 'fixer', ...META.fixer, model: 'claude-sonnet-4-6', description: 'Reads the repo via GitHub, diagnoses bugs caught by KeyWatch, and opens draft PRs for review.', department: 'operations', is_executive: false },
+    );
+  }
+  if (isAudienceAllowed('improver')) {
+    roster.push(
+      { id: 'improver', ...META.improver, model: 'claude-sonnet-4-6', description: 'Reviews the business + system state on a schedule and files improvement proposals as drafts.', department: 'operations', is_executive: false },
+    );
+  }
 
   return roster;
 }
@@ -104,18 +144,21 @@ async function liveRoster(): Promise<SquadAgentMeta[]> {
     return squadRoster();
   }
 
-  const out: SquadAgentMeta[] = dbRows.map((r) => ({
-    id: r.id,
-    name: r.name || titleize(r.id),
-    emoji: META[r.id]?.emoji ?? '',
-    // Prefer the human role_title ("AI CEO", "Content Writer") over the raw
-    // type slug ("orchestrator", "general") so the list reads cleanly.
-    role: r.role_title ?? META[r.id]?.role ?? titleize(r.role || 'Specialist'),
-    model: r.model,
-    description: r.description ?? '',
-    department: r.department,
-    is_executive: r.is_executive,
-  }));
+  // Filter DB rows: exclude hq-audience agents for non-HQ tenants.
+  const out: SquadAgentMeta[] = dbRows
+    .filter((r) => isAudienceAllowed(r.id))
+    .map((r) => ({
+      id: r.id,
+      name: r.name || titleize(r.id),
+      emoji: META[r.id]?.emoji ?? '',
+      // Prefer the human role_title ("AI CEO", "Content Writer") over the raw
+      // type slug ("orchestrator", "general") so the list reads cleanly.
+      role: r.role_title ?? META[r.id]?.role ?? titleize(r.role || 'Specialist'),
+      model: r.model,
+      description: r.description ?? '',
+      department: r.department,
+      is_executive: r.is_executive,
+    }));
 
   // Backfill anything in the static roster that the DB hasn't seeded yet
   // (fixer/improver typically, plus any sub-agent not yet upserted).

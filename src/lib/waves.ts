@@ -446,6 +446,47 @@ export async function getMissionDetail(id: string): Promise<{ mission: Record<st
   return { mission: rows[0], steps };
 }
 
+/**
+ * A composed wave plan, structurally typed here so waves.ts can build a campaign
+ * from ANY objective without importing campaign-planner (which imports waves —
+ * keeping the dependency one-way and cycle-free). campaign-planner.ts owns the
+ * canonical PlannedWave/WavePlan + the planner; this is the minimal shape the
+ * builder consumes.
+ */
+export interface PlannedWaveLike {
+  title: string;
+  goal: string;
+  agent_ids: string[];
+  prompt_directives: string;
+}
+export interface WavePlanLike {
+  objective_type: string;
+  waves: PlannedWaveLike[];
+  final_deliverable: string;
+}
+
+/**
+ * Build the executable WaveSpec[] (what runNextWave runs) from a composed plan
+ * and the live brief. This is the GENERAL campaign builder — the wave execution,
+ * synthesis, finalize and reward paths downstream are objective-agnostic and
+ * unchanged. For the research objective we re-render through buildResearchCampaign
+ * so the agent task text carries the real objective verbatim (today's behavior);
+ * for every other objective, each wave's per-agent task is its goal + objective,
+ * and the wave-level directives ride along as WaveSpec.brief (prepended to every
+ * agent in that wave, exactly like the wave-observer course-correct hint).
+ */
+export function buildCampaignFromPlan(plan: WavePlanLike, brief: CampaignBrief): WaveSpec[] {
+  if (plan.objective_type === 'research') return buildResearchCampaign(brief);
+  return plan.waves.map((w) => ({
+    label: w.title,
+    brief: w.prompt_directives,
+    agents: w.agent_ids.map((agentId) => ({
+      agentId,
+      task: `${w.goal}\n\nObjective: ${brief.objective}\nDefinition of success: ${brief.success}`,
+    })),
+  }));
+}
+
 /** The default 4-wave market-research campaign from the owner's brief. */
 export function buildResearchCampaign(brief: CampaignBrief): WaveSpec[] {
   const o = brief.objective;

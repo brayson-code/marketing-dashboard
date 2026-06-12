@@ -2,11 +2,24 @@ import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { listEntities, neighborsOf, remember } from '@/lib/kg';
 import { sql, tenantId } from '@/lib/db/client';
+import { getPlan } from '@/lib/entitlements';
+import { planAllowsKg } from '@/lib/plan-gate';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   enterTenant(await resolveTenant());
+
+  // Defense-in-depth plan gate: the UI already blocks access via UpgradeGate,
+  // but we must also refuse at the API level so a lite tenant can't read KG
+  // data by calling the endpoint directly or via a stale client-side render.
+  const plan = await getPlan();
+  if (!planAllowsKg(plan, tenantId())) {
+    return NextResponse.json(
+      { error: 'Knowledge Graph is a Pro feature. Upgrade at /billing.' },
+      { status: 403 },
+    );
+  }
   const url = new URL(request.url);
   const kind = url.searchParams.get('kind') ?? undefined;
   const search = url.searchParams.get('q') ?? undefined;
@@ -40,6 +53,15 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   enterTenant(await resolveTenant());
+
+  const plan = await getPlan();
+  if (!planAllowsKg(plan, tenantId())) {
+    return NextResponse.json(
+      { error: 'Knowledge Graph is a Pro feature. Upgrade at /billing.' },
+      { status: 403 },
+    );
+  }
+
   let body: { entities?: unknown[]; relations?: unknown[] };
   try { body = await request.json(); }
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }

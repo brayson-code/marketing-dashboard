@@ -17,19 +17,31 @@ interface KgPayload {
 // renders the same canvas graph used on /kg in compact mode, plus a tiny
 // stats strip. Click anywhere in the panel to deep-link to the full graph.
 //
-// Hidden when the KG is empty — no point showing a "no graph yet" placeholder
-// in a slot the user can't act on from here; the full /kg page handles that.
+// Hidden when the KG is empty or when the tenant's plan doesn't include KG
+// (lite tenants). The API returns 403 for non-Pro tenants which we use as the
+// signal to suppress the widget entirely — no broken empty state.
 export function KnowledgeMiniMap() {
   const [data, setData] = useState<KgPayload | null>(null);
   const [loading, setLoading] = useState(true);
+  // null = not yet checked, true = allowed, false = plan-gated
+  const [allowed, setAllowed] = useState<boolean | null>(null);
 
   useEffect(() => {
     let cancel = false;
     const load = () => {
       fetch('/api/kg?limit=80', { cache: 'no-store' })
-        .then((r) => r.json())
+        .then((r) => {
+          // 403 = lite plan — suppress the widget entirely (no teaser here;
+          // the /kg page via nav rail shows the proper UpgradeGate CTA).
+          if (r.status === 403) {
+            if (!cancel) setAllowed(false);
+            return null;
+          }
+          if (!cancel) setAllowed(true);
+          return r.json();
+        })
         .then((j) => {
-          if (cancel) return;
+          if (cancel || j === null) return;
           setData({
             entities: Array.isArray(j.entities) ? j.entities : [],
             relations: Array.isArray(j.relations) ? j.relations : [],
@@ -44,6 +56,9 @@ export function KnowledgeMiniMap() {
     const t = setInterval(load, 30_000);
     return () => { cancel = true; clearInterval(t); };
   }, []);
+
+  // Lite-plan tenants: hide completely (the /kg route is the conversion surface).
+  if (allowed === false) return null;
 
   // Skip the panel entirely when the KG is empty — the slot is precious on
   // Overview and an empty graph adds zero signal.

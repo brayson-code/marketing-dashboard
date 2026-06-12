@@ -37,7 +37,7 @@ export function UpgradeGate({ feature, title, children }: { feature: FeatureKey;
 
   const nextLabel = ent.next ? (ent.catalog[ent.next]?.label ?? ent.next) : 'Pro';
   return (
-    <div className="space-y-4 animate-in max-w-2xl">
+    <div className="space-y-4 animate-in max-w-2xl mx-auto">
       <div className="panel relative overflow-hidden">
         <div
           aria-hidden
