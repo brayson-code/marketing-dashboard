@@ -35,6 +35,16 @@ const META: Record<string, { name: string; emoji: string; role: string }> = {
   'reel-analyst': { name: 'Reel Analyst', emoji: '🎯', role: 'Research' },
   'reel-ideator': { name: 'Reel Ideator', emoji: '💡', role: 'Content' },
   'reel-optimizer': { name: 'Reel Optimizer', emoji: '🔬', role: 'Content' },
+  'content-cascade': { name: 'Content Cascade', emoji: '🌊', role: 'Content' },
+  'carousel-generator': { name: 'Carousel Generator', emoji: '🎠', role: 'Content' },
+  'inbox-triage': { name: 'Inbox Triage', emoji: '📥', role: 'Ops' },
+  'client-onboarding-doc': { name: 'Client Onboarding', emoji: '🤝', role: 'Agency' },
+  'scope-of-work': { name: 'Scope of Work', emoji: '📋', role: 'Agency' },
+  'weekly-client-status': { name: 'Weekly Status', emoji: '🗓️', role: 'Agency' },
+  'deliverable-qa': { name: 'Deliverable QA', emoji: '🔍', role: 'Quality' },
+  'pipeline-review': { name: 'Pipeline Review', emoji: '📈', role: 'Sales' },
+  'sponsor-pitch': { name: 'Sponsor Pitch', emoji: '🎤', role: 'Sales' },
+  'community-pulse': { name: 'Community Pulse', emoji: '💬', role: 'Community' },
 };
 
 function titleize(id: string): string {
