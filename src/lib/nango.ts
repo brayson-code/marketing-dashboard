@@ -52,7 +52,12 @@ export const PROVIDERS: ProviderDef[] = [
   // integration — which carries Drive, Docs, Sheets, Gmail and Calendar scopes —
   // via NANGO_GOOGLE_WORKSPACE_CONFIG_KEY. The label reads as all of Google so
   // there's no separate Gmail / Calendar tile to connect.
-  { key: 'google-workspace', label: 'Google (Drive, Docs, Sheets, Gmail, Calendar)', providerConfigKey: configKey('google-workspace') },
+  // NOTE: we can't use configKey('google-workspace') here — it would look up the
+  // env var NANGO_GOOGLE-WORKSPACE_CONFIG_KEY (hyphen, invalid name) and fall back
+  // to 'google-workspace', which is NOT a real Nango integration → the tile shows
+  // "not set up yet". Point straight at the single Nango 'google' integration
+  // (overridable via the correctly-named underscore env var).
+  { key: 'google-workspace', label: 'Google (Drive, Docs, Sheets, Gmail, Calendar)', providerConfigKey: process.env.NANGO_GOOGLE_WORKSPACE_CONFIG_KEY || 'google' },
 ];
 
 /** True only when the Nango secret key is present in the environment. */
