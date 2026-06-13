@@ -371,9 +371,10 @@ function HyperframesMark({ size, className, label }: SvgRendererProps) {
 }
 
 function GoogleWorkspaceMark({ size, className, label }: SvgRendererProps) {
-  // Simple Icons "googledrive" mark — the multi-color Drive triangle. Reads true to
-  // the Drive/Docs/Sheets surface this connection unlocks. Colors are the official
-  // Google Drive palette (blue / green / yellow).
+  // The canonical four-color Google "G" — this single tile now grants ALL of
+  // Google (Drive, Docs, Sheets, Gmail, Calendar) off one OAuth connection, so
+  // the umbrella Google mark reads truer than any one product's logo. Official
+  // Google palette (blue / green / yellow / red).
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -384,13 +385,10 @@ function GoogleWorkspaceMark({ size, className, label }: SvgRendererProps) {
       role="img"
       aria-label={label}
     >
-      <path fill="#0066DA" d="M1.61 14.51 0 12l7.16-12 1.61.5L8.05 6.6z" />
-      <path fill="#00AC47" d="m8.05 6.6 4.21 7.29H4.59l-2.98-1.38z" />
-      <path fill="#EA4335" d="m8.77.5 7.16 12-1.6 1.39H8.04L8.05 6.6z" />
-      <path fill="#00832D" d="M8.05 6.6 12.26 0h-3.5l-.71 1.1z" />
-      <path fill="#2684FC" d="m4.59 13.89 7.67.62-3.16 5.49H6.4l-3.2-5.5z" />
-      <path fill="#FFBA00" d="m15.93 12.5 2.97 5.13-1.61 2.79-1.55-.62-5.65-9.4 1.6-1.39z" />
-      <path fill="#0066DA" d="m11.96 18.5 1.62 1.5h7.16L24 12l-1.61-.5-8.81 1.39z" />
+      <path fill="#4285F4" d="M23.52 12.273c0-.851-.076-1.67-.218-2.455H12v4.642h6.458a5.52 5.52 0 0 1-2.394 3.622v3.01h3.878c2.269-2.09 3.578-5.166 3.578-8.819z" />
+      <path fill="#34A853" d="M12 24c3.24 0 5.956-1.075 7.942-2.908l-3.878-3.01c-1.075.72-2.45 1.146-4.064 1.146-3.125 0-5.77-2.112-6.714-4.949H1.276v3.11A11.997 11.997 0 0 0 12 24z" />
+      <path fill="#FBBC05" d="M5.286 14.279A7.213 7.213 0 0 1 4.91 12c0-.79.136-1.558.376-2.279v-3.11H1.276A11.997 11.997 0 0 0 0 12c0 1.936.464 3.769 1.276 5.389l4.01-3.11z" />
+      <path fill="#EA4335" d="M12 4.772c1.762 0 3.344.606 4.589 1.795l3.44-3.44C17.951 1.19 15.235 0 12 0A11.997 11.997 0 0 0 1.276 6.611l4.01 3.11C6.23 6.884 8.875 4.772 12 4.772z" />
     </svg>
   );
 }

@@ -27,6 +27,11 @@ export const GOOGLE_TOOL_NAMES = [
   'gw_create_sheet',
   'gw_append_sheet_row',
   'gw_list_files',
+  'gmail_list',
+  'gmail_send',
+  'gmail_draft',
+  'cal_list',
+  'cal_create_event',
 ] as const;
 
 // ── Feature gate ──────────────────────────────────────────────────────────────
@@ -225,6 +230,132 @@ export function googleToolDefinitions(): Anthropic.Messages.ToolUnion[] {
         },
       },
     },
+
+    // ── Gmail tools ────────────────────────────────────────────────────────────
+    {
+      name: 'gmail_list',
+      description:
+        'List recent messages from the connected Gmail account. ' +
+        'Use to check the inbox for relevant threads, leads, or client replies ' +
+        'before drafting a response or summarising email activity.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          limit: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 50,
+            description: 'Number of messages to return (default 10, max 50).',
+          },
+        },
+      },
+    },
+    {
+      name: 'gmail_send',
+      description:
+        'SEND a real email from the connected Google / Gmail account immediately — ' +
+        'the message is delivered to the recipient right away and CANNOT be recalled. ' +
+        'Use only when the task explicitly calls for sending an email on behalf of the user. ' +
+        'Prefer gmail_draft when the user has not confirmed they want the email sent now.',
+      input_schema: {
+        type: 'object',
+        required: ['to', 'subject', 'text'],
+        properties: {
+          to: {
+            type: 'string',
+            description: 'Recipient email address (or comma-separated list).',
+          },
+          subject: {
+            type: 'string',
+            description: 'Subject line of the email.',
+          },
+          text: {
+            type: 'string',
+            description: 'Plain-text body of the email.',
+          },
+        },
+      },
+    },
+    {
+      name: 'gmail_draft',
+      description:
+        'Save a draft email in the connected Gmail account (NOT sent). ' +
+        'The draft sits in the Drafts folder; the user must open Gmail and send it manually. ' +
+        'Use this instead of gmail_send whenever the task is to prepare an email for review ' +
+        'rather than to deliver it immediately.',
+      input_schema: {
+        type: 'object',
+        required: ['to', 'subject', 'text'],
+        properties: {
+          to: {
+            type: 'string',
+            description: 'Intended recipient email address (or comma-separated list).',
+          },
+          subject: {
+            type: 'string',
+            description: 'Subject line of the draft.',
+          },
+          text: {
+            type: 'string',
+            description: 'Plain-text body of the draft.',
+          },
+        },
+      },
+    },
+
+    // ── Google Calendar tools ──────────────────────────────────────────────────
+    {
+      name: 'cal_list',
+      description:
+        'List upcoming events from the connected Google Calendar. ' +
+        'Use to check for scheduling conflicts, surface deadlines, or summarise ' +
+        'the week ahead before booking new events.',
+      input_schema: {
+        type: 'object',
+        properties: {
+          limit: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 50,
+            description: 'Number of upcoming events to return (default 10, max 50).',
+          },
+        },
+      },
+    },
+    {
+      name: 'cal_create_event',
+      description:
+        'Create a new event in the connected Google Calendar. ' +
+        'Use for scheduling calls, campaign deadlines, content reviews, or any ' +
+        'time-blocked task. Optionally invite attendees by email.',
+      input_schema: {
+        type: 'object',
+        required: ['summary', 'start', 'end'],
+        properties: {
+          summary: {
+            type: 'string',
+            description: 'Event title / name.',
+          },
+          description: {
+            type: 'string',
+            description: 'Optional event body / notes.',
+          },
+          start: {
+            type: 'string',
+            description: 'Start datetime in ISO 8601 format (e.g. "2026-06-20T10:00:00").',
+          },
+          end: {
+            type: 'string',
+            description: 'End datetime in ISO 8601 format (e.g. "2026-06-20T11:00:00").',
+          },
+          attendees: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Optional list of attendee email addresses to invite.',
+          },
+        },
+      },
+    },
   ];
 }
 
@@ -244,22 +375,19 @@ export async function handleGoogleTool(
   const id = toolUse.id;
   const input = (toolUse.input ?? {}) as Record<string, unknown>;
 
-  // Lazy import — only pulled when a tool is actually called.
-  // The concurrent task builds google-workspace.ts; we import lazily so a missing
-  // module at spawn time never breaks agent runs that don't use Google tools.
-  let gw: typeof import('./google-workspace');
-  try {
-    gw = await import('./google-workspace');
-  } catch (err) {
-    return err_result(id, `google-workspace: module not available — ${(err as Error).message}`);
-  }
-
   switch (toolUse.name) {
     // ── gw_create_folder ────────────────────────────────────────────────────
     case 'gw_create_folder': {
       const name = String(input.name ?? '').trim();
       if (!name) return err_result(id, 'gw_create_folder: name is required');
       const parentFolderId = input.parent_folder_id ? String(input.parent_folder_id) : undefined;
+      // Lazy import — only pulled when a tool is actually called.
+      let gw: typeof import('./google-workspace');
+      try {
+        gw = await import('./google-workspace');
+      } catch (err) {
+        return err_result(id, `google-workspace: module not available — ${(err as Error).message}`);
+      }
       try {
         const result = await gw.createFolder(name, parentFolderId);
         await audit(sourceAgent, 'google.create_folder', name, { folder_id: result.id, url: result.url });
@@ -275,6 +403,12 @@ export async function handleGoogleTool(
       if (!title) return err_result(id, 'gw_create_doc: title is required');
       const content = input.content ? String(input.content) : undefined;
       const folderId = input.folder_id ? String(input.folder_id) : undefined;
+      let gw: typeof import('./google-workspace');
+      try {
+        gw = await import('./google-workspace');
+      } catch (err) {
+        return err_result(id, `google-workspace: module not available — ${(err as Error).message}`);
+      }
       try {
         const result = await gw.createDoc(title, content, folderId);
         await audit(sourceAgent, 'google.create_doc', title, { doc_id: result.id, url: result.url });
@@ -290,6 +424,12 @@ export async function handleGoogleTool(
       const content = String(input.content ?? '').trim();
       if (!docId) return err_result(id, 'gw_append_doc: doc_id is required');
       if (!content) return err_result(id, 'gw_append_doc: content is required');
+      let gw: typeof import('./google-workspace');
+      try {
+        gw = await import('./google-workspace');
+      } catch (err) {
+        return err_result(id, `google-workspace: module not available — ${(err as Error).message}`);
+      }
       try {
         await gw.appendToDoc(docId, content);
         await audit(sourceAgent, 'google.append_doc', docId, { chars: content.length });
@@ -307,6 +447,12 @@ export async function handleGoogleTool(
         ? (input.headers as unknown[]).map(String)
         : undefined;
       const folderId = input.folder_id ? String(input.folder_id) : undefined;
+      let gw: typeof import('./google-workspace');
+      try {
+        gw = await import('./google-workspace');
+      } catch (err) {
+        return err_result(id, `google-workspace: module not available — ${(err as Error).message}`);
+      }
       try {
         // createSheet(title, parentId?) — no native headers param in the workspace
         // lib; we append the header row separately if provided.
@@ -334,6 +480,12 @@ export async function handleGoogleTool(
       const rows = (input.rows as unknown[][]).map((r) =>
         Array.isArray(r) ? r.map(String) : [String(r)],
       );
+      let gw: typeof import('./google-workspace');
+      try {
+        gw = await import('./google-workspace');
+      } catch (err) {
+        return err_result(id, `google-workspace: module not available — ${(err as Error).message}`);
+      }
       // appendSheetRow(spreadsheetId, values) appends one row at a time.
       // Iterate if the model sends multiple rows; each call is one round-trip.
       // Track how many actually landed so a partial failure is still audited
@@ -357,6 +509,12 @@ export async function handleGoogleTool(
     // ── gw_list_files ───────────────────────────────────────────────────────
     case 'gw_list_files': {
       const maxResults = Math.max(1, Math.min(Number(input.max_results ?? 10), 50));
+      let gw: typeof import('./google-workspace');
+      try {
+        gw = await import('./google-workspace');
+      } catch (err) {
+        return err_result(id, `google-workspace: module not available — ${(err as Error).message}`);
+      }
       try {
         // listRecentFiles(limit?) — the workspace lib doesn't support free-text
         // query or folder filter at this level; fetch then filter client-side.
@@ -379,6 +537,130 @@ export async function handleGoogleTool(
         return ok_result(id, `Found ${filtered.length} file(s):\n${lines.join('\n')}`);
       } catch (err) {
         return err_result(id, `google-workspace: list_files failed — ${(err as Error).message}`);
+      }
+    }
+
+    // ── gmail_list ──────────────────────────────────────────────────────────
+    case 'gmail_list': {
+      const limit = Math.max(1, Math.min(Number(input.limit ?? 10), 50));
+      let gmail: typeof import('./google-gmail');
+      try {
+        gmail = await import('./google-gmail');
+      } catch (err) {
+        return err_result(id, `google-gmail: module not available — ${(err as Error).message}`);
+      }
+      try {
+        const messages = await gmail.listRecentMessages(limit);
+        if (!messages || messages.length === 0) {
+          return ok_result(id, 'No recent messages found.');
+        }
+        const lines = messages.map((m, i) =>
+          `${i + 1}. id:${m.id} — ${String(m.subject ?? '(no subject)')} — from:${String(m.from ?? '?')} — ${String(m.date ?? '')}`,
+        );
+        return ok_result(id, `Found ${messages.length} message(s):\n${lines.join('\n')}`);
+      } catch (err) {
+        return err_result(id, `gmail_list failed — ${(err as Error).message}`);
+      }
+    }
+
+    // ── gmail_send ──────────────────────────────────────────────────────────
+    case 'gmail_send': {
+      const to = String(input.to ?? '').trim();
+      const subject = String(input.subject ?? '').trim();
+      const text = String(input.text ?? '').trim();
+      if (!to) return err_result(id, 'gmail_send: to is required');
+      if (!subject) return err_result(id, 'gmail_send: subject is required');
+      if (!text) return err_result(id, 'gmail_send: text is required');
+      let gmail: typeof import('./google-gmail');
+      try {
+        gmail = await import('./google-gmail');
+      } catch (err) {
+        return err_result(id, `google-gmail: module not available — ${(err as Error).message}`);
+      }
+      try {
+        await gmail.sendMessage({ to, subject, text });
+        await audit(sourceAgent, 'google.gmail_send', to, { subject });
+        return ok_result(id, `Email sent to ${to} with subject "${subject}".`);
+      } catch (err) {
+        return err_result(id, `gmail_send failed — ${(err as Error).message}`);
+      }
+    }
+
+    // ── gmail_draft ─────────────────────────────────────────────────────────
+    case 'gmail_draft': {
+      const to = String(input.to ?? '').trim();
+      const subject = String(input.subject ?? '').trim();
+      const text = String(input.text ?? '').trim();
+      if (!to) return err_result(id, 'gmail_draft: to is required');
+      if (!subject) return err_result(id, 'gmail_draft: subject is required');
+      if (!text) return err_result(id, 'gmail_draft: text is required');
+      let gmail: typeof import('./google-gmail');
+      try {
+        gmail = await import('./google-gmail');
+      } catch (err) {
+        return err_result(id, `google-gmail: module not available — ${(err as Error).message}`);
+      }
+      try {
+        await gmail.createDraft({ to, subject, text });
+        await audit(sourceAgent, 'google.gmail_draft', to, { subject });
+        return ok_result(id, `Draft saved (NOT sent) to Gmail Drafts folder — to:${to}, subject:"${subject}".`);
+      } catch (err) {
+        return err_result(id, `gmail_draft failed — ${(err as Error).message}`);
+      }
+    }
+
+    // ── cal_list ────────────────────────────────────────────────────────────
+    case 'cal_list': {
+      const limit = Math.max(1, Math.min(Number(input.limit ?? 10), 50));
+      let cal: typeof import('./google-calendar');
+      try {
+        cal = await import('./google-calendar');
+      } catch (err) {
+        return err_result(id, `google-calendar: module not available — ${(err as Error).message}`);
+      }
+      try {
+        const events = await cal.listUpcomingEvents(limit);
+        if (!events || events.length === 0) {
+          return ok_result(id, 'No upcoming events found.');
+        }
+        const lines = events.map((e, i) =>
+          `${i + 1}. ${String(e.summary ?? '(no title)')} — start:${String(e.start ?? '?')} end:${String(e.end ?? '?')}`,
+        );
+        return ok_result(id, `Found ${events.length} upcoming event(s):\n${lines.join('\n')}`);
+      } catch (err) {
+        return err_result(id, `cal_list failed — ${(err as Error).message}`);
+      }
+    }
+
+    // ── cal_create_event ────────────────────────────────────────────────────
+    case 'cal_create_event': {
+      const summary = String(input.summary ?? '').trim();
+      const start = String(input.start ?? '').trim();
+      const end = String(input.end ?? '').trim();
+      if (!summary) return err_result(id, 'cal_create_event: summary is required');
+      if (!start) return err_result(id, 'cal_create_event: start is required');
+      if (!end) return err_result(id, 'cal_create_event: end is required');
+      const description = input.description ? String(input.description) : undefined;
+      const attendees = Array.isArray(input.attendees)
+        ? (input.attendees as unknown[]).map(String).filter(Boolean)
+        : undefined;
+      let cal: typeof import('./google-calendar');
+      try {
+        cal = await import('./google-calendar');
+      } catch (err) {
+        return err_result(id, `google-calendar: module not available — ${(err as Error).message}`);
+      }
+      try {
+        await cal.createEvent({ summary, description, start, end, attendees });
+        await audit(sourceAgent, 'google.cal_create_event', summary, { start, end, attendees });
+        return ok_result(
+          id,
+          `Event created: "${summary}" from ${start} to ${end}` +
+            (attendees && attendees.length > 0 ? ` — invited: ${attendees.join(', ')}` : '') +
+            '.',
+        );
+      } catch (err) {
+        return err_result(id, `cal_create_event failed — ${(err as Error).message}`);
       }
     }
 

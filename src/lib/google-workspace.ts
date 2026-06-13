@@ -18,7 +18,7 @@ import { getNango, providerConfigKeyFor } from './nango';
 import { sql } from './db/client';
 import { tenantId } from './tenant';
 
-const PROVIDER = 'google-workspace';
+export const PROVIDER = 'google-workspace';
 
 // Google API base hosts. Full endpoint URLs are built from these so the Nango
 // proxy routes each call to the correct host (Drive vs Docs vs Sheets).
@@ -26,10 +26,12 @@ const DRIVE_BASE = 'https://www.googleapis.com/drive/v3';
 const DOCS_BASE = 'https://docs.googleapis.com/v1';
 const SHEETS_BASE = 'https://sheets.googleapis.com/v4';
 
-interface GWConn { connection_id: string; provider_config_key: string }
+export interface GWConn { connection_id: string; provider_config_key: string }
 
-/** Look up this tenant's Google Workspace connection. Null if not connected. */
-async function getConn(): Promise<GWConn | null> {
+/** Look up this tenant's Google Workspace connection. Null if not connected.
+ *  Exported so the Gmail/Calendar libs ride the SAME 'google-workspace' Nango
+ *  connection instead of duplicating the lookup. */
+export async function getConn(): Promise<GWConn | null> {
   const rows = (await sql()`
     SELECT connection_id, provider_config_key
     FROM connections
@@ -46,7 +48,7 @@ export async function isWorkspaceConnected(): Promise<boolean> {
   return (await getConn()) !== null;
 }
 
-interface ProxyOpts {
+export interface ProxyOpts {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   endpoint: string;             // FULL URL, e.g. 'https://www.googleapis.com/drive/v3/files'
   // Nango's proxy params type doesn't accept boolean; no call site passes one.
@@ -57,12 +59,16 @@ interface ProxyOpts {
 /** Call a Google API endpoint through the Nango proxy. Throws a tagged Error on
  *  any failure (carrying Google's error message when the body has one) so callers
  *  can show "Google Workspace is unreachable" vs. their own error. Never logs the
- *  OAuth token — Nango injects it; we only ever see the endpoint + params. */
-async function gwProxy<T = unknown>(opts: ProxyOpts): Promise<T> {
+ *  OAuth token — Nango injects it; we only ever see the endpoint + params.
+ *
+ *  Exported so the Gmail/Calendar libs proxy through the SAME connection + path.
+ *  The `tag` param lets those libs surface their own prefix ('google-gmail: …')
+ *  instead of 'google-workspace: …' while sharing all the connection logic. */
+export async function gwProxy<T = unknown>(opts: ProxyOpts, tag = PROVIDER): Promise<T> {
   const nango = getNango();
-  if (!nango) throw new Error('google-workspace: NANGO_SECRET_KEY not configured');
+  if (!nango) throw new Error(`${tag}: NANGO_SECRET_KEY not configured`);
   const conn = await getConn();
-  if (!conn) throw new Error('google-workspace: not connected for this tenant');
+  if (!conn) throw new Error(`${tag}: not connected for this tenant`);
 
   // Trim empty params — Google rejects some keys with empty values.
   const params: Record<string, string | number> = {};
@@ -85,7 +91,7 @@ async function gwProxy<T = unknown>(opts: ProxyOpts): Promise<T> {
     // Google nests the useful message at response.data.error.message.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const msg = (e as any)?.response?.data?.error?.message ?? (e as Error)?.message ?? 'request failed';
-    throw new Error(`google-workspace: ${msg}`);
+    throw new Error(`${tag}: ${msg}`);
   }
 }
 

@@ -55,18 +55,13 @@ export const PROVIDERS: IntegrationProviderDef[] = [
   { id: 'agentmail', label: 'AgentMail (email agents)', category: 'email',
     scopesHint: 'Create your own account + API key at agentmail.to, then paste the key here. Your inboxes, sends, and karma stay under YOUR account.',
     fields: [{ name: 'api_key', label: 'API Key', type: 'password', required: true, placeholder: 'am_…' }] },
-  { id: 'gmail', label: 'Gmail', category: 'email', scopesHint: 'gmail.readonly, gmail.compose',
-    fields: [
-      { name: 'oauth_client_id', label: 'OAuth Client ID', type: 'text' },
-      { name: 'oauth_client_secret', label: 'OAuth Client Secret', type: 'password' },
-      { name: 'refresh_token', label: 'Refresh Token (after OAuth)', type: 'password' },
-    ] },
-  { id: 'google_calendar', label: 'Google Calendar', category: 'calendar', scopesHint: 'calendar.events',
-    fields: [
-      { name: 'oauth_client_id', label: 'OAuth Client ID', type: 'text' },
-      { name: 'oauth_client_secret', label: 'OAuth Client Secret', type: 'password' },
-      { name: 'refresh_token', label: 'Refresh Token (after OAuth)', type: 'password' },
-    ] },
+  // Gmail + Google Calendar are intentionally NOT manual-paste tiles anymore.
+  // Both ride the single "Connect Google" Nango connection (provider key
+  // 'google-workspace' in src/lib/nango.ts) — one OAuth grant covers Drive, Docs,
+  // Sheets, Gmail and Calendar. Accessors live in src/lib/google-gmail.ts and
+  // src/lib/google-calendar.ts. (The legacy IMAP route at
+  // src/app/api/integrations/gmail/route.ts uses env EMAIL_USER/PASSWORD, not the
+  // integration secret, so it's independent and untouched.)
   { id: 'x', label: 'X (Twitter)', category: 'social',
     fields: [{ name: 'bearer_token', label: 'Bearer Token', type: 'password', required: true }] },
   { id: 'linkedin', label: 'LinkedIn', category: 'social',

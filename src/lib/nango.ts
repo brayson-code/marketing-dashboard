@@ -46,10 +46,13 @@ export const PROVIDERS: ProviderDef[] = [
   { key: 'x', label: 'X', providerConfigKey: configKey('x') },
   { key: 'tiktok', label: 'TikTok', providerConfigKey: configKey('tiktok') },
   { key: 'facebook-ads', label: 'Facebook Ads', providerConfigKey: configKey('facebook-ads') },
-  // Google Workspace (Drive/Docs/Sheets). The integrator points this at the Nango
-  // 'google' integration and sets Drive/Docs/Sheets scopes out of band via
-  // NANGO_GOOGLE_WORKSPACE_CONFIG_KEY.
-  { key: 'google-workspace', label: 'Google Workspace', providerConfigKey: configKey('google-workspace') },
+  // One "Connect Google" tile that grants ALL of Google. The KEY stays
+  // 'google-workspace' (google-workspace.ts getConn + the gmail/calendar libs
+  // depend on it), but the integrator points this at the single Nango 'google'
+  // integration — which carries Drive, Docs, Sheets, Gmail and Calendar scopes —
+  // via NANGO_GOOGLE_WORKSPACE_CONFIG_KEY. The label reads as all of Google so
+  // there's no separate Gmail / Calendar tile to connect.
+  { key: 'google-workspace', label: 'Google (Drive, Docs, Sheets, Gmail, Calendar)', providerConfigKey: configKey('google-workspace') },
 ];
 
 /** True only when the Nango secret key is present in the environment. */
