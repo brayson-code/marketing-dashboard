@@ -370,6 +370,31 @@ function HyperframesMark({ size, className, label }: SvgRendererProps) {
   );
 }
 
+function GoogleWorkspaceMark({ size, className, label }: SvgRendererProps) {
+  // Simple Icons "googledrive" mark — the multi-color Drive triangle. Reads true to
+  // the Drive/Docs/Sheets surface this connection unlocks. Colors are the official
+  // Google Drive palette (blue / green / yellow).
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      className={className}
+      role="img"
+      aria-label={label}
+    >
+      <path fill="#0066DA" d="M1.61 14.51 0 12l7.16-12 1.61.5L8.05 6.6z" />
+      <path fill="#00AC47" d="m8.05 6.6 4.21 7.29H4.59l-2.98-1.38z" />
+      <path fill="#EA4335" d="m8.77.5 7.16 12-1.6 1.39H8.04L8.05 6.6z" />
+      <path fill="#00832D" d="M8.05 6.6 12.26 0h-3.5l-.71 1.1z" />
+      <path fill="#2684FC" d="m4.59 13.89 7.67.62-3.16 5.49H6.4l-3.2-5.5z" />
+      <path fill="#FFBA00" d="m15.93 12.5 2.97 5.13-1.61 2.79-1.55-.62-5.65-9.4 1.6-1.39z" />
+      <path fill="#0066DA" d="m11.96 18.5 1.62 1.5h7.16L24 12l-1.61-.5-8.81 1.39z" />
+    </svg>
+  );
+}
+
 function FallbackMark({ size, className, label }: SvgRendererProps) {
   return <Plug size={size} className={className} aria-label={label} />;
 }
@@ -382,6 +407,7 @@ const RENDERERS: Record<string, (p: SvgRendererProps) => JSX.Element> = {
   'facebook-ads': FacebookAdsMark,
   x: XMark,
   tiktok: TiktokMark,
+  'google-workspace': GoogleWorkspaceMark,
   // API-key integration providers
   anthropic: AnthropicMark,
   openai: OpenAiMark,

@@ -6,6 +6,7 @@ import { getAnthropicKey } from './anthropic-key';
 import { startTask, finishTask, setTaskStream } from './agent-tasks';
 import { kgToolDefinitions, handleKgTool } from './kg-tools';
 import { skillRecallToolDefinitions, handleSkillRecallTool } from './skill-recall';
+import { googleToolDefinitions, handleGoogleTool, googleActionsAllowed, GOOGLE_TOOL_NAMES } from './google-tools';
 import { chooseVariant } from './selection';
 import { constraintsForVariant, roleFor } from './constraints';
 import { selectGenesForTask, genesDirective, recordGeneApplications } from './genes';
@@ -406,6 +407,12 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
   // needs a one-shot answer from the inputs it already handed over (e.g. a reel
   // teardown) can pass tools:'none' to run TOOL-FREE — a single turn, no search
   // loop. Default keeps the full toolset so every other agent is unchanged.
+  //
+  // Google Workspace tools are opt-in: they are added ONLY when the tenant has
+  // both connected Google Workspace AND enabled agent actions in Settings.
+  // When the gate is false the tools array is byte-identical to before this feature
+  // shipped — the model never sees the tools so it can never call them.
+  const gwAllowed = opts?.tools !== 'none' && (await googleActionsAllowed());
   const tools: Anthropic.Messages.ToolUnion[] = opts?.tools === 'none' ? [] : [
     { type: 'web_search_20250305', name: 'web_search' },
     // Shared KG tools so every sub-agent can read/write the team's graph.
@@ -413,6 +420,8 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
     // On-demand skill recall — pull a playbook by name mid-run instead of baking
     // every skill into the system prompt at spawn time.
     ...skillRecallToolDefinitions(),
+    // Google Workspace tools — only offered when tenant has connected + opted in.
+    ...(gwAllowed ? googleToolDefinitions() : []),
   ];
 
   // Cache the initial task message. Multi-turn agents (research runs a
@@ -540,18 +549,26 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
         continue;
       }
       if (response.stop_reason === 'tool_use') {
-        // Sub-agents can use the shared KG tools (kg_query / kg_remember) and
-        // recall_skill. Provenance: the sub-agent type id is the source agent.
+        // Sub-agents can use the shared KG tools (kg_query / kg_remember),
+        // recall_skill, and (when opted in) Google Workspace tools.
+        // Provenance: the sub-agent type id is the source agent.
         const handledToolUses = response.content.filter(
           (b): b is Anthropic.ToolUseBlock =>
-            b.type === 'tool_use' && (b.name === 'kg_query' || b.name === 'kg_remember' || b.name === 'recall_skill'),
+            b.type === 'tool_use' && (
+              b.name === 'kg_query' ||
+              b.name === 'kg_remember' ||
+              b.name === 'recall_skill' ||
+              (GOOGLE_TOOL_NAMES as readonly string[]).includes(b.name)
+            ),
         );
         if (handledToolUses.length === 0) break;
 
         messages.push({ role: 'assistant', content: response.content });
-        const toolResults = await Promise.all(handledToolUses.map((tu) =>
-          tu.name === 'recall_skill' ? handleSkillRecallTool(tu, type) : handleKgTool(tu, type),
-        ));
+        const toolResults = await Promise.all(handledToolUses.map((tu) => {
+          if (tu.name === 'recall_skill') return handleSkillRecallTool(tu, type);
+          if ((GOOGLE_TOOL_NAMES as readonly string[]).includes(tu.name)) return handleGoogleTool(tu, type);
+          return handleKgTool(tu, type);
+        }));
         // Merge the correction (if any) into the same user block as the tool
         // results — two adjacent user messages would violate the API's
         // alternating-roles rule.

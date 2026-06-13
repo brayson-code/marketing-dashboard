@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import {
   Settings, Database, Shield, Info, ExternalLink,
-  RefreshCw, Trash2, Users, UserPlus, KeyRound, BrainCircuit, BellRing, Scale, Gauge, Download,
+  RefreshCw, Trash2, Users, UserPlus, KeyRound, BrainCircuit, BellRing, Scale, Gauge, Download, FolderOpen,
 } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { WalkthroughSettings } from '@/components/walkthrough/walkthrough-settings';
@@ -154,6 +154,11 @@ export default function SettingsPage() {
   const [usageCapDraft, setUsageCapDraft] = useState<{ enabled: boolean; daily_tokens: number } | null>(null);
   const [savingCap, setSavingCap] = useState(false);
 
+  // Google Workspace agent actions state
+  interface GoogleActionsState { enabled: boolean; connected: boolean }
+  const [googleActions, setGoogleActions] = useState<GoogleActionsState | null>(null);
+  const [savingGoogleActions, setSavingGoogleActions] = useState(false);
+
   useEffect(() => {
     let alive = true;
 
@@ -242,6 +247,13 @@ export default function SettingsPage() {
           setUsageCapDraft({ enabled: data.enabled, daily_tokens: data.daily_tokens });
         }
       })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/google-actions', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((data: GoogleActionsState) => setGoogleActions(data))
       .catch(() => {});
   }, []);
 
@@ -490,6 +502,25 @@ export default function SettingsPage() {
       toast.error((err as Error).message);
     } finally {
       setSavingCap(false);
+    }
+  }
+
+  async function saveGoogleActions(enabled: boolean) {
+    setSavingGoogleActions(true);
+    try {
+      const res = await fetch('/api/google-actions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save Google Workspace actions setting');
+      setGoogleActions({ enabled: data.enabled, connected: data.connected });
+      toast.success(enabled ? 'Google Workspace actions enabled' : 'Google Workspace actions disabled');
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setSavingGoogleActions(false);
     }
   }
 
@@ -803,6 +834,62 @@ export default function SettingsPage() {
               </span>
             </div>
           </>
+        )}
+      </div>
+      {/* Google Workspace agent actions */}
+      <div className="panel p-5 space-y-4">
+        <h2 className="text-sm font-medium flex items-center gap-2">
+          <FolderOpen size={14} className="text-primary" /> Google Workspace actions
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          When enabled, agents can create and edit Docs, Sheets, and Drive folders in your
+          connected Google Workspace account — for example, saving a scope-of-work doc, building
+          a content-calendar sheet, or organising deliverables into a campaign folder.{' '}
+          <strong>This is off by default.</strong> You must also connect Google Workspace on the
+          Connections page before this setting has any effect. Every action an agent takes in
+          your Google account is recorded in the audit log.
+        </p>
+        {googleActions === null ? (
+          <div className="text-sm text-muted-foreground">Loading...</div>
+        ) : (
+          <div className="space-y-3">
+            {!googleActions.connected && (
+              <div className="rounded-lg border border-warning/40 bg-warning/5 px-3 py-2 text-xs text-warning">
+                Google Workspace is not connected. Connect it on the Connections page first,
+                then return here to enable agent actions.
+              </div>
+            )}
+            <label className="flex items-center gap-3 cursor-pointer select-none">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={googleActions.enabled}
+                disabled={!googleActions.connected || savingGoogleActions}
+                onClick={() => saveGoogleActions(!googleActions.enabled)}
+                className={[
+                  'relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent',
+                  'transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
+                  googleActions.enabled ? 'bg-primary' : 'bg-muted',
+                ].join(' ')}
+                style={{ transition: 'background-color var(--t-press, 120ms) var(--ease-out, ease-out)' }}
+              >
+                <span
+                  className="pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow"
+                  style={{
+                    transform: googleActions.enabled ? 'translateX(16px)' : 'translateX(0)',
+                    transition: 'transform var(--t-press, 120ms) var(--ease-out, ease-out)',
+                  }}
+                />
+              </button>
+              <span className="text-sm">
+                {savingGoogleActions
+                  ? 'Saving...'
+                  : googleActions.enabled
+                    ? 'Agents may create and edit Google Docs, Sheets, and Drive folders'
+                    : 'Google Workspace actions are off — agents cannot touch your account'}
+              </span>
+            </label>
+          </div>
         )}
       </div>
       </>

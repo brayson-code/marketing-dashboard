@@ -46,6 +46,10 @@ export const PROVIDERS: ProviderDef[] = [
   { key: 'x', label: 'X', providerConfigKey: configKey('x') },
   { key: 'tiktok', label: 'TikTok', providerConfigKey: configKey('tiktok') },
   { key: 'facebook-ads', label: 'Facebook Ads', providerConfigKey: configKey('facebook-ads') },
+  // Google Workspace (Drive/Docs/Sheets). The integrator points this at the Nango
+  // 'google' integration and sets Drive/Docs/Sheets scopes out of band via
+  // NANGO_GOOGLE_WORKSPACE_CONFIG_KEY.
+  { key: 'google-workspace', label: 'Google Workspace', providerConfigKey: configKey('google-workspace') },
 ];
 
 /** True only when the Nango secret key is present in the environment. */
