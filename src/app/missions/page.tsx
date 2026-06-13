@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Waves, Loader2, Play, ChevronDown, FileText, Target, AlertTriangle, Layers, ListChecks, Users, X } from 'lucide-react';
+import { Waves, Loader2, Play, ChevronDown, FileText, Target, AlertTriangle, Layers, ListChecks, Users, X, PauseCircle } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Explainer } from '@/components/ui/explainer';
@@ -77,6 +77,7 @@ function statusPill(status: string) {
   if (status === 'done') return 'status-pill status-ok';
   if (status === 'error') return 'status-pill status-danger';
   if (status === 'running') return 'status-pill status-neutral';
+  if (status === 'paused') return 'status-pill status-warn';
   return 'status-pill status-warn';
 }
 
@@ -207,6 +208,9 @@ export default function MissionsPage() {
 
   const c = detail?.campaign;
   const canAdvance = c && c.status === 'running' && c.current_wave < c.total_waves && !detail?.steps.some((s) => s.status === 'running');
+  // A paused mission was held by the daily token budget. Resume = re-call advance;
+  // the gate will pass once the tenant is back under budget or the cap is raised.
+  const canResume = c && c.status === 'paused';
 
   return (
     <div className="space-y-4 animate-in">
@@ -340,6 +344,11 @@ export default function MissionsPage() {
                         {advancing ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />} Run next wave
                       </button>
                     )}
+                    {canResume && (
+                      <button className="btn btn-primary btn-sm" onClick={advance} disabled={advancing}>
+                        {advancing ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />} Resume
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -356,7 +365,20 @@ export default function MissionsPage() {
                     </div>
                   )}
                 </div>
-                {c.error && <div className="text-xs text-destructive">Error: {c.error}</div>}
+                {c.status === 'paused' && (
+                  <div className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/5 px-3 py-2 text-xs text-warning">
+                    <PauseCircle size={13} className="mt-0.5 shrink-0" />
+                    <span>
+                      Agents paused — daily token budget reached. They resume automatically
+                      tomorrow, or{' '}
+                      <Link href="/settings" className="underline underline-offset-2">
+                        raise the cap in Settings
+                      </Link>
+                      . Hit &ldquo;Resume&rdquo; once under budget to continue now.
+                    </span>
+                  </div>
+                )}
+                {c.status !== 'paused' && c.error && <div className="text-xs text-destructive">Error: {c.error}</div>}
               </div>
 
               {/* Waves */}

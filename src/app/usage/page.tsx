@@ -1,8 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar, Legend } from 'recharts';
-import { DollarSign, Cpu, Zap, Activity, Bot, Database, Mic } from 'lucide-react';
+import Link from 'next/link';
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar } from 'recharts';
+import { DollarSign, Cpu, Zap, Activity, Bot, Database, Mic, Gauge, AlertTriangle } from 'lucide-react';
 
 interface DailyUsage { day: string; input_tokens: number; output_tokens: number; cost_usd: number; calls: number }
 interface AgentUsage { agent_id: string; model: string; calls: number; input_tokens: number; output_tokens: number; cost_usd: number; avg_duration_sec: number }
@@ -15,6 +16,12 @@ interface Spend {
   claude: { usd: number; tokens: number };
   apify: { usedUsd: number | null; plan: string | null } | null;
   deepgram: { balanceUsd: number | null; usedUsd: number | null } | null;
+}
+interface BudgetInfo {
+  enabled: boolean;
+  daily_tokens: number;
+  used_today: number;
+  pending?: boolean;
 }
 
 const RANGES = [
@@ -35,6 +42,7 @@ function fmtDay(day: string): string { return day.slice(5); /* MM-DD */ }
 export default function UsagePage() {
   const [data, setData] = useState<UsageSummary | null>(null);
   const [spend, setSpend] = useState<Spend | null>(null);
+  const [budget, setBudget] = useState<BudgetInfo | null>(null);
   const [days, setDays] = useState(14);
 
   const load = useCallback(async () => {
@@ -49,8 +57,20 @@ export default function UsagePage() {
     } catch { /* leave prior spend */ }
   }, []);
 
+  const loadBudget = useCallback(async () => {
+    try {
+      const res = await fetch('/api/usage-cap', { cache: 'no-store' });
+      if (res.ok) {
+        const b: BudgetInfo = await res.json();
+        if (!b.pending) setBudget(b);
+      }
+    } catch { /* leave prior budget */ }
+  }, []);
+
   useEffect(() => { load(); const id = setInterval(load, 5000); return () => clearInterval(id); }, [load]);
   useEffect(() => { loadSpend(); const id = setInterval(loadSpend, 60000); return () => clearInterval(id); }, [loadSpend]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { loadBudget(); const id = setInterval(loadBudget, 15000); return () => clearInterval(id); }, [loadBudget]);
 
   if (!data) return <div className="text-xs text-muted-foreground">Loading usage…</div>;
 
@@ -101,6 +121,63 @@ export default function UsagePage() {
         <StatTile icon={DollarSign} label="Cost" value={fmtUsd(data.total.cost_usd)} sub={`last ${days}d`} />
         <StatTile icon={Zap} label="Avg / call" value={data.total.calls > 0 ? fmtUsd(data.total.cost_usd / data.total.calls) : '—'} />
       </div>
+
+      {/* Daily budget — shown only when a cap is configured */}
+      {budget && (
+        (() => {
+          const { enabled, daily_tokens, used_today } = budget;
+          const pct = daily_tokens > 0 ? Math.min((used_today / daily_tokens) * 100, 100) : 0;
+          const amber = pct >= 80 && pct < 100;
+          const red = pct >= 100;
+          const barColor = red ? 'var(--destructive)' : amber ? 'var(--warning)' : 'var(--primary)';
+          const paused = enabled && red;
+          return (
+            <div className={`panel p-4 space-y-3 ${paused ? 'border-destructive/40' : ''}`}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                  <Gauge size={11} /> Daily budget
+                </div>
+                {!enabled && (
+                  <span className="text-[10px] text-muted-foreground">enforcement off</span>
+                )}
+              </div>
+
+              {paused && (
+                <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                  <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                  <span>
+                    Agents paused — daily token budget reached. They resume automatically
+                    tomorrow, or{' '}
+                    <Link href="/settings" className="underline underline-offset-2">
+                      raise the cap in Settings
+                    </Link>
+                    .
+                  </span>
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Used today</span>
+                  <span className={red ? 'text-destructive font-medium' : amber ? 'text-warning font-medium' : ''}>
+                    {fmtNum(used_today)} / {fmtNum(daily_tokens)} tokens ({pct.toFixed(0)}%)
+                  </span>
+                </div>
+                <div className="h-1.5 w-full rounded-full bg-muted/40 overflow-hidden">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${pct}%`,
+                      backgroundColor: barColor,
+                      transition: 'width 300ms ease-out',
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          );
+        })()
+      )}
 
       <div className="panel p-4">
         <div className="section-title mb-3">Tokens per day</div>

@@ -10,6 +10,28 @@ import { computeNextRun } from './cron-expr';
 import { appendKnowledgeSection } from './documents';
 import { kgPersistDirective } from './constraints';
 
+// Budget guard — dynamically imported so missing module (pre-integration) is safe.
+// isBudgetBlock(err) returns true when a BudgetExceededError is thrown OR when
+// spawnSubAgent returns { ok: false, blocked: true } (defensive dual-shape support).
+async function isBudgetExceeded(err: unknown): Promise<boolean> {
+  try {
+    const mod = await import('./usage-cap');
+    return err instanceof mod.BudgetExceededError;
+  } catch {
+    // Module not yet present — treat as not exceeded (enforcement is inert).
+    return false;
+  }
+}
+
+function isBlockedResult(res: unknown): boolean {
+  return (
+    typeof res === 'object' &&
+    res !== null &&
+    (res as Record<string, unknown>).ok === false &&
+    (res as Record<string, unknown>).blocked === true
+  );
+}
+
 interface DueJobRow {
   id: string;
   name: string | null;
@@ -22,6 +44,15 @@ interface DueJobRow {
 
 function utcStamp(d = new Date()): string {
   return d.toISOString().replace('T', ' ').replace(/:\d\d\.\d+Z$/, ' UTC');
+}
+
+/** Record a budget-skipped tick in cron_runs so the skip is visible in run
+ *  history (not a silent gap). Best-effort — never blocks the skip path. */
+async function recordSkip(jobId: string, nextIso: string | null): Promise<void> {
+  await sql()`
+    INSERT INTO public.cron_runs (tenant_id, job_id, status, duration_ms, summary, error, next_run_at)
+    VALUES (${tenantId()}, ${jobId}, 'skipped', 0, ${'Skipped — daily token budget reached'}, ${'Budget limit reached — retrying next tick'}, ${nextIso})
+  `.catch(() => {});
 }
 
 const SUMMARY_MAX = 500;
@@ -97,6 +128,28 @@ async function runOne(job: DueJobRow): Promise<{ id: string; status: 'ok' | 'err
       (saveToKb ? `\n\n# ${kgPersistDirective()}` : '');
     try {
       const res = await spawnSubAgent(job.agent_id, message);
+
+      // Budget-exceeded: the spawn chokepoint blocked this job before any LLM
+      // call was made. Do NOT mark it 'error' — just skip silently, reschedule
+      // normally, and log. The job will retry on its next scheduled tick.
+      if (isBlockedResult(res)) {
+        const blocked = res as { ok: false; blocked: true; error?: string };
+        console.warn(
+          `[cron] tenant ${tenantId()} over daily token budget — skipping job "${label}", will retry next tick. reason: ${blocked.error ?? 'budget exceeded'}`,
+        );
+        // Mark last_status as 'skipped' (not 'error') so the board doesn't alarm.
+        const skipNext = job.enabled ? (computeNextRun(job.schedule_expr, job.schedule_tz)?.toISOString() ?? null) : null;
+        await sql()`
+          UPDATE public.cron_jobs SET
+            last_status = 'skipped', last_error = ${'Budget limit reached — retrying next tick'},
+            next_run_at = ${skipNext},
+            updated_at = now()
+          WHERE tenant_id = ${tenantId()} AND id = ${job.id}
+        `;
+        await recordSkip(job.id, skipNext);
+        return { id: job.id, status: 'skipped' as 'ok' | 'error' };
+      }
+
       if (res.ok) {
         fullResult = (res.text ?? '').slice(0, RESULT_MAX);
         summary = (res.text ?? '').replace(/\s+/g, ' ').trim().slice(0, SUMMARY_MAX) || null;
@@ -114,6 +167,22 @@ async function runOne(job: DueJobRow): Promise<{ id: string; status: 'ok' | 'err
         errorText = res.error ?? 'Sub-agent returned no result';
       }
     } catch (err) {
+      // Budget-exceeded thrown as an exception (primary BudgetExceededError contract).
+      if (await isBudgetExceeded(err)) {
+        console.warn(
+          `[cron] tenant ${tenantId()} over daily token budget — skipping job "${label}", will retry next tick.`,
+        );
+        const skipNext = job.enabled ? (computeNextRun(job.schedule_expr, job.schedule_tz)?.toISOString() ?? null) : null;
+        await sql()`
+          UPDATE public.cron_jobs SET
+            last_status = 'skipped', last_error = ${'Budget limit reached — retrying next tick'},
+            next_run_at = ${skipNext},
+            updated_at = now()
+          WHERE tenant_id = ${tenantId()} AND id = ${job.id}
+        `;
+        await recordSkip(job.id, skipNext);
+        return { id: job.id, status: 'skipped' as 'ok' | 'error' };
+      }
       status = 'error';
       errorText = (err as Error).message;
     }
@@ -220,8 +289,15 @@ export async function runDueJobs(): Promise<{ ran: number; results: Array<{ id: 
       const r = await runWithTenant({ tenantId: job.tenant_id, userId: null }, () => runOne(job));
       results.push(r);
     } catch (err) {
-      results.push({ id: job.id, status: 'error' });
-      console.error(`[cron-runner] job ${job.id} threw:`, (err as Error).message);
+      // Budget errors thrown outside runOne (e.g. if the guard throws before
+      // spawnSubAgent returns) — degrade gracefully, never count as 'error'.
+      if (await isBudgetExceeded(err)) {
+        console.warn(`[cron-runner] job ${job.id} skipped (budget exceeded for tenant ${job.tenant_id})`);
+        results.push({ id: job.id, status: 'skipped' });
+      } else {
+        results.push({ id: job.id, status: 'error' });
+        console.error(`[cron-runner] job ${job.id} threw:`, (err as Error).message);
+      }
     }
   }
   return { ran: results.length, results };

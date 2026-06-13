@@ -13,6 +13,7 @@ import { logTimeSaving, actionTypeForAgent } from './roi';
 import { getDefPrompt, getSpawnSpec } from './agent-defs';
 import { heartbeat } from './heartbeat';
 import { getOwnedGoalForAgent, observeMessage } from './goal-observer';
+import { assertWithinBudget, BudgetExceededError } from './usage-cap';
 
 const STATE_DIR = join(process.cwd(), 'state/keyplayer');
 const SUBAGENT_DIR = join(process.cwd(), 'agents/sub-agents');
@@ -254,6 +255,10 @@ export interface SpawnResult {
   error?: string;
   usage?: { input: number; output: number };
   variant?: string; // constraint variant chosen for this run (Phase 3 selection)
+  /** True when this spawn was HELD by the per-tenant daily token budget (not a
+   *  normal failure). Callers that can pause/resume (e.g. waves) should treat a
+   *  blocked result as 'paused', not 'error'. See usage-cap.ts. */
+  blocked?: boolean;
 }
 
 interface BoardroomRow { direction: 'in' | 'out'; sender: string; text: string; created_at: Date }
@@ -329,6 +334,23 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
   const rate = checkRate(type);
   if (!rate.allowed) {
     return { ok: false, error: `Rate limit exceeded for ${type} (${spec.ratePerHour}/hr). Resets in ${rate.resetInSec}s.` };
+  }
+
+  // Per-tenant daily token budget — THE spawn-boundary gate (see usage-cap.ts).
+  // Runs BEFORE any Anthropic call or DB write so nothing in flight is touched;
+  // only this NEW spawn is held. Inert unless the tenant opted in AND the global
+  // env switch is on, so this is a no-op for everyone by default. We catch the
+  // typed BudgetExceededError here and surface it as a BLOCKED result (not a
+  // thrown crash and not a normal failure): every existing caller reads res.ok/
+  // res.error and will degrade gracefully, while pause-aware callers (waves) can
+  // branch on res.blocked to set a resumable 'paused' state instead of 'error'.
+  try {
+    await assertWithinBudget(spec.maxTokens);
+  } catch (err) {
+    if (err instanceof BudgetExceededError) {
+      return { ok: false, error: err.message, blocked: true };
+    }
+    throw err; // unexpected (DB) error — let it propagate, don't silently spend
   }
 
   // Per-tenant Anthropic key (BYO) — the agent runs on the tenant's own key,

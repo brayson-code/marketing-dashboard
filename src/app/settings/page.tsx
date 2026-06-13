@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import {
   Settings, Database, Shield, Info, ExternalLink,
-  RefreshCw, Trash2, Users, UserPlus, KeyRound, BrainCircuit, BellRing, Scale,
+  RefreshCw, Trash2, Users, UserPlus, KeyRound, BrainCircuit, BellRing, Scale, Gauge,
 } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { WalkthroughSettings } from '@/components/walkthrough/walkthrough-settings';
@@ -143,6 +143,17 @@ export default function SettingsPage() {
   const [rewardWeights, setRewardWeights] = useState<RewardWeights | null>(null);
   const [savingRewardWeights, setSavingRewardWeights] = useState(false);
 
+  // Usage cap state
+  interface UsageCapState {
+    enabled: boolean;
+    daily_tokens: number;
+    used_today: number;
+    pending?: boolean; // true when usage-cap module not yet integrated
+  }
+  const [usageCap, setUsageCap] = useState<UsageCapState | null>(null);
+  const [usageCapDraft, setUsageCapDraft] = useState<{ enabled: boolean; daily_tokens: number } | null>(null);
+  const [savingCap, setSavingCap] = useState(false);
+
   useEffect(() => {
     let alive = true;
 
@@ -218,6 +229,18 @@ export default function SettingsPage() {
       .then((r) => r.json())
       .then((data: { weights?: RewardWeights }) => {
         if (data.weights) setRewardWeights(data.weights);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/usage-cap', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((data: UsageCapState) => {
+        if (!data.pending) {
+          setUsageCap(data);
+          setUsageCapDraft({ enabled: data.enabled, daily_tokens: data.daily_tokens });
+        }
       })
       .catch(() => {});
   }, []);
@@ -449,6 +472,46 @@ export default function SettingsPage() {
     }
   }
 
+  async function saveUsageCapSettings() {
+    if (!usageCapDraft) return;
+    setSavingCap(true);
+    try {
+      const res = await fetch('/api/usage-cap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(usageCapDraft),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save usage cap');
+      setUsageCap({ ...data });
+      setUsageCapDraft({ enabled: data.enabled, daily_tokens: data.daily_tokens });
+      toast.success('Usage cap saved');
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setSavingCap(false);
+    }
+  }
+
+  // Helpers for the usage-cap progress bar (reused in Settings + Usage page).
+  function fmtTokens(n: number): string {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+    return String(n);
+  }
+  // Rough cost estimate: ~$3/1M input + $15/1M output → ~$9/1M blended for Sonnet
+  // (assumes 50/50 split, which slightly over-estimates and is therefore conservative).
+  function tokensToUsd(n: number): string {
+    const usd = (n / 1_000_000) * 9;
+    return usd < 0.01 ? '<$0.01' : `~$${usd.toFixed(2)}`;
+  }
+  // Rough agent-run estimate: a typical cron agent uses ~5K-20K tokens per run.
+  // We use 10K as a mid-point estimate.
+  function tokensToRuns(n: number): string {
+    const runs = Math.round(n / 10_000);
+    return `~${runs} agent run${runs === 1 ? '' : 's'}`;
+  }
+
   return (
     <div className="space-y-6 animate-in w-full">
       <div className="panel">
@@ -591,6 +654,135 @@ export default function SettingsPage() {
           </>
         ) : (
           <div className="text-sm text-muted-foreground">Loading reward weights...</div>
+        )}
+      </div>
+
+      {/* Usage cap */}
+      <div className="panel p-5 space-y-4">
+        <h2 className="text-sm font-medium flex items-center gap-2">
+          <Gauge size={14} className="text-primary" /> Usage cap
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          Caps your <strong>autonomous agent runs</strong> — sub-agents, wave
+          campaigns, missions, and scheduled jobs — against a daily token budget,
+          so a stuck loop can&apos;t run up your bill. When the budget is hit, new
+          runs pause until midnight UTC; anything already running finishes
+          cleanly, and paused missions resume from where they stopped. (Interactive
+          chat with your lead agent isn&apos;t capped — you&apos;re in the loop there.)
+        </p>
+        {usageCap === null ? (
+          <div className="text-sm text-muted-foreground">Loading...</div>
+        ) : !usageCapDraft ? null : (
+          <>
+            {/* Toggle */}
+            <label className="flex items-center gap-3 cursor-pointer select-none">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={usageCapDraft.enabled}
+                onClick={() => setUsageCapDraft((d) => d ? { ...d, enabled: !d.enabled } : d)}
+                className={[
+                  'relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent',
+                  'transition-colors var(--t-press) var(--ease-out)',
+                  ':active:scale-95',
+                  usageCapDraft.enabled ? 'bg-primary' : 'bg-muted',
+                ].join(' ')}
+                style={{ transition: 'background-color var(--t-press, 120ms) var(--ease-out, ease-out)' }}
+              >
+                <span
+                  className="pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow"
+                  style={{
+                    transform: usageCapDraft.enabled ? 'translateX(16px)' : 'translateX(0)',
+                    transition: 'transform var(--t-press, 120ms) var(--ease-out, ease-out)',
+                  }}
+                />
+              </button>
+              <span className="text-sm">
+                {usageCapDraft.enabled ? 'Enforcement on' : 'Enforcement off'}
+              </span>
+              {!usageCapDraft.enabled && (
+                <span className="text-xs text-muted-foreground">(agents run without a token limit)</span>
+              )}
+            </label>
+
+            {/* Daily token budget input */}
+            <label className="block space-y-1">
+              <span className="text-xs text-muted-foreground">Daily token budget</span>
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  min={10_000}
+                  step={10_000}
+                  value={usageCapDraft.daily_tokens}
+                  onChange={(e) =>
+                    setUsageCapDraft((d) => d ? { ...d, daily_tokens: Number(e.target.value) } : d)
+                  }
+                  className="w-40 bg-muted/30 border border-border rounded px-3 py-2 text-sm"
+                  disabled={!usageCapDraft.enabled}
+                />
+                <span className="text-xs text-muted-foreground">
+                  {fmtTokens(usageCapDraft.daily_tokens)} tokens
+                  {' · '}{tokensToUsd(usageCapDraft.daily_tokens)} est. spend
+                  {' · '}{tokensToRuns(usageCapDraft.daily_tokens)}
+                </span>
+              </div>
+            </label>
+
+            {/* Live usage bar */}
+            {(() => {
+              const used = usageCap.used_today;
+              const cap = usageCap.daily_tokens;
+              const pct = cap > 0 ? Math.min((used / cap) * 100, 100) : 0;
+              const amber = pct >= 80 && pct < 100;
+              const red = pct >= 100;
+              const barColor = red
+                ? 'var(--destructive)'
+                : amber
+                  ? 'var(--warning)'
+                  : 'var(--primary)';
+              return (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Used today</span>
+                    <span
+                      className={red ? 'text-destructive font-medium' : amber ? 'text-warning font-medium' : ''}
+                    >
+                      {fmtTokens(used)} / {fmtTokens(cap)} ({pct.toFixed(0)}%)
+                    </span>
+                  </div>
+                  <div className="h-1.5 w-full rounded-full bg-muted/40 overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${pct}%`,
+                        backgroundColor: barColor,
+                        transition: 'width var(--t-expand, 300ms) var(--ease-out, ease-out)',
+                      }}
+                    />
+                  </div>
+                  {red && usageCap.enabled && (
+                    <p className="text-xs text-destructive">
+                      Budget reached — agent spawns are paused until midnight UTC.
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={saveUsageCapSettings}
+                disabled={savingCap}
+                className="btn btn-primary text-sm"
+                style={{ transition: 'background-color var(--t-press, 120ms) var(--ease-out, ease-out), opacity var(--t-press, 120ms) var(--ease-out, ease-out)' }}
+              >
+                {savingCap ? 'Saving...' : 'Save Usage Cap'}
+              </button>
+              <span className="text-xs text-muted-foreground">
+                To disable instantly: toggle off and save, or set env <code>USAGE_CAP_ENFORCE=false</code>.
+              </span>
+            </div>
+          </>
         )}
       </div>
       </>

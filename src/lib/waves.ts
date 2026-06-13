@@ -17,6 +17,7 @@ import { kgPersistDirective, roleFor } from './constraints';
 import { observeWaveBoundary } from './wave-observer';
 import { verifyWaveFindings, verificationToMarkdown, type WaveVerification } from './wave-verify';
 import { heartbeat } from './heartbeat';
+import { assertWithinBudget, BudgetExceededError } from './usage-cap';
 
 const SYNTH_MODEL = 'claude-sonnet-4-6'; // synthesis is the quality chokepoint (decided)
 
@@ -48,6 +49,12 @@ interface CampaignRow {
 }
 
 async function llm(system: string, user: string, maxTokens: number): Promise<string> {
+  // Spawn-boundary gate for the DIRECT anthropic path (wave synthesis + finalize
+  // report). spawnSubAgent gates per-agent work itself; this is the SECOND spend
+  // path that bypasses it, so it must be gated too or the cap leaks. Throws
+  // BudgetExceededError when an opted-in tenant is over budget; runNextWave
+  // catches it and pauses (resumable) rather than erroring.
+  await assertWithinBudget(maxTokens);
   const apiKey = await getAnthropicKey();
   if (!apiKey) throw new Error(NO_ANTHROPIC_KEY_MESSAGE);
   const client = new Anthropic({ apiKey, maxRetries: 5 });
@@ -112,7 +119,12 @@ async function synthesizeWave(
   try {
     synthesis = await llm(system, user, 1500);
   } catch (err) {
-    // Degrade gracefully (brief principle #4): keep the raw outputs rather than lose the wave.
+    // A budget block is NOT a synthesis failure to paper over — rethrow it so
+    // runNextWave can pause this wave (resumable) instead of persisting a
+    // degraded synthesis and advancing past it.
+    if (err instanceof BudgetExceededError) throw err;
+    // Otherwise degrade gracefully (brief principle #4): keep the raw outputs
+    // rather than lose the wave.
     synthesis = `_(synthesis failed: ${(err as Error).message}; raw agent outputs below)_\n\n${body}`;
   }
   // Append the reliability block so it persists into the wave synthesis and
@@ -258,11 +270,32 @@ async function maybeCourseCorrect(opts: {
 }
 
 /**
+ * Pause a mission on a daily-token-budget block. RESUMABLE, not terminal:
+ *  - the in-progress step row is marked 'paused' (not 'error'),
+ *  - the mission row is set status='paused' with a clear reason in `error`,
+ *  - current_wave is NOT advanced, so re-running advance after the cap resets
+ *    (next UTC day) or is raised continues from THIS wave.
+ * Note: status is plain text on wave_runs/wave_step_runs (no CHECK constraint —
+ * see migration 0011), so 'paused' needs no schema change.
+ */
+async function pauseWave(opts: { campaignId: string; stepId: number; reason: string }): Promise<void> {
+  await sql()`
+    UPDATE public.wave_step_runs SET status = 'paused', finished_at = now()
+    WHERE id = ${opts.stepId} AND tenant_id = ${tenantId()}
+  `.catch(() => {});
+  await sql()`
+    UPDATE public.wave_runs SET status = 'paused', error = ${opts.reason}, updated_at = now()
+    WHERE id = ${opts.campaignId} AND tenant_id = ${tenantId()}
+  `.catch(() => {});
+  await heartbeat('keyplayer', 'progress', `mission paused: ${opts.reason}`.slice(0, 200), null).catch(() => {});
+}
+
+/**
  * Run the next pending wave of a campaign (parallel agents → synthesis →
  * checkpoint), and finalize if it was the last. Designed to run inside one
  * serverless invocation via after(). Returns whether the campaign is complete.
  */
-export async function runNextWave(campaignId: string): Promise<{ done: boolean; ranWave?: number; error?: string }> {
+export async function runNextWave(campaignId: string): Promise<{ done: boolean; ranWave?: number; error?: string; paused?: boolean }> {
   const c = await loadCampaign(campaignId);
   if (!c) return { done: true, error: 'Campaign not found' };
   if (c.status !== 'running') return { done: true };
@@ -281,14 +314,39 @@ export async function runNextWave(campaignId: string): Promise<{ done: boolean; 
   const stepId = Number(stepRows[0].id);
 
   try {
-    const results: AgentResult[] = await Promise.all(
+    // Daily-token-budget gate — checked ONCE at the wave boundary, BEFORE any
+    // agent in this wave spawns. Over budget → pause the wave having spent
+    // nothing, so re-running advance (after the cap resets or is raised) re-runs
+    // this wave clean with zero double-billing. A wave is atomic: once we're
+    // under budget here we commit to its 2–3 bounded agents and never pause
+    // mid-wave (which would re-bill the agents that already finished, on resume).
+    try {
+      await assertWithinBudget();
+    } catch (err) {
+      if (err instanceof BudgetExceededError) {
+        const reason = 'Daily token budget reached — mission paused (resumable).';
+        await pauseWave({ campaignId, stepId, reason });
+        return { done: true, paused: true, ranWave: idx, error: reason };
+      }
+      throw err;
+    }
+
+    const spawns = await Promise.all(
       wave.agents.map(async (a) => {
         // spawnSubAgent picks + records the constraint variant; we read it back
         // so outcome scoring can attribute the campaign result per variant.
         const r = await spawnSubAgent(a.agentId, composeAgentTask(c.brief, prior, a, wave.brief), undefined, { maxTurns: 6 });
-        return { agentId: a.agentId, task: a.task, ok: r.ok, text: r.text ?? null, error: r.error ?? null, variant: r.variant ?? 'base' };
+        return { a, r };
       }),
     );
+    // A per-agent budget block mid-wave (rare — only if a concurrent mission
+    // crossed the cap after this wave passed its boundary check) flows through
+    // as a failed agent (ok:false), and synthesis proceeds with whoever
+    // succeeded. We do NOT pause-and-rerun here: that would re-bill the agents
+    // already done. The NEXT wave's boundary check pauses cleanly if still over.
+    const results: AgentResult[] = spawns.map(({ a, r }) => ({
+      agentId: a.agentId, task: a.task, ok: r.ok, text: r.text ?? null, error: r.error ?? null, variant: r.variant ?? 'base',
+    }));
     // --- Bounded skeptic verification --------------------------------------
     // Before synthesis: ONE cheap Haiku pass flags unverifiable/single-source/
     // undated/overstated claims so the merge can caveat them and the owner sees
@@ -351,6 +409,13 @@ export async function runNextWave(campaignId: string): Promise<{ done: boolean; 
     return { done: false, ranWave: idx };
   } catch (err) {
     const msg = (err as Error).message;
+    // A budget block reaching here (from the synthesis llm() path) PAUSES the
+    // mission — resumable, not a terminal 'error'. current_wave is untouched so
+    // re-running advance re-runs this wave once the cap resets or is raised.
+    if (err instanceof BudgetExceededError) {
+      await pauseWave({ campaignId, stepId, reason: msg });
+      return { done: true, paused: true, ranWave: idx, error: msg };
+    }
     await sql()`
       UPDATE public.wave_step_runs SET status = 'error', finished_at = now()
       WHERE id = ${stepId} AND tenant_id = ${tenantId()}

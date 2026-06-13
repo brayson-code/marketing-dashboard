@@ -12,8 +12,19 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   const detail = await getMissionDetail(id);
   if (!detail) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  if (detail.mission.status !== 'running') {
+  // Accept both 'running' and 'paused' — a paused mission was held by a budget
+  // cap and may be resumed once the tenant is back under budget or the cap is raised.
+  if (detail.mission.status !== 'running' && detail.mission.status !== 'paused') {
     return NextResponse.json({ error: `Mission is ${detail.mission.status}, not running` }, { status: 409 });
+  }
+  // If paused, first set back to 'running' so runAndChain can re-enter it.
+  // runAndChain will re-check the budget gate and either proceed or re-pause.
+  if (detail.mission.status === 'paused') {
+    const { sql, tenantId } = await import('@/lib/db/client');
+    await sql()`
+      UPDATE public.wave_runs SET status = 'running', error = NULL, updated_at = now()
+      WHERE tenant_id = ${tenantId()} AND id = ${id}
+    `;
   }
   after(async () => {
     try {
