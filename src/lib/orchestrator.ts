@@ -9,6 +9,7 @@ import { startTask, finishTask } from './agent-tasks';
 import { listActiveGoals, createGoal, appendProgress, updateGoalStatus, type GoalStatus } from './goals';
 import { createDraft, listDrafts, publishContent, sendEmail, confirmMeeting, type DraftType } from './drafts';
 import { kgToolDefinitions, handleKgTool } from './kg-tools';
+import { googleToolDefinitions, handleGoogleTool, googleActionsAllowed, GOOGLE_TOOL_NAMES } from './google-tools';
 import { parseAttachments, buildUserContent } from './vision';
 import { estimateCostUsd } from './usage';
 import { launchResearchCampaign } from './campaign-intake';
@@ -117,6 +118,9 @@ async function buildTools(): Promise<Anthropic.Messages.ToolUnion[]> {
   }
   const subagentTypes = specs.map((s) => s.id);
   const subagentDescriptions = specs.map((s) => `- \`${s.id}\` — ${s.description}`).join('\n');
+
+  // Offer the Google Workspace tools to KeyPlayer only when connected + opted in.
+  const gwAllowed = await googleActionsAllowed();
 
   return [
     { type: 'web_search_20250305', name: 'web_search' },
@@ -229,6 +233,11 @@ async function buildTools(): Promise<Anthropic.Messages.ToolUnion[]> {
 
     // ── Knowledge graph tools (shared definition; see ./kg-tools) ────────────
     ...kgToolDefinitions(),
+
+    // ── Google Workspace tools — only when the tenant has connected Google AND
+    //    opted in (default off). Same gate as the sub-agents; KeyPlayer itself
+    //    can now create Docs/Sheets/folders, send Gmail, manage Calendar + Meet.
+    ...(gwAllowed ? googleToolDefinitions() : []),
 
     {
       name: 'spawn_subagent',
@@ -437,6 +446,11 @@ async function handleClientToolUse(
   // ── Knowledge graph tools (shared handler; stamps source_agent='keyplayer') ─
   if (toolUse.name === 'kg_remember' || toolUse.name === 'kg_query') {
     return handleKgTool(toolUse, 'keyplayer');
+  }
+
+  // ── Google Workspace tools (only present when gated on; shared handler) ──────
+  if ((GOOGLE_TOOL_NAMES as readonly string[]).includes(toolUse.name)) {
+    return handleGoogleTool(toolUse, 'keyplayer');
   }
 
   // ── Drafts tools ─────────────────────────────────────────────────────────
