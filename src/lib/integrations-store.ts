@@ -46,6 +46,12 @@ export const PROVIDERS: IntegrationProviderDef[] = [
       { name: 'webhook_secret', label: 'Webhook Secret', type: 'password' },
       { name: 'sender_name', label: 'Sender Name', type: 'text' },
     ] },
+  { id: 'telegram', label: 'Telegram (notifications)', category: 'messaging',
+    scopesHint: 'Create a bot via @BotFather in Telegram (send /newbot) to get your bot token. Then get your chat ID: message your new bot, open https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates, and copy the "id" field from the "chat" object — or message @userinfobot to get your own user ID.',
+    fields: [
+      { name: 'bot_token', label: 'Bot Token', type: 'password', required: true, placeholder: '123456:ABC-…' },
+      { name: 'chat_id', label: 'Chat ID', type: 'text', required: true, placeholder: 'your numeric chat id' },
+    ] },
   { id: 'agentmail', label: 'AgentMail (email agents)', category: 'email',
     scopesHint: 'Create your own account + API key at agentmail.to, then paste the key here. Your inboxes, sends, and karma stay under YOUR account.',
     fields: [{ name: 'api_key', label: 'API Key', type: 'password', required: true, placeholder: 'am_…' }] },
