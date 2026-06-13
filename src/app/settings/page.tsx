@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import {
   Settings, Database, Shield, Info, ExternalLink,
-  RefreshCw, Trash2, Users, UserPlus, KeyRound, BrainCircuit, BellRing, Scale, Gauge,
+  RefreshCw, Trash2, Users, UserPlus, KeyRound, BrainCircuit, BellRing, Scale, Gauge, Download,
 } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { WalkthroughSettings } from '@/components/walkthrough/walkthrough-settings';
@@ -655,6 +655,26 @@ export default function SettingsPage() {
         ) : (
           <div className="text-sm text-muted-foreground">Loading reward weights...</div>
         )}
+      </div>
+
+      {/* Export your data */}
+      <div className="panel p-5 space-y-4">
+        <h2 className="text-sm font-medium flex items-center gap-2">
+          <Download size={14} className="text-primary" /> Export your data
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          Download everything this workspace has created — documents, custom agents,
+          knowledge graph, automations, CRM, and engagement history — as a single ZIP.
+          Your data is yours; take it with you anytime. (Your own API keys aren&apos;t
+          included — you already hold those.)
+        </p>
+        <a
+          href="/api/tenant/export"
+          download
+          className="btn btn-secondary btn-sm inline-flex w-fit"
+        >
+          <Download size={13} /> Download export (.zip)
+        </a>
       </div>
 
       {/* Usage cap */}
