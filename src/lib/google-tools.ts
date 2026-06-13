@@ -32,6 +32,8 @@ export const GOOGLE_TOOL_NAMES = [
   'gmail_draft',
   'cal_list',
   'cal_create_event',
+  'meet_create_space',
+  'meet_recent_transcript',
 ] as const;
 
 // ── Feature gate ──────────────────────────────────────────────────────────────
@@ -300,6 +302,32 @@ export function googleToolDefinitions(): Anthropic.Messages.ToolUnion[] {
             description: 'Plain-text body of the draft.',
           },
         },
+      },
+    },
+
+    // ── Google Meet tools ──────────────────────────────────────────────────────
+    {
+      name: 'meet_create_space',
+      description:
+        'Create a new Google Meet meeting space and return a join URL the agent can share. ' +
+        'Use this to generate an instant Meet link — drop it into a calendar invite body, ' +
+        'an email, or a Slack message without opening Google Calendar. ' +
+        'Returns the join URL (meeting_uri) and the short meeting code.',
+      input_schema: {
+        type: 'object',
+        properties: {},
+      },
+    },
+    {
+      name: 'meet_recent_transcript',
+      description:
+        'Fetch the transcript of the most recent Google Meet call that was recorded and ' +
+        'transcribed. Use this to summarise a client call, extract action items, or pull ' +
+        'key quotes from the latest meeting. Returns the joined transcript text with speaker ' +
+        'names when available, or a message indicating no transcript exists.',
+      input_schema: {
+        type: 'object',
+        properties: {},
       },
     },
 
@@ -661,6 +689,56 @@ export async function handleGoogleTool(
         );
       } catch (err) {
         return err_result(id, `cal_create_event failed — ${(err as Error).message}`);
+      }
+    }
+
+    // ── meet_create_space ───────────────────────────────────────────────────
+    case 'meet_create_space': {
+      let meet: typeof import('./google-meet');
+      try {
+        meet = await import('./google-meet');
+      } catch (err) {
+        return err_result(id, `google-meet: module not available — ${(err as Error).message}`);
+      }
+      try {
+        const space = await meet.createMeetingSpace();
+        await audit(sourceAgent, 'google.meet_create_space', space.meeting_uri, {
+          space_id: space.space_id,
+          meeting_code: space.meeting_code,
+        });
+        return ok_result(
+          id,
+          `Meet link created:\nJoin URL: ${space.meeting_uri}` +
+            (space.meeting_code ? `\nMeeting code: ${space.meeting_code}` : '') +
+            `\nSpace: ${space.space_id}`,
+        );
+      } catch (err) {
+        return err_result(id, `meet_create_space failed — ${(err as Error).message}`);
+      }
+    }
+
+    // ── meet_recent_transcript ──────────────────────────────────────────────
+    case 'meet_recent_transcript': {
+      let meet: typeof import('./google-meet');
+      try {
+        meet = await import('./google-meet');
+      } catch (err) {
+        return err_result(id, `google-meet: module not available — ${(err as Error).message}`);
+      }
+      try {
+        const result = await meet.getLatestTranscriptText();
+        if (!result) {
+          return ok_result(
+            id,
+            'No transcript found. Either no recent Meet recordings exist, or transcription was not enabled for the last call.',
+          );
+        }
+        return ok_result(
+          id,
+          `Transcript for conference ${result.conference_id}:\n\n${result.text}`,
+        );
+      } catch (err) {
+        return err_result(id, `meet_recent_transcript failed — ${(err as Error).message}`);
       }
     }
 
