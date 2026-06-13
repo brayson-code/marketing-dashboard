@@ -29,6 +29,8 @@ interface CrmData {
     conversion_rate: number;
     tasks_overdue?: number;
     tasks_due_today?: number;
+    /** Leads with next_action_at in the past and not paused. */
+    overdue_followups?: number;
   };
   tasks_overdue?: number;
   tasks_due_today?: number;
@@ -83,6 +85,7 @@ export default function CrmPage() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [createSubmitting, setCreateSubmitting] = useState(false);
+  const [showOverdueOnly, setShowOverdueOnly] = useState(false);
   const [createForm, setCreateForm] = useState({
     first_name: '',
     last_name: '',
@@ -188,7 +191,20 @@ export default function CrmPage() {
   );
 
   const leads = data?.leads || [];
-  const sorted = [...leads].sort((a, b) => {
+  const nowForFilter = nowMs ?? Date.now();
+  const overdueLeadIds = new Set(
+    leads
+      .filter(l =>
+        l.next_action_at &&
+        new Date(l.next_action_at).getTime() < nowForFilter &&
+        !l.pause_outreach,
+      )
+      .map(l => l.id),
+  );
+  const visibleLeads = showOverdueOnly
+    ? leads.filter(l => overdueLeadIds.has(l.id))
+    : leads;
+  const sorted = [...visibleLeads].sort((a, b) => {
     if (sortField === 'score') return (b.score ?? 0) - (a.score ?? 0);
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
@@ -374,6 +390,21 @@ export default function CrmPage() {
             <span className="badge border bg-warning/15 text-warning border-warning/30">
               Due today: {data.summary?.tasks_due_today ?? data.tasks_due_today}
             </span>
+          )}
+          {(data.summary.overdue_followups ?? 0) > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowOverdueOnly(v => !v)}
+              className={`badge border transition-colors ${
+                showOverdueOnly
+                  ? 'bg-destructive text-destructive-foreground border-destructive'
+                  : 'bg-destructive/15 text-destructive border-destructive/30 hover:bg-destructive/25'
+              }`}
+              title="Filter to overdue follow-ups"
+            >
+              <AlertCircle size={10} className="inline mr-1" />
+              {data.summary.overdue_followups} overdue follow-up{data.summary.overdue_followups !== 1 ? 's' : ''}
+            </button>
           )}
         </div>
       )}
@@ -943,6 +974,8 @@ function KanbanCard({ lead, selected, onSelect, nowMs, canEdit, slaStaleDays, sl
   const newDays = (nowMs != null && !lead.last_touch_at)
     ? Math.floor((nowMs - new Date(lead.created_at).getTime()) / (1000 * 60 * 60 * 24))
     : null;
+  const isOverdueFollowup = !isPaused && lead.next_action_at != null
+    && (nowMs != null ? new Date(lead.next_action_at).getTime() < nowMs : false);
 
   function handleDragStart(e: DragEvent) {
     if (!canEdit) return;
@@ -1002,9 +1035,14 @@ function KanbanCard({ lead, selected, onSelect, nowMs, canEdit, slaStaleDays, sl
             SLA
           </span>
         )}
-        {lead.next_action_at && (
+        {lead.next_action_at && !isOverdueFollowup && (
           <span className="px-1.5 py-0.5 rounded-full bg-info/15 text-info">
             next {timeAgo(lead.next_action_at)}
+          </span>
+        )}
+        {isOverdueFollowup && (
+          <span className="px-1.5 py-0.5 rounded-full bg-destructive/15 text-destructive flex items-center gap-1">
+            <AlertCircle size={9} /> overdue
           </span>
         )}
         {(missingEmail || missingCompany || missingIndustry) && (
@@ -1047,6 +1085,8 @@ function LeadRow({ lead, selected, onClick, nowMs, slaStaleDays, slaNewDays }: {
   const newDays = (nowMs != null && !lead.last_touch_at)
     ? Math.floor((nowMs - new Date(lead.created_at).getTime()) / (1000 * 60 * 60 * 24))
     : null;
+  const isOverdueFollowup = !isPaused && lead.next_action_at != null
+    && (nowMs != null ? new Date(lead.next_action_at).getTime() < nowMs : false);
   return (
     <button
       onClick={onClick}
@@ -1109,9 +1149,14 @@ function LeadRow({ lead, selected, onClick, nowMs, slaStaleDays, slaNewDays }: {
               SLA breach
             </span>
           )}
-          {lead.next_action_at && (
+          {lead.next_action_at && !isOverdueFollowup && (
             <span className="px-2 py-0.5 rounded-full bg-info/15 text-info">
               next {timeAgo(lead.next_action_at)}
+            </span>
+          )}
+          {isOverdueFollowup && (
+            <span className="px-2 py-0.5 rounded-full bg-destructive/15 text-destructive flex items-center gap-1">
+              <AlertCircle size={10} /> Overdue follow-up
             </span>
           )}
           {(missingEmail || missingCompany || missingIndustry) && (

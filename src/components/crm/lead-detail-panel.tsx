@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Mail, Linkedin, Clock, ChevronLeft, ChevronRight, Check, XCircle, Save, X, Ban, Pause, Play, Trash2, Edit3, Loader2, ChevronDown, ChevronUp, Send, CheckCircle, MessageSquare, Eye, CalendarCheck, Star, CircleDot } from 'lucide-react';
+import { Mail, Linkedin, Clock, ChevronLeft, ChevronRight, Check, XCircle, Save, X, Ban, Pause, Play, Trash2, Edit3, Loader2, ChevronDown, ChevronUp, Send, CheckCircle, MessageSquare, Eye, CalendarCheck, Star, CircleDot, Inbox, AlertCircle, Info, MailOpen } from 'lucide-react';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { timeAgo } from '@/lib/utils';
 import type { Lead, Sequence } from '@/types';
+import type { UnifiedTimelineItem, TimelineKind } from '@/lib/crm-timeline';
 
 const STAGES = ['new', 'validated', 'approved', 'contacted', 'replied', 'interested', 'booked', 'qualified'] as const;
 
@@ -26,7 +27,8 @@ export type LeadDetailPanelVariant = 'panel' | 'page';
 interface LeadDetail {
   lead: Lead & { pause_outreach?: number };
   sequences: Sequence[];
-  timeline: { id: number; type: string; description: string; timestamp: string }[];
+  /** Unified timeline from API — may be old shape or new shape. */
+  timeline: (UnifiedTimelineItem | { id: number; type: string; description: string; timestamp: string })[];
 }
 
 export function LeadDetailPanel({
@@ -514,19 +516,67 @@ export function LeadDetailPanel({
               <Clock size={12} /> Timeline
             </h4>
             <div className="space-y-3 relative before:absolute before:left-[7px] before:top-2 before:bottom-2 before:w-px before:bg-border">
-              {timeline.map(event => (
-                <div key={event.id} className="flex items-start gap-3 pl-0 relative">
-                  <div className={`w-[15px] h-[15px] rounded-full border-2 border-background shrink-0 z-10 ${
-                    event.type === 'pending_approval' ? 'bg-warning' :
-                    event.type === 'approved' ? 'bg-success' :
-                    'bg-muted'
-                  }`} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs leading-relaxed">{event.description}</p>
-                    <p className="text-[10px] text-muted-foreground">{timeAgo(event.timestamp)}</p>
+              {timeline.map(event => {
+                // Support both old shape (type/description/timestamp) and new shape (kind/label/detail/at)
+                const isNew = 'kind' in event;
+                const kind: TimelineKind | string = isNew ? event.kind : (event as { type: string }).type;
+                const label: string = isNew ? event.label : (event as { description: string }).description;
+                const detail: string = isNew ? event.detail : '';
+                const at: string = isNew ? event.at : (event as { timestamp: string }).timestamp;
+
+                const isInbound = kind === 'inbound_email';
+                const isSent = kind === 'outreach_sent';
+                const isPending = kind === 'outreach_pending' || kind === 'pending_approval';
+                const isApproved = kind === 'outreach_approved' || kind === 'approved';
+                const isCancelled = kind === 'outreach_cancelled' || kind === 'cancelled';
+                const isDiscovery = kind === 'discovery';
+                const isStatus = kind === 'status_change';
+
+                const dotColor = isInbound
+                  ? 'bg-info'
+                  : isSent
+                    ? 'bg-success'
+                    : isPending
+                      ? 'bg-warning'
+                      : isApproved
+                        ? 'bg-success'
+                        : isCancelled
+                          ? 'bg-destructive'
+                          : isDiscovery
+                            ? 'bg-primary/60'
+                            : 'bg-muted';
+
+                const Icon = isInbound
+                  ? MailOpen
+                  : isSent
+                    ? Send
+                    : isPending
+                      ? AlertCircle
+                      : isApproved
+                        ? CheckCircle
+                        : isCancelled
+                          ? XCircle
+                          : isStatus
+                            ? Info
+                            : isDiscovery
+                              ? Inbox
+                              : Clock;
+
+                return (
+                  <div key={event.id} className="flex items-start gap-3 pl-0 relative">
+                    <div className={`w-[15px] h-[15px] rounded-full border-2 border-background shrink-0 z-10 flex items-center justify-center ${dotColor}`}>
+                      <Icon size={8} className="text-background" />
+                    </div>
+                    <div className={`flex-1 min-w-0 rounded-lg px-2 py-1 ${isInbound ? 'bg-info/8 border border-info/20' : ''}`}>
+                      <p className={`text-xs font-medium leading-snug ${isInbound ? 'text-info' : ''}`}>{label}</p>
+                      {detail && (
+                        <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed line-clamp-2">{detail}</p>
+                      )}
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{timeAgo(at)}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

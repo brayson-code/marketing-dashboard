@@ -6,6 +6,8 @@ import type { Lead, Sequence, FunnelStep } from '@/types';
 import { requireApiEditor, requireApiUser } from '@/lib/api-auth';
 import { requireUser } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
+import { mergeTimeline } from '@/lib/crm-timeline';
+import type { SequenceRow, ActivityRow, InboundEmailRow } from '@/lib/crm-timeline';
 
 export const dynamic = "force-dynamic";
 
@@ -44,78 +46,43 @@ export async function GET(request: Request) {
       ORDER BY step ASC, created_at DESC
     ` as unknown as Sequence[];
 
-    // Build timeline from sequences + activity
-    const timeline: { id: number; type: string; description: string; timestamp: string }[] = [];
-    let timelineId = 0;
-
-    for (const seq of sequences) {
-      if (seq.sent_at) {
-        timeline.push({
-          id: ++timelineId,
-          type: 'sequence_sent',
-          description: `Email step ${seq.step}: "${seq.subject || 'No subject'}" sent`,
-          timestamp: seq.sent_at,
-        });
-      }
-      if (seq.status === 'pending_approval') {
-        timeline.push({
-          id: ++timelineId,
-          type: 'pending_approval',
-          description: `Email step ${seq.step}: "${seq.subject || 'No subject'}" awaiting approval`,
-          timestamp: seq.created_at,
-        });
-      }
-      if (seq.status === 'approved') {
-        timeline.push({
-          id: ++timelineId,
-          type: 'approved',
-          description: `Email step ${seq.step}: approved`,
-          timestamp: seq.created_at,
-        });
-      }
-      if (seq.status === 'cancelled') {
-        timeline.push({
-          id: ++timelineId,
-          type: 'cancelled',
-          description: `Email step ${seq.step}: cancelled`,
-          timestamp: seq.created_at,
-        });
-      }
-      if (seq.status === 'queued') {
-        timeline.push({
-          id: ++timelineId,
-          type: 'queued',
-          description: `Email step ${seq.step}: queued`,
-          timestamp: seq.created_at,
-        });
-      }
-    }
-
-    if (lead.created_at) {
-      timeline.push({
-        id: ++timelineId,
-        type: 'discovery',
-        description: `Lead discovered via ${lead.source || 'unknown source'}`,
-        timestamp: lead.created_at,
-      });
-    }
-
     // CRM activity log entries (status/notes updates, etc.)
-    const activityRows = await s`
+    const rawActivityRows = await s`
       SELECT ts, detail FROM activity_log
       WHERE tenant_id = ${tenantId()} AND action = 'crm' AND detail LIKE ${`lead:${id}%`}
       ORDER BY ts DESC LIMIT 50
     ` as unknown as { ts: string | Date; detail: string }[];
-    for (const row of activityRows) {
-      timeline.push({
-        id: ++timelineId,
-        type: 'crm',
-        description: row.detail,
-        timestamp: typeof row.ts === 'string' ? row.ts : new Date(row.ts).toISOString(),
-      });
-    }
+    const activityRows: ActivityRow[] = rawActivityRows.map(r => ({
+      ts: typeof r.ts === 'string' ? r.ts : new Date(r.ts).toISOString(),
+      detail: r.detail,
+    }));
 
-    timeline.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    // Inbound emails from this lead (agentmail_messages.from_addr = lead.email)
+    const inboundEmails: InboundEmailRow[] = lead.email
+      ? (await s`
+          SELECT received_at, from_addr, subject, body_text
+          FROM agentmail_messages
+          WHERE tenant_id = ${tenantId()} AND from_addr = ${lead.email}
+          ORDER BY received_at DESC LIMIT 100
+        ` as unknown as InboundEmailRow[])
+      : [];
+
+    const seqRows: SequenceRow[] = sequences.map(seq => ({
+      id: seq.id,
+      step: seq.step ?? null,
+      subject: seq.subject ?? null,
+      status: seq.status ?? null,
+      sent_at: seq.sent_at ?? null,
+      created_at: seq.created_at,
+    }));
+
+    const timeline = mergeTimeline(
+      seqRows,
+      activityRows,
+      inboundEmails,
+      lead.created_at ?? null,
+      lead.source ?? null,
+    );
 
     return NextResponse.json({ lead, sequences, timeline });
   }
@@ -145,7 +112,7 @@ export async function GET(request: Request) {
   const funnelMap = new Map(funnelRows.map(r => [r.status, Number(r.c)]));
   const funnel: FunnelStep[] = stages.map(name => ({ name, value: funnelMap.get(name) ?? 0 }));
 
-  const [totalRows, avgScoreRows, tierBreakdownRows, pendingApprovalsRows, emailsSentRows, contactedRows, repliedRows] = await Promise.all([
+  const [totalRows, avgScoreRows, tierBreakdownRows, pendingApprovalsRows, emailsSentRows, contactedRows, repliedRows, overdueRows] = await Promise.all([
     s`SELECT COUNT(*) as c FROM leads WHERE tenant_id = ${tenantId()}`,
     s`SELECT AVG(score) as avg FROM leads WHERE tenant_id = ${tenantId()} AND score IS NOT NULL`,
     s`SELECT tier, COUNT(*) as c FROM leads WHERE tenant_id = ${tenantId()} AND tier IS NOT NULL GROUP BY tier ORDER BY tier`,
@@ -153,6 +120,7 @@ export async function GET(request: Request) {
     s`SELECT COUNT(*) as c FROM sequences WHERE tenant_id = ${tenantId()} AND status = 'sent'`,
     s`SELECT COUNT(*) as c FROM leads WHERE tenant_id = ${tenantId()} AND status IN ('contacted','replied','interested','booked','qualified')`,
     s`SELECT COUNT(*) as c FROM leads WHERE tenant_id = ${tenantId()} AND status IN ('replied','interested','booked','qualified')`,
+    s`SELECT COUNT(*) as c FROM leads WHERE tenant_id = ${tenantId()} AND next_action_at < now() AND (pause_outreach IS NULL OR pause_outreach = FALSE OR pause_outreach = 0)`,
   ]);
 
   const totalLeads = Number(totalRows[0]?.c ?? 0);
@@ -163,6 +131,7 @@ export async function GET(request: Request) {
   const contacted = Number(contactedRows[0]?.c ?? 0);
   const replied = Number(repliedRows[0]?.c ?? 0);
   const conversionRate = contacted > 0 ? Math.round((replied / contacted) * 100) : 0;
+  const overdueFollowups = Number(overdueRows[0]?.c ?? 0);
 
   return NextResponse.json({
     leads,
@@ -174,6 +143,7 @@ export async function GET(request: Request) {
       pending_approvals: pendingApprovals,
       emails_sent: emailsSent,
       conversion_rate: conversionRate,
+      overdue_followups: overdueFollowups,
     },
   });
 }
