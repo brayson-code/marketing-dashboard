@@ -53,6 +53,13 @@ export const DOCS_NAV: DocNavGroup[] = [
       { slug: 'your-data', title: 'Your Data', blurb: 'Export everything your workspace created — your data is yours' },
     ],
   },
+  {
+    group: 'Legal',
+    items: [
+      { slug: 'privacy', title: 'Privacy Policy', blurb: 'What data we process, why, and your rights' },
+      { slug: 'terms', title: 'Terms of Service', blurb: 'The rules for using the Command Center' },
+    ],
+  },
 ];
 
 export const DOC_TITLES: Record<string, string> = Object.fromEntries(

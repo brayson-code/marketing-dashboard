@@ -181,7 +181,7 @@ export default function SettingsPage() {
         // Back-compat fallback for older deployments.
         discovered = [
           { id: 'leads', label: 'Leads' },
-          { id: 'openclaw', label: 'OpenClaw' },
+          { id: 'default', label: 'Default' },
         ];
       }
 
@@ -1016,7 +1016,7 @@ export default function SettingsPage() {
           <BrainCircuit size={14} className="text-info" /> Memory Decay Policy
         </h2>
         <p className="text-xs text-muted-foreground">
-          Controls recency decay and prune thresholds for KB-manager per OpenClaw instance.
+          Controls recency decay and prune thresholds for KB-manager per agent instance.
         </p>
         {instances.length === 0 ? (
           <div className="text-sm text-muted-foreground">Loading instances...</div>
@@ -1239,12 +1239,12 @@ export default function SettingsPage() {
           </div>
           <div className="flex items-center justify-between py-2 border-b border-border/30">
             <span className="text-muted-foreground">Agent Discovery</span>
-            <span>Dynamic (from each instance OpenClaw config)</span>
+            <span>Dynamic (from each agent instance config)</span>
           </div>
           <div className="flex items-center justify-between py-2">
             <span className="text-muted-foreground">Notes</span>
             <span className="text-muted-foreground">
-              Models, gateway, and cron wiring are defined by your OpenClaw deployment.
+              Models, gateway, and cron wiring are defined by your deployment configuration.
             </span>
           </div>
         </div>
@@ -1617,25 +1617,28 @@ export default function SettingsPage() {
             </div>
             <div className="flex items-center justify-between py-1">
               <span className="text-muted-foreground">Runtime</span>
-            <span>Next.js 16 + SQLite (WAL)</span>
+            <span>Next.js 16 + Supabase (Postgres)</span>
             </div>
             <div className="flex items-center justify-between py-1">
               <span className="text-muted-foreground">Agent Platform</span>
-            <span>OpenClaw (v2026.3.x compatible)</span>
+            <span>KeyPlayers agents (Anthropic Claude)</span>
             </div>
             <div className="flex items-center justify-between py-1">
-              <span className="text-muted-foreground">License</span>
-            <span>MIT</span>
+              <span className="text-muted-foreground">Legal</span>
+            <span className="flex items-center gap-3">
+              <a href="/docs/privacy" className="text-primary hover:underline">Privacy</a>
+              <a href="/docs/terms" className="text-primary hover:underline">Terms</a>
+            </span>
             </div>
             <div className="flex items-center justify-between py-1">
-              <span className="text-muted-foreground">Source</span>
+              <span className="text-muted-foreground">Website</span>
             <a
-              href="https://github.com/your-org/hermes-dashboard"
+              href="https://keyplayershq.com"
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary hover:underline flex items-center gap-1"
             >
-              GitHub <ExternalLink size={10} />
+              keyplayershq.com <ExternalLink size={10} />
             </a>
           </div>
         </div>
