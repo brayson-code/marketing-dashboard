@@ -16,6 +16,7 @@ import { useDashboard } from '@/store';
 import { timeAgo } from '@/lib/utils';
 import type { Lead, FunnelStep } from '@/types';
 import { LeadDetailPanel } from '@/components/crm/lead-detail-panel';
+import { ActivateStaleLeadsBanner } from '@/components/cron/activate-stale-leads-banner';
 
 interface CrmData {
   leads: Lead[];
@@ -307,6 +308,7 @@ export default function CrmPage() {
 
   return (
     <div className="space-y-6 animate-in">
+      <ActivateStaleLeadsBanner />
       {createOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <button

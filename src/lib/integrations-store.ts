@@ -129,6 +129,17 @@ function decryptCandidates(): Buffer[] {
   return raws.map((r) => createHash('sha256').update(r).digest());
 }
 
+// Exported so other secret stores (e.g. src/lib/mcp-store.ts) reuse the SAME
+// AES-256-GCM-under-the-shared-secret scheme rather than inventing new crypto.
+// Format + key derivation are identical to what this module uses internally.
+export function encryptSecret(plain: string): string {
+  return encrypt(plain);
+}
+
+export function decryptSecret(blob: string): string {
+  return decrypt(blob);
+}
+
 function encrypt(plain: string): string {
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', encryptionKey(), iv);

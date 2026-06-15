@@ -16,6 +16,8 @@ import { getDefPrompt, getSpawnSpec } from './agent-defs';
 import { heartbeat } from './heartbeat';
 import { getOwnedGoalForAgent, observeMessage } from './goal-observer';
 import { assertWithinBudget, BudgetExceededError } from './usage-cap';
+import { buildMcpConfig, MCP_BETA, hasMcpBlock } from './mcp-connector';
+import { logAudit } from './audit';
 
 const STATE_DIR = join(process.cwd(), 'state/keyplayer');
 const SUBAGENT_DIR = join(process.cwd(), 'agents/sub-agents');
@@ -454,7 +456,43 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
   // than reaching the API as an invalid model id. Callers owning a model
   // override should keep it compatible with spec.maxTokens.
   const runModel = opts?.model?.trim() || spec.model;
+
+  // MCP HUB — give this run the tenant's enabled MCP servers, IF any. When the
+  // tenant has no enabled server (the default + common case) buildMcpConfig()
+  // returns null and the request below is byte-identical to before this feature
+  // shipped — no mcp_servers, no beta header, no extra tools. Tools:'none' callers
+  // (single-turn, tool-free) stay tool-free; MCP tools are only meaningful in a
+  // multi-turn run. Best-effort: never block a run on MCP config.
+  const mcp = opts?.tools === 'none' ? null : await buildMcpConfig().catch(() => null);
+  if (mcp) {
+    void logAudit({ actor: null, action: 'mcp.run.enabled', target: type, detail: { servers: mcp.serverNames, task_id: taskId } }).catch(() => {});
+  }
+
   const turn = async (): Promise<Anthropic.Message> => {
+    // Two distinct call shapes: the plain stream (unchanged) when there's no MCP
+    // config, and the beta stream (mcp_servers + mcp_toolset + beta header) when
+    // there is. Splitting them keeps the no-MCP path identical and guarantees a
+    // bad beta shape can never reach the common case.
+    if (mcp) {
+      try {
+        const stream = client.beta.messages.stream({
+          model: runModel,
+          max_tokens: spec.maxTokens,
+          system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
+          tools: [...tools, ...mcp.toolsets] as Anthropic.Beta.Messages.BetaToolUnion[],
+          mcp_servers: mcp.mcp_servers,
+          messages: messages as Anthropic.Beta.Messages.BetaMessageParam[],
+          betas: [MCP_BETA],
+        });
+        stream.on('text', onDelta);
+        return (await stream.finalMessage()) as unknown as Anthropic.Message;
+      } catch (err) {
+        // Any failure building/sending the MCP-augmented call (e.g. beta-shape
+        // drift) degrades to the normal call rather than failing the whole run.
+        console.error(`[mcp] beta call failed for ${type}, falling back:`, (err as Error).message);
+        // fall through to the plain stream below
+      }
+    }
     const stream = client.messages.stream({
       model: runModel,
       max_tokens: spec.maxTokens,
@@ -566,7 +604,19 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
               (SMS_TOOL_NAMES as readonly string[]).includes(b.name)
             ),
         );
-        if (handledToolUses.length === 0) break;
+        if (handledToolUses.length === 0) {
+          // MCP connector tools (mcp_tool_use / mcp_tool_result) execute
+          // SERVER-SIDE — like web_search — so they are NOT unhandled user tools.
+          // If the turn touched MCP, continue it (re-send) so the server can
+          // finish rather than breaking with no text; otherwise it really is an
+          // unknown/unhandled tool and we stop.
+          if (mcp && hasMcpBlock(response.content)) {
+            messages.push({ role: 'assistant', content: response.content });
+            response = await turn();
+            continue;
+          }
+          break;
+        }
 
         messages.push({ role: 'assistant', content: response.content });
         const toolResults = await Promise.all(handledToolUses.map((tu) => {

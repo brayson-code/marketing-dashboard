@@ -17,6 +17,8 @@ import { launchResearchCampaign } from './campaign-intake';
 import { runAndChain } from './waves';
 import { listSpawnableSpecs, getDefPrompt } from './agent-defs';
 import { getAnthropicKey, NO_ANTHROPIC_KEY_MESSAGE } from './anthropic-key';
+import { buildMcpConfig, MCP_BETA, hasMcpBlock, type McpConfig } from './mcp-connector';
+import { logAudit } from './audit';
 
 export interface OrchestratorUsage { input: number; output: number; cost_usd: number; model: string }
 
@@ -285,6 +287,7 @@ async function callClaude(
   template: string,
   memory: string | null,
   messages: Anthropic.MessageParam[],
+  mcp: McpConfig | null,
 ): Promise<Anthropic.Message> {
   // Sonnet 4.6, thinking disabled. V1: the structured operating loop in agent.md
   // gives enough scaffolding without needing extended thinking, and disabling it
@@ -341,11 +344,36 @@ async function callClaude(
         'Every send is audit-logged.',
     });
   }
+  const tools = await buildTools(gwAllowed, smsOn);
+
+  // MCP HUB — when the tenant has >=1 enabled MCP server, add mcp_servers + the
+  // mcp_toolset entries + the connector beta header so KeyPlayer can call those
+  // servers' tools (Anthropic runs them server-side, like web_search). When `mcp`
+  // is null (the default + common case) this is the EXACT request as before — no
+  // mcp_servers, no beta header, no extra tools, no behavior change. A bad beta
+  // shape degrades to the normal call (caught here, then again by the caller).
+  if (mcp) {
+    try {
+      return (await client.beta.messages.create({
+        model: MODEL,
+        max_tokens: 8000,
+        system: systemBlocks,
+        tools: [...tools, ...mcp.toolsets] as Anthropic.Beta.Messages.BetaToolUnion[],
+        mcp_servers: mcp.mcp_servers,
+        messages: messages as Anthropic.Beta.Messages.BetaMessageParam[],
+        betas: [MCP_BETA],
+      })) as unknown as Anthropic.Message;
+    } catch (err) {
+      console.error('[mcp] beta call failed for keyplayer, falling back:', (err as Error).message);
+      // fall through to the normal call
+    }
+  }
+
   return client.messages.create({
     model: MODEL,
     max_tokens: 8000,
     system: systemBlocks,
-    tools: await buildTools(gwAllowed, smsOn),
+    tools,
     messages,
   });
 }
@@ -555,6 +583,14 @@ export async function runOrchestrator(): Promise<{ ok: true; text: string; usage
   const memory = await loadCurrentMemory();
   const messages = await loadRecentHistory();
 
+  // MCP HUB — the tenant's enabled MCP servers for THIS run (null when none, which
+  // is the default + common case). Built once and threaded through every callClaude
+  // turn. Best-effort; never blocks the run.
+  const mcp = await buildMcpConfig().catch(() => null);
+  if (mcp) {
+    void logAudit({ actor: null, action: 'mcp.run.enabled', target: 'keyplayer', detail: { servers: mcp.serverNames } }).catch(() => {});
+  }
+
   if (messages.length === 0) return { ok: false, error: 'No conversation history to respond to' };
   if (messages[messages.length - 1].role !== 'user') {
     return { ok: false, error: 'Latest message is not from the user; nothing to respond to' };
@@ -578,7 +614,7 @@ export async function runOrchestrator(): Promise<{ ok: true; text: string; usage
   };
 
   try {
-    let response = await callClaude(client, template, memory, messages);
+    let response = await callClaude(client, template, memory, messages, mcp);
     let safetyCounter = 0;
     accumulateUsage(response);
 
@@ -588,8 +624,10 @@ export async function runOrchestrator(): Promise<{ ok: true; text: string; usage
       if (response.stop_reason === 'max_tokens') break;
 
       if (response.stop_reason === 'pause_turn') {
+        // web_search AND MCP connector tools both run server-side and surface as
+        // pause_turn; re-send to resume the paused turn.
         messages.push({ role: 'assistant', content: response.content });
-        response = await callClaude(client, template, memory, messages);
+        response = await callClaude(client, template, memory, messages, mcp);
         accumulateUsage(response);
         continue;
       }
@@ -599,7 +637,19 @@ export async function runOrchestrator(): Promise<{ ok: true; text: string; usage
           (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use' && CLIENT_TOOL_NAMES.has(b.name),
         );
 
-        if (clientToolUses.length === 0) break;
+        if (clientToolUses.length === 0) {
+          // mcp_tool_use / mcp_tool_result blocks execute SERVER-SIDE (like
+          // web_search) — they are NOT unhandled client tools. If the turn touched
+          // MCP, continue it so the server can finish rather than breaking with no
+          // text; otherwise it's a genuinely unhandled tool and we stop.
+          if (mcp && hasMcpBlock(response.content)) {
+            messages.push({ role: 'assistant', content: response.content });
+            response = await callClaude(client, template, memory, messages, mcp);
+            accumulateUsage(response);
+            continue;
+          }
+          break;
+        }
 
         messages.push({ role: 'assistant', content: response.content });
 
@@ -607,7 +657,7 @@ export async function runOrchestrator(): Promise<{ ok: true; text: string; usage
           clientToolUses.map((tu) => handleClientToolUse(tu, orchestratorTaskId)),
         );
         messages.push({ role: 'user', content: toolResults });
-        response = await callClaude(client, template, memory, messages);
+        response = await callClaude(client, template, memory, messages, mcp);
         accumulateUsage(response);
         continue;
       }

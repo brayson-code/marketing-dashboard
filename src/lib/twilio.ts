@@ -74,13 +74,32 @@ export async function isTwilioConnected(): Promise<boolean> {
 
 const E164 = /^\+[1-9]\d{6,14}$/;
 
+/**
+ * Best-effort normalisation of a loosely-formatted phone number to E.164.
+ * Strips spaces, dashes, parentheses, and dots first, then applies rules:
+ *   • already starts with +  → keep as-is
+ *   • starts with 00         → replace 00 prefix with +
+ *   • exactly 10 digits      → assume US (+1 prefix)
+ *   • 11 digits starting 1   → prefix with +
+ *   • anything else          → return unchanged (E164 validator will reject)
+ */
+export function normalizeToE164(input: string): string {
+  // Strip whitespace and common formatting characters.
+  const stripped = input.replace(/[\s\-().]/g, '');
+  if (stripped.startsWith('+')) return stripped;
+  if (stripped.startsWith('00')) return `+${stripped.slice(2)}`;
+  if (/^\d{10}$/.test(stripped)) return `+1${stripped}`;
+  if (/^1\d{10}$/.test(stripped)) return `+${stripped}`;
+  return stripped;
+}
+
 /** Send an SMS via the tenant's Twilio account. Never throws — a failure is a
  *  normal { sent:false, reason } outcome. The auth token is never logged. */
 export async function sendSms(opts: { to: string; body: string }): Promise<SendSmsResult> {
-  const to = (opts.to ?? '').trim();
+  const to = normalizeToE164((opts.to ?? '').trim());
   const body = (opts.body ?? '').trim();
   if (!E164.test(to)) {
-    return { sent: false, reason: `recipient "${to}" is not a valid E.164 phone number (e.g. +15551234567)` };
+    return { sent: false, reason: `recipient "${opts.to?.trim()}" could not be normalised to a valid E.164 phone number (e.g. +15551234567 or (415) 555-0123)` };
   }
   if (!body) return { sent: false, reason: 'message body is empty' };
 

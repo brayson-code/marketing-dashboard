@@ -3,6 +3,7 @@
 import { Link2 } from 'lucide-react';
 import ConnectPanel from '@/components/connections/connect-panel';
 import { IntegrationsPanel } from '@/components/connections/integrations-panel';
+import { McpPanel } from '@/components/connections/mcp-panel';
 
 // Single home for everything the workspace connects to:
 //  1. Social accounts — one-tap OAuth (Nango) → ConnectPanel
@@ -25,6 +26,10 @@ export default function ConnectionsPage() {
       <div className="border-t border-border/50" />
 
       <IntegrationsPanel />
+
+      <div className="border-t border-border/50" />
+
+      <McpPanel />
     </div>
   );
 }

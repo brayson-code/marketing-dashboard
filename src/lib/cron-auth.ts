@@ -6,7 +6,14 @@ import { NextResponse } from 'next/server';
 // If CRON_SECRET is unset (local dev), we allow the call.
 export function verifyCron(request: Request): NextResponse | null {
   const secret = process.env.CRON_SECRET?.trim();
-  if (!secret) return null; // dev convenience — set CRON_SECRET in prod
+  if (!secret) {
+    // Fail CLOSED in production: an unset secret must not leave /api/cron/* (a
+    // public route) callable by anyone. Only local dev gets the skip-convenience.
+    if (process.env.NODE_ENV === 'production') {
+      return NextResponse.json({ error: 'CRON_SECRET not configured' }, { status: 503 });
+    }
+    return null;
+  }
   const auth = request.headers.get('authorization');
   if (auth === `Bearer ${secret}`) return null;
   return NextResponse.json({ error: 'Unauthorized cron' }, { status: 401 });

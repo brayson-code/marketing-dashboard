@@ -7,6 +7,7 @@
     { "path": "/api/cron/compact", "schedule": "0 7 * * *" },
     { "path": "/api/cron/dispatch", "schedule": "0 * * * *" },
     { "path": "/api/cron/triage", "schedule": "0 */12 * * *" },
-    { "path": "/api/cron/cadence", "schedule": "0 * * * *" }
+    { "path": "/api/cron/cadence", "schedule": "0 * * * *" },
+    { "path": "/api/cron/stale-leads", "schedule": "0 13 * * *" }
   ]
 }

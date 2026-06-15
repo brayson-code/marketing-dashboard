@@ -33,13 +33,15 @@ export function smsToolDefinitions(): Anthropic.Messages.ToolUnion[] {
       description:
         'Send a REAL text message (SMS) via the connected Twilio account. This sends an ' +
         'actual text to the given phone number and costs money — use it only when the owner ' +
-        'asked you to text someone, or for a genuine time-sensitive notification. The number ' +
-        'must be E.164 format (e.g. +15551234567). Returns the Twilio message id on success.',
+        'asked you to text someone, or for a genuine time-sensitive notification. ' +
+        'Accepts common phone number formats (e.g. (415) 555-0123, 415-555-0123, 14155550123) ' +
+        'and automatically normalises them to E.164 — no need to format the number yourself. ' +
+        'Returns the Twilio message id on success.',
       input_schema: {
         type: 'object',
         required: ['to', 'body'],
         properties: {
-          to: { type: 'string', description: 'Recipient phone number in E.164 format, e.g. +15551234567.' },
+          to: { type: 'string', description: 'Recipient phone number. Accepts common formats such as (415) 555-0123, 415-555-0123, +14155550123, or 14155550123 — automatically normalised to E.164.' },
           body: { type: 'string', description: 'The text message content.' },
         },
       },
