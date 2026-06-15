@@ -331,7 +331,7 @@ async function callClaude(
   });
 }
 
-const CLIENT_TOOL_NAMES = new Set([
+const CLIENT_TOOL_NAMES = new Set<string>([
   'notify_owner',
   'spawn_subagent',
   'launch_campaign',
@@ -346,6 +346,9 @@ const CLIENT_TOOL_NAMES = new Set([
   'confirm_meeting_draft',
   'kg_remember',
   'kg_query',
+  // Google Workspace tools (present only when gated on) must be recognized here
+  // too, or the loop won't process them and the turn ends with no text reply.
+  ...GOOGLE_TOOL_NAMES,
 ]);
 
 async function handleClientToolUse(
