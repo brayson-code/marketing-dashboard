@@ -74,7 +74,8 @@
       "WebFetch(domain:www.saasui.design)",
       "WebFetch(domain:eastondev.com)",
       "WebFetch(domain:celvix.co)",
-      "WebFetch(domain:supabase.com)"
+      "WebFetch(domain:supabase.com)",
+      "mcp__claude_ai_Supabase__get_logs"
     ]
   }
 }

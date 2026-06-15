@@ -143,8 +143,8 @@ export async function sendSms(opts: { to: string; body: string }): Promise<SendS
       // Record the outbound for history + the daily-limit count. Best-effort.
       try {
         await sql()`
-          INSERT INTO public.sms_messages (tenant_id, direction, message_sid, from_number, to_number, body, status)
-          VALUES (${tenantId()}, 'out', ${data.sid}, ${cfg.from_number}, ${to}, ${body}, ${'sent'})
+          INSERT INTO public.sms_messages (tenant_id, direction, channel, message_sid, from_number, to_number, body, status)
+          VALUES (${tenantId()}, 'out', 'sms', ${data.sid}, ${cfg.from_number}, ${to}, ${body}, ${'sent'})
         `;
       } catch { /* non-blocking */ }
       return { sent: true, sid: data.sid };

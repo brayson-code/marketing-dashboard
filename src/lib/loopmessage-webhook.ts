@@ -3,7 +3,8 @@ import { sql, jsonb, tenantId } from '@/lib/db/client';
 import { runWithTenant, currentUserId } from '@/lib/tenant';
 import { createNotification } from '@/lib/notifications';
 import { runOrchestrator } from '@/lib/orchestrator';
-import { sendIMessage } from '@/lib/loopmessage';
+import { sendIMessage, getOwnerPhone } from '@/lib/loopmessage';
+import { normalizeToE164 } from '@/lib/twilio';
 import { parseIntent, executeIntent } from '@/lib/intents';
 import type { Attachment } from '@/lib/vision';
 
@@ -98,6 +99,32 @@ export async function processLoopMessageWebhook(request: Request, expectedSecret
   const attachments = extractAttachments(body);
 
   if (eventType === 'message_inbound' && (text || attachments.length > 0)) {
+    // Owner vs contact: a reply from someone OTHER than the owner is a lead/contact
+    // answering an agent-sent iMessage — route it to the unified Engagement inbox
+    // (sms_messages, channel='imessage') and do NOT run the owner orchestrator.
+    // We only divert when we can positively tell it's not the owner (owner phone
+    // known AND different); otherwise we keep the existing owner-conversation path.
+    const ownerPhone = getOwnerPhone();
+    const normContact = contact ? normalizeToE164(contact) : null;
+    const isContactReply = !!ownerPhone && !!normContact && normalizeToE164(ownerPhone) !== normContact;
+    if (isContactReply) {
+      await sql()`
+        INSERT INTO public.sms_messages (tenant_id, direction, channel, message_sid, from_number, to_number, body, status)
+        VALUES (
+          ${tenantId()}, 'in', 'imessage', ${messageId ?? null}, ${normContact},
+          ${process.env.LOOPMESSAGE_SENDER_NAME ?? 'imessage'}, ${String(text ?? '')}, 'received'
+        )
+      `;
+      await createNotification({
+        type: 'sms_inbound',
+        severity: 'info',
+        title: `New iMessage from ${contact}`,
+        message: String(text ?? '').slice(0, 300),
+        data: { from: contact, channel: 'imessage', message_id: messageId },
+      });
+      return NextResponse.json({ ok: true, captured: true, mode: 'contact_imessage' });
+    }
+
     await sql()`
       INSERT INTO boardroom_messages (tenant_id, direction, sender, recipient, text, loop_message_id, status, metadata, attachments)
       VALUES (

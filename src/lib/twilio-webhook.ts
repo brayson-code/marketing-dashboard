@@ -67,8 +67,8 @@ export async function handleTwilioInbound(request: Request, rawPath: string): Pr
   // Store the inbound message (Engagement inbox reads this).
   try {
     await sql()`
-      INSERT INTO public.sms_messages (tenant_id, direction, message_sid, from_number, to_number, body, status)
-      VALUES (${tenantId()}, 'in', ${sid}, ${from}, ${to}, ${text}, ${'received'})
+      INSERT INTO public.sms_messages (tenant_id, direction, channel, message_sid, from_number, to_number, body, status)
+      VALUES (${tenantId()}, 'in', 'sms', ${sid}, ${from}, ${to}, ${text}, ${'received'})
     `;
   } catch {
     return { ok: false, status: 500, reason: 'store failed' };

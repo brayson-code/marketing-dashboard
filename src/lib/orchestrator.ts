@@ -330,18 +330,20 @@ async function callClaude(
         "They act on the owner's real connected Google account; every write is audit-logged.",
     });
   }
-  // SMS capability note — only when Twilio is connected (same prompt-awareness
-  // reason as Google: the base skills list doesn't mention it).
+  // Messaging capability note — only when a provider is connected (same
+  // prompt-awareness reason as Google: the base skills list doesn't mention it).
   const smsOn = await smsAllowed().catch(() => false);
   if (smsOn) {
     systemBlocks.push({
       type: 'text',
       text:
-        '# Twilio SMS is connected\n' +
-        'You can send a real text message via the `sms_send` tool (to a phone number in ' +
-        'E.164 format, e.g. +15551234567). It sends an actual SMS that costs money — use it ' +
-        'when the owner asks you to text someone or for a genuine time-sensitive alert. ' +
-        'Every send is audit-logged.',
+        '# Messaging is connected\n' +
+        'You can send a real text message to a contact via the `sms_send` tool (to a phone ' +
+        'number, any common format — it normalises to E.164). It routes over the workspace’s ' +
+        'connected provider — Twilio SMS and/or LoopMessage iMessage — choosing the channel ' +
+        'automatically, so just pass `to` and `body` (do not set `channel` unless you must force ' +
+        'one). It sends a real message that costs money — use it when the owner asks you to text ' +
+        'someone or for a genuine time-sensitive alert. Every send is audit-logged.',
     });
   }
   const tools = await buildTools(gwAllowed, smsOn);

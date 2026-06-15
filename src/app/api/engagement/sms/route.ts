@@ -11,6 +11,7 @@ export const dynamic = 'force-dynamic';
 interface SmsRow {
   id: number;
   direction: 'in' | 'out';
+  channel: string | null;
   from_number: string | null;
   to_number: string | null;
   body: string | null;
@@ -20,7 +21,7 @@ interface SmsRow {
 
 interface SmsThread {
   contact: string;
-  messages: Array<{ id: number; direction: 'in' | 'out'; body: string; created_at: string }>;
+  messages: Array<{ id: number; direction: 'in' | 'out'; channel: 'sms' | 'imessage'; body: string; created_at: string }>;
   latest_at: string;
 }
 
@@ -28,7 +29,7 @@ export async function GET() {
   enterTenant(await resolveTenant());
 
   const rows = (await sql()`
-    SELECT id, direction, from_number, to_number, body, status, created_at
+    SELECT id, direction, channel, from_number, to_number, body, status, created_at
     FROM public.sms_messages
     WHERE tenant_id = ${tenantId()}
     ORDER BY created_at DESC, id DESC
@@ -46,6 +47,7 @@ export async function GET() {
     threads.get(contact)!.messages.push({
       id: r.id,
       direction: r.direction,
+      channel: r.channel === 'imessage' ? 'imessage' : 'sms',
       body: r.body ?? '',
       created_at: createdAt,
     });

@@ -1,5 +1,6 @@
 import { sql, jsonb, tenantId } from './db/client';
 import { mdToPlainText } from './md-to-text';
+import { getDecryptedSecret } from './integrations-store';
 
 const SEND_URL = 'https://a.loopmessage.com/api/v1/message/send/';
 
@@ -69,4 +70,78 @@ export async function sendIMessage(rawText: string, opts: SendIMessageOptions = 
   `;
 
   return { ok: true, messageId, status };
+}
+
+// ─── Per-tenant connection + contact messaging ────────────────────────────────
+// The above sendIMessage() is the owner↔agent Boardroom lane (env-keyed, HQ).
+// The below is the CONTACT-messaging lane used by the provider router
+// (src/lib/messaging.ts): per-tenant LoopMessage creds, recorded to sms_messages
+// so iMessage threads show up in the same Engagement inbox as SMS.
+
+export interface LoopMessageConfig { auth_key: string; sender_name?: string }
+
+/** This tenant's LoopMessage credentials — its own connection first, HQ env as a
+ *  fallback (so the platform owner's account still works without a tenant row). */
+export async function getLoopMessageConfig(): Promise<LoopMessageConfig | null> {
+  try {
+    const s = (await getDecryptedSecret('loopmessage')) as Partial<{ auth_key: string; sender_name: string }> | null;
+    const authKey = s?.auth_key?.trim();
+    if (authKey) return { auth_key: authKey, sender_name: s?.sender_name?.trim() || process.env.LOOPMESSAGE_SENDER_NAME };
+  } catch {
+    /* fall through to env */
+  }
+  const envKey = process.env.LOOPMESSAGE_AUTH_KEY?.trim();
+  if (envKey) return { auth_key: envKey, sender_name: process.env.LOOPMESSAGE_SENDER_NAME };
+  return null;
+}
+
+/** Cheap connection check — no API call. */
+export async function isLoopMessageConnected(): Promise<boolean> {
+  return (await getLoopMessageConfig()) !== null;
+}
+
+export interface SendContactResult { sent: boolean; sid?: string; reason?: string }
+
+/** Send an iMessage to an arbitrary contact and record it to the unified
+ *  sms_messages inbox (channel='imessage'). Never throws — a failure is a normal
+ *  { sent:false, reason } outcome. */
+export async function sendIMessageToContact(opts: { to: string; body: string }): Promise<SendContactResult> {
+  const to = (opts.to ?? '').trim();
+  const text = mdToPlainText((opts.body ?? '').trim());
+  if (!to) return { sent: false, reason: 'recipient is empty' };
+  if (!text) return { sent: false, reason: 'message body is empty' };
+
+  const cfg = await getLoopMessageConfig();
+  if (!cfg) return { sent: false, reason: 'iMessage (LoopMessage) is not connected for this workspace' };
+
+  const payload: Record<string, unknown> = { contact: to, text };
+  if (cfg.sender_name) payload.sender_name = cfg.sender_name;
+
+  let res: Response;
+  try {
+    res = await fetch(SEND_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: cfg.auth_key },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    return { sent: false, reason: `LoopMessage unreachable — ${(err as Error).message}` };
+  }
+
+  const respText = await res.text();
+  let parsed: Record<string, unknown> = {};
+  try { parsed = JSON.parse(respText); } catch { /* keep empty */ }
+  if (!res.ok) {
+    return { sent: false, reason: (parsed.message as string) || respText.slice(0, 200) || `LoopMessage error (HTTP ${res.status})` };
+  }
+
+  const messageId = (parsed.message_id as string) || (parsed.id as string) || `loop-${Date.now()}`;
+  try {
+    await sql()`
+      INSERT INTO public.sms_messages (tenant_id, direction, channel, message_sid, from_number, to_number, body, status)
+      VALUES (${tenantId()}, 'out', 'imessage', ${messageId}, ${cfg.sender_name ?? 'imessage'}, ${to}, ${text}, ${(parsed.status as string) ?? 'sent'})
+    `;
+  } catch { /* non-blocking */ }
+
+  return { sent: true, sid: messageId };
 }

@@ -8,6 +8,7 @@ import { Smartphone, Send, Inbox, Loader2, AlertCircle } from 'lucide-react';
 interface SmsMsg {
   id: number;
   direction: 'in' | 'out';
+  channel?: 'sms' | 'imessage';
   body: string;
   created_at: string;
 }
@@ -203,7 +204,7 @@ function ThreadPane({ thread, onSent }: ThreadPaneProps) {
                   className="text-[10px] mt-1"
                   style={{ opacity: 0.7, textAlign: isOut ? 'right' : 'left' }}
                 >
-                  {formatTime(m.created_at)}
+                  {m.channel === 'imessage' ? 'iMessage · ' : ''}{formatTime(m.created_at)}
                 </div>
               </div>
             </div>

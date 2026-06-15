@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import {
   Settings, Database, Shield, Info, ExternalLink,
-  RefreshCw, Trash2, Users, UserPlus, KeyRound, BrainCircuit, BellRing, Scale, Gauge, Download, FolderOpen,
+  RefreshCw, Trash2, Users, UserPlus, KeyRound, BrainCircuit, BellRing, Scale, Gauge, Download, FolderOpen, MessagesSquare,
 } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { WalkthroughSettings } from '@/components/walkthrough/walkthrough-settings';
@@ -159,6 +159,11 @@ export default function SettingsPage() {
   const [googleActions, setGoogleActions] = useState<GoogleActionsState | null>(null);
   const [savingGoogleActions, setSavingGoogleActions] = useState(false);
 
+  // Messaging provider (Twilio SMS vs LoopMessage iMessage) state
+  interface MessagingState { provider: 'twilio' | 'loopmessage'; autoRoute: boolean; twilioConnected: boolean; loopConnected: boolean }
+  const [messaging, setMessaging] = useState<MessagingState | null>(null);
+  const [savingMessaging, setSavingMessaging] = useState(false);
+
   useEffect(() => {
     let alive = true;
 
@@ -254,6 +259,13 @@ export default function SettingsPage() {
     fetch('/api/google-actions', { cache: 'no-store' })
       .then((r) => r.json())
       .then((data: GoogleActionsState) => setGoogleActions(data))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/messaging-settings', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((data: MessagingState) => setMessaging(data))
       .catch(() => {});
   }, []);
 
@@ -521,6 +533,25 @@ export default function SettingsPage() {
       toast.error((err as Error).message);
     } finally {
       setSavingGoogleActions(false);
+    }
+  }
+
+  async function saveMessaging(patch: { provider?: 'twilio' | 'loopmessage'; autoRoute?: boolean }) {
+    setSavingMessaging(true);
+    try {
+      const res = await fetch('/api/messaging-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save messaging settings');
+      setMessaging(data);
+      toast.success('Messaging settings saved');
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setSavingMessaging(false);
     }
   }
 
@@ -887,6 +918,88 @@ export default function SettingsPage() {
                   : googleActions.enabled
                     ? 'Agents may create and edit Google Docs, Sheets, and Drive folders'
                     : 'Google Workspace actions are off — agents cannot touch your account'}
+              </span>
+            </label>
+          </div>
+        )}
+      </div>
+
+      {/* Messaging provider */}
+      <div className="panel p-5 space-y-4">
+        <h2 className="text-sm font-medium flex items-center gap-2">
+          <MessagesSquare size={14} className="text-primary" /> Messaging provider
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          When your agents (or you) text a contact, choose which provider sends it —{' '}
+          <strong>Twilio SMS</strong> or <strong>LoopMessage iMessage</strong>. Connect a
+          provider on the Connections page first. With auto-route on and both connected, contacts
+          known to be on iMessage get a blue-bubble iMessage; everyone else gets SMS.
+        </p>
+        {messaging === null ? (
+          <div className="text-sm text-muted-foreground">Loading...</div>
+        ) : (
+          <div className="space-y-4">
+            {!messaging.twilioConnected && !messaging.loopConnected && (
+              <div className="rounded-lg border border-warning/40 bg-warning/5 px-3 py-2 text-xs text-warning">
+                No messaging provider is connected. Connect Twilio and/or LoopMessage on the
+                Connections page, then choose a default here.
+              </div>
+            )}
+
+            {/* Default provider */}
+            <div className="space-y-1.5">
+              <span className="text-xs text-muted-foreground">Default provider</span>
+              <div className="flex gap-2">
+                {([
+                  { key: 'twilio' as const, label: 'Twilio SMS', connected: messaging.twilioConnected },
+                  { key: 'loopmessage' as const, label: 'LoopMessage iMessage', connected: messaging.loopConnected },
+                ]).map((p) => (
+                  <button
+                    key={p.key}
+                    type="button"
+                    disabled={!p.connected || savingMessaging}
+                    onClick={() => saveMessaging({ provider: p.key })}
+                    className={[
+                      'rounded-lg px-3 py-2 text-sm border transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
+                      messaging.provider === p.key
+                        ? 'bg-primary/15 border-primary/40 text-primary'
+                        : 'bg-muted/20 border-border text-muted-foreground hover:text-foreground hover:bg-muted/40',
+                    ].join(' ')}
+                  >
+                    {p.label}
+                    {!p.connected && <span className="ml-1 text-[10px] opacity-70">(not connected)</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Auto-route toggle */}
+            <label className="flex items-center gap-3 cursor-pointer select-none">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={messaging.autoRoute}
+                disabled={savingMessaging}
+                onClick={() => saveMessaging({ autoRoute: !messaging.autoRoute })}
+                className={[
+                  'relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent',
+                  'transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
+                  messaging.autoRoute ? 'bg-primary' : 'bg-muted',
+                ].join(' ')}
+                style={{ transition: 'background-color var(--t-press, 120ms) var(--ease-out, ease-out)' }}
+              >
+                <span
+                  className="pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow"
+                  style={{
+                    transform: messaging.autoRoute ? 'translateX(16px)' : 'translateX(0)',
+                    transition: 'transform var(--t-press, 120ms) var(--ease-out, ease-out)',
+                  }}
+                />
+              </button>
+              <span className="text-sm">
+                {messaging.autoRoute
+                  ? 'Auto-route to iMessage for known iMessage contacts'
+                  : 'Always use the default provider'}
               </span>
             </label>
           </div>
