@@ -25,41 +25,52 @@ interface AgentLite { id: string; name: string; role: string; description: strin
 // Canonical nav — kept in lockstep with src/components/layout/nav-rail.tsx so
 // the palette can take you anywhere the rail can, plus a few deep links to
 // per-agent memory views you can't get to from the rail directly.
+// Mirrors the live nav rail (src/components/layout/nav-rail.tsx) — keep in sync
+// when nav labels/routes change so the ⌘K palette never goes stale.
 const NAV_ITEMS: Array<{ label: string; path: string; icon: typeof Gauge; group: string }> = [
-  // CORE
-  { label: 'Overview',     path: '/',                  icon: Gauge,         group: 'Core' },
-  { label: 'Agents',       path: '/agents/squads',     icon: Bot,           group: 'Core' },
-  // Inbox retired — comes back when AgentMail/Instantly land.
-  { label: 'Boardroom',    path: '/boardroom',         icon: MessagesSquare,group: 'Core' },
-  { label: 'Tasks',        path: '/tasks',             icon: Activity,      group: 'Core' },
-  { label: 'Drafts',       path: '/drafts',            icon: Inbox,         group: 'Core' },
-  { label: 'Campaigns',    path: '/campaigns',         icon: Waves,         group: 'Core' },
-  { label: 'Missions',     path: '/missions',          icon: Rocket,        group: 'Core' },
-  { label: 'Goals',        path: '/goals',             icon: Target,        group: 'Core' },
-  // OPERATE
-  { label: 'Content',      path: '/content',           icon: PenLine,       group: 'Operate' },
-  { label: 'Library',      path: '/content/library',   icon: FolderOpen,    group: 'Operate' },
-  { label: 'Engagement',   path: '/engagement',        icon: MessageCircle, group: 'Operate' },
-  { label: 'Outreach',     path: '/outreach',          icon: Mail,          group: 'Operate' },
-  { label: 'CRM',          path: '/crm',               icon: Contact,       group: 'Operate' },
-  { label: 'Automations',  path: '/automations',       icon: Zap,           group: 'Operate' },
+  // HOME
+  { label: 'Overview',     path: '/',                  icon: Gauge,         group: 'Home' },
+  { label: 'Tasks',        path: '/tasks',             icon: Activity,      group: 'Home' },
+  { label: 'Approvals',    path: '/drafts',            icon: Inbox,         group: 'Home' },
+  { label: 'Goals',        path: '/goals',             icon: Target,        group: 'Home' },
+  // AGENTS
+  { label: 'Agents',       path: '/agents/squads',     icon: Bot,           group: 'Agents' },
+  { label: 'Boardroom',    path: '/boardroom',         icon: MessagesSquare,group: 'Agents' },
+  { label: 'Automations',  path: '/automations',       icon: Zap,           group: 'Agents' },
+  // CREATIVE (the Content Lab hub + its tabs)
+  { label: 'Content Lab',  path: '/content/overview',  icon: FlaskConical,  group: 'Content Lab' },
+  { label: 'Competitors',  path: '/competitors',       icon: Radio,         group: 'Content Lab' },
+  { label: 'Ideas',        path: '/content-lab',       icon: FlaskConical,  group: 'Content Lab' },
+  { label: 'Scripts',      path: '/scripts',           icon: PenLine,       group: 'Content Lab' },
+  { label: 'Hyperframes',  path: '/content/hyperframes', icon: Activity,    group: 'Content Lab' },
+  { label: 'Media',        path: '/content/media',     icon: FolderOpen,    group: 'Content Lab' },
+  { label: 'Pipeline',     path: '/content',           icon: List,          group: 'Content Lab' },
+  { label: 'Library',      path: '/content/library',   icon: FolderOpen,    group: 'Content Lab' },
+  { label: 'Engagement',   path: '/engagement',        icon: MessageCircle, group: 'Content Lab' },
+  { label: 'SMS inbox',    path: '/engagement',        icon: MessageCircle, group: 'Content Lab' },
+  // MARKETING
+  { label: 'Campaigns',    path: '/campaigns',         icon: Waves,         group: 'Marketing' },
+  { label: 'Missions',     path: '/missions',          icon: Rocket,        group: 'Marketing' },
+  { label: 'Outreach',     path: '/outreach',          icon: Mail,          group: 'Marketing' },
+  { label: 'Research',     path: '/research',          icon: Search,        group: 'Marketing' },
+  // REVENUE
+  { label: 'CRM',          path: '/crm',               icon: Contact,       group: 'Revenue' },
+  { label: 'ROI',          path: '/roi',               icon: Timer,         group: 'Revenue' },
   // INSIGHTS
-  { label: 'Research',     path: '/research',          icon: Search,        group: 'Insights' },
   { label: 'Analytics',    path: '/analytics',         icon: LineChart,     group: 'Insights' },
   { label: 'KPIs',         path: '/kpis',              icon: BarChart3,     group: 'Insights' },
-  { label: 'ROI',          path: '/roi',               icon: Timer,         group: 'Insights' },
   { label: 'Usage',        path: '/usage',             icon: DollarSign,    group: 'Insights' },
   { label: 'Knowledge',    path: '/kg',                icon: Network,       group: 'Insights' },
   // OPS
   { label: 'Workspace',    path: '/agents/workspace',  icon: FolderOpen,    group: 'Ops' },
-  { label: 'Memory',       path: '/memory',            icon: BrainCircuit,  group: 'Ops' },
+  { label: 'Reports',      path: '/memory',            icon: BrainCircuit,  group: 'Ops' },
   { label: 'Learning',     path: '/learning',          icon: TrendingUp,    group: 'Ops' },
   { label: 'Genes',        path: '/genes',             icon: Dna,           group: 'Ops' },
   { label: 'Issues',       path: '/issues',            icon: Bug,           group: 'Ops' },
   { label: 'Cron',         path: '/cron',              icon: Clock,         group: 'Ops' },
   { label: 'Activity',     path: '/activity',          icon: List,          group: 'Ops' },
   { label: 'Deploy',       path: '/deploy',            icon: Rocket,        group: 'Ops' },
-  // BOTTOM
+  // SETTINGS
   { label: 'Connections',  path: '/connections',       icon: Link2,         group: 'Settings' },
   { label: 'Billing',      path: '/billing',           icon: Sparkles,      group: 'Settings' },
   { label: 'Autonomy',     path: '/autonomy',          icon: Zap,           group: 'Settings' },

@@ -60,18 +60,19 @@ Each campaign card shows its goal, channels, window, and how many missions are r
 
 ### What it is
 
-A **Mission** is a single big request executed as a sequence of **waves** — rounds of agent work that build on each other. You give it an objective; KeyCommand assembles a brief, then runs all of its waves (each wave can involve several agents) **through to completion**, ending in a final report. Each wave auto-advances to the next on its own, so a launched mission runs the full sequence end-to-end without you babysitting it.
+A **Mission** is a single big request executed as a sequence of **waves** — rounds of agent work that build on each other. Missions can target **any objective**: a content blitz, a product launch, an outreach push, a research sprint, or anything else you describe. You give it an objective; KeyCommand assembles a plan, shows you the **wave sequence before you launch**, then runs all the waves through to completion. Each wave auto-advances to the next on its own, so a launched mission runs the full sequence end-to-end without you babysitting it.
 
 ### Why it matters
 
-Some work is too big for one agent and one step. Missions break a large objective into coordinated stages so a whole team can attack it, with you able to watch each wave's results.
+Some work is too big for one agent and one step. Missions break a large objective into coordinated stages so a whole team can attack it, with you able to see the plan upfront and watch each wave's results as they come in.
 
 ### How to use it
 
 1. Open **Missions**.
-2. Describe what you want accomplished and **launch** the mission.
-3. Watch it progress wave by wave — each wave hands off to the next automatically until all four are done. Expand any wave to read what each agent produced and the synthesis of that round.
-4. When it finishes, read the **final report**.
+2. Describe what you want accomplished — the objective can be anything: *"Run a content blitz for our product launch"*, *"Research and draft an outreach sequence for warm leads"*, *"Generate a week of Instagram content around our new feature."*
+3. KeyCommand shows you the **planned waves** — the stages it intends to run — before anything starts. Review them and **launch** when you're happy.
+4. Watch it progress wave by wave — each wave hands off to the next automatically until all are done. Expand any wave to read what each agent produced and the synthesis of that round.
+5. When it finishes, read the **final report**.
 
 ![a Mission running, showing its waves and per-agent results](images/goals-and-missions-3.png)
 
@@ -83,6 +84,7 @@ You can tie a Mission to a Goal, so a mission's progress feeds the goal it's mea
 
 - **Write success criteria you can actually check.** A goal like "grow the brand" can never be marked done; "1,000 newsletter subscribers verified in the dashboard" can.
 - **Keep a small set of active goals.** A handful of sharp goals focuses the team far better than a long wishlist.
-- **Use Missions for the big, multi-step pushes** — a launch, a content sprint, a research deep-dive — and let everyday asks flow through the [Boardroom](./boardroom.md) and [Approvals](./drafts.md).
+- **Use Missions for any big, multi-step push** — a launch, a content sprint, a research deep-dive, an outreach campaign — and let everyday asks flow through the [Boardroom](./boardroom.md) and [Approvals](./drafts.md).
+- **Check the wave plan before you launch.** Missions show you the stages first so you can catch anything off before it runs.
 - **Group related missions under a Campaign** when an effort spans channels and weeks, so the whole push reads against one goal and window.
 - **You are the verifier.** Agents propose that a goal is done; confirming it is your call, every time.

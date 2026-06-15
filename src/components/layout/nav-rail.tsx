@@ -55,7 +55,7 @@ const PRIMARY: NavGroup[] = [
     items: [
       // The Content hub fronts Ideas / Scripts / Hyperframes / Media / Competitors
       // / Pipeline / Library / Engagement as tabs (see content-tabs.tsx).
-      { href: '/content/overview', label: 'Content', icon: FlaskConical, countKey: 'content',
+      { href: '/content/overview', label: 'Content Lab', icon: FlaskConical, countKey: 'content',
         matchPrefixes: ['/content', '/content-lab', '/scripts', '/competitors', '/engagement'] },
     ],
   },

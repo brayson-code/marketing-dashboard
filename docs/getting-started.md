@@ -68,8 +68,8 @@ Open **Settings** — the **Company brief** card sits at the top — and answer 
 
 KeyCommand is most useful once it can act through *your* accounts. Back on **Connections**, there are two kinds of connections beyond your Claude key:
 
-- **Social accounts** (Instagram, Facebook, LinkedIn, YouTube, X, TikTok) connect with one tap — you log in to the platform and approve access.
-- **API keys & other services** (Apify, Deepgram, AgentMail, and more) connect by pasting a key you create on that service's website.
+- **Social accounts & platform connections** — Instagram, Facebook, LinkedIn, YouTube, X, TikTok, and **Google** — connect with one tap. Google is especially powerful: a single **Connect Google** grants Drive, Docs, Sheets, Gmail, Calendar, and Meet in one consent screen. After connecting, flip **Settings → Google Workspace actions** on when you're ready for agents to use them. See [Google Workspace](./google-workspace.md).
+- **API keys & other services** (Apify, Deepgram, AgentMail, Twilio, and more) connect by pasting a key you create on that service's website.
 
 **Next after your Claude key, connect Apify.** It's the key that unlocks Competitor Reel Intel — the feature that best shows off what KeyCommand can do.
 
@@ -87,10 +87,12 @@ See the [Connections page](./connections.md) for what every connection unlocks a
 
 Now you're set up. Here's the fastest path to seeing value:
 
-1. **Analyze a competitor reel.** Open **Content → Competitors**, paste any Instagram reel link into the **Analyze reels** box, and click **Analyze**. Watch the live board scrape it and tear down *why it won*. → [Competitor Reel Intel](./competitors.md)
-2. **Generate content ideas.** Open **Content → Ideas** and hit **Generate ideas** to spin up trial reel concepts based on what's trending. → [Content Lab](./content-lab.md)
-3. **Write a script.** Keep an idea you like and click **Write script**, then open **Content → Scripts** to edit it and run the teleprompter. → [Script Studio](./script-studio.md)
+1. **Analyze a competitor reel.** Open **Content Lab → Competitors**, paste any Instagram reel link into the **Analyze reels** box, and click **Analyze**. Watch the live board scrape it and tear down *why it won*. → [Competitor Reel Intel](./competitors.md)
+2. **Generate content ideas.** Open **Content Lab → Ideas** and hit **Generate ideas** to spin up trial reel concepts based on what's trending. → [Content Lab](./content-lab.md)
+3. **Write a script.** Keep an idea you like and click **Write script**, then open **Content Lab → Scripts** to edit it and run the teleprompter. → [Script Studio](./script-studio.md)
 4. **Check your Approvals.** Anything your agents create for approval waits in **Approvals**. Approve what you like; reject the rest. → [Approvals](./drafts.md)
+
+> The main navigation uses **Content Lab** (not "Content") for the content hub — you'll find Competitors, Ideas, Scripts, Engagement, and more under that label.
 
 ---
 

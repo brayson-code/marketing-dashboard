@@ -35,7 +35,7 @@ The setting that controls **how much agents can do on their own**, found on the 
 - **Act + Notify** — agents auto-run the draft types you specifically approve; the rest still wait as drafts.
 - **Full Auto** — agents run every executable action end-to-end, hands-off.
 
-You can also set per-type overrides (e.g. auto-publish content but always approve emails). The autonomy gate is your master dial for trust: start at **Propose**, raise it as you get comfortable. The higher levels are part of higher plans — the Autonomy page shows which ones your plan includes. See the [autonomy controls](./drafts.md) and Concepts above.
+You can also set per-type overrides (e.g. auto-publish content but always approve emails). The autonomy gate is your master dial for trust: start at **Propose**, raise it as you get comfortable. The higher levels are part of higher plans — the **Autonomy** page in the left navigation shows which ones your plan includes.
 
 ![the Autonomy page with the four levels](images/concepts-1.png)
 
