@@ -189,9 +189,16 @@ export default function LoginPage() {
       <div className="w-full max-w-sm p-8 rounded-xl border border-[var(--border)] bg-[var(--card)]">
         <div className="text-center mb-8">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/kp-logo.png" alt="KeyPlayers" width={64} height={64} className="mx-auto mb-3 w-16 h-16 object-contain" />
-          <h1 className="text-h1 text-[var(--foreground)]">KeyPlayers Command Center</h1>
-          <p className="text-sm text-[var(--muted-foreground)] mt-1">Agency Command Center</p>
+          <img src="/kp-logo.png" alt="KeyPlayers" width={56} height={56} className="mx-auto mb-4 w-14 h-14 object-contain" />
+          {/* Inline type styles: the global unlayered `.text-h1` (Sora 600) reads
+              heavy here. Geist at a calmer weight/size is cleaner for a sign-in card. */}
+          <h1
+            className="text-[var(--foreground)]"
+            style={{ fontFamily: 'var(--font-geist), system-ui, sans-serif', fontSize: '1.25rem', fontWeight: 600, letterSpacing: '-0.012em' }}
+          >
+            KeyPlayers Command Center
+          </h1>
+          <p className="text-sm text-[var(--muted-foreground)] mt-1.5">Sign in to your workspace</p>
         </div>
 
         <Suspense fallback={<div className="h-48" />}>

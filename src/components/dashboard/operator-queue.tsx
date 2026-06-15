@@ -180,19 +180,21 @@ function ApprovalRow({ draft, department, busy, onApprove, onPublish }:
         <button
           onClick={onApprove}
           disabled={!!busy}
-          className="btn btn-ghost btn-sm inline-flex items-center gap-1"
-          title="Approve (leaves it ready to execute on Drafts)"
+          className={`btn btn-sm inline-flex items-center gap-1 ${publishMeta ? 'btn-ghost' : 'btn-primary'}`}
+          title={publishMeta ? 'Approve (leaves it ready to execute on Drafts)' : 'Approve this task'}
         >
           {busy === 'approve' ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />} Approve
         </button>
-        <button
-          onClick={onPublish}
-          disabled={!!busy}
-          className="btn btn-primary btn-sm inline-flex items-center gap-1"
-          title={`Approve & ${publishMeta.label.toLowerCase()} now`}
-        >
-          {busy === 'publish' ? <Loader2 size={11} className="animate-spin" /> : <publishMeta.Icon size={11} />} {publishMeta.label}
-        </button>
+        {publishMeta && (
+          <button
+            onClick={onPublish}
+            disabled={!!busy}
+            className="btn btn-primary btn-sm inline-flex items-center gap-1"
+            title={`Approve & ${publishMeta.label.toLowerCase()} now`}
+          >
+            {busy === 'publish' ? <Loader2 size={11} className="animate-spin" /> : <publishMeta.Icon size={11} />} {publishMeta.label}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -217,9 +219,13 @@ function executeActionForType(type: string): 'publish' | 'send' | 'confirm' {
   return 'publish'; // content_post / campaign / other
 }
 
-// Label + icon for the primary execute button, by draft type.
-function publishLabelForType(type: string): { label: string; Icon: typeof Send } {
+// Label + icon for the primary execute button, by draft type. Returns null for
+// types with no real "execute" outcome (generic `other`/task drafts), so they show
+// Approve only instead of a misleading "Publish".
+function publishLabelForType(type: string): { label: string; Icon: typeof Send } | null {
   if (type === 'email') return { label: 'Send', Icon: Send };
   if (type === 'meeting') return { label: 'Confirm', Icon: CalendarCheck };
-  return { label: 'Publish', Icon: ExternalLink };
+  if (type === 'campaign') return { label: 'Launch', Icon: Send };
+  if (type === 'content_post') return { label: 'Publish', Icon: ExternalLink };
+  return null;
 }
