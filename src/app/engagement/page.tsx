@@ -11,11 +11,10 @@ import type { Engagement, Signal } from '@/types';
 import { YouTubeCommentsPanel } from '@/components/inbox/youtube-comments';
 import { InstagramCommentsPanel } from '@/components/inbox/instagram-comments';
 import { EmailInbox } from '@/components/inbox/email-inbox';
-import { MessagesInbox } from '@/components/inbox/messages-inbox';
 import { SmsInbox } from '@/components/inbox/sms-inbox';
 import { ContentTabs } from '@/components/content/content-tabs';
 
-type Tab = 'youtube' | 'instagram' | 'email' | 'messages' | 'sms' | 'x' | 'linkedin' | 'signals';
+type Tab = 'youtube' | 'instagram' | 'email' | 'sms' | 'x' | 'linkedin' | 'signals';
 
 export default function EngagementPage() {
   const [engagements, setEngagements] = useState<Engagement[]>([]);
@@ -63,7 +62,6 @@ export default function EngagementPage() {
           { key: 'youtube' as Tab,   label: 'YouTube comments' },
           { key: 'instagram' as Tab, label: 'Instagram comments' },
           { key: 'email' as Tab,     label: 'Email' },
-          { key: 'messages' as Tab,  label: 'Messages' },
           { key: 'sms' as Tab,       label: 'SMS' },
           { key: 'x' as Tab,         label: `X Activity (${xEngagements.length})` },
           { key: 'linkedin' as Tab,  label: `LinkedIn Queue (${linkedInQueue.length})` },
@@ -84,7 +82,6 @@ export default function EngagementPage() {
       {tab === 'youtube' && <YouTubeCommentsPanel />}
       {tab === 'instagram' && <InstagramCommentsPanel />}
       {tab === 'email' && <EmailInbox />}
-      {tab === 'messages' && <MessagesInbox />}
       {tab === 'sms' && <SmsInbox />}
 
       {tab === 'x' && (
