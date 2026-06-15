@@ -10,6 +10,7 @@ import { listActiveGoals, createGoal, appendProgress, updateGoalStatus, type Goa
 import { createDraft, listDrafts, publishContent, sendEmail, confirmMeeting, type DraftType } from './drafts';
 import { kgToolDefinitions, handleKgTool } from './kg-tools';
 import { googleToolDefinitions, handleGoogleTool, googleActionsAllowed, GOOGLE_TOOL_NAMES } from './google-tools';
+import { smsToolDefinitions, handleSmsTool, smsAllowed, SMS_TOOL_NAMES } from './sms-tools';
 import { parseAttachments, buildUserContent } from './vision';
 import { estimateCostUsd } from './usage';
 import { launchResearchCampaign } from './campaign-intake';
@@ -109,7 +110,7 @@ async function loadRecentHistory(limit = HISTORY_LIMIT): Promise<Anthropic.Messa
   return out;
 }
 
-async function buildTools(gwAllowedArg?: boolean): Promise<Anthropic.Messages.ToolUnion[]> {
+async function buildTools(gwAllowedArg?: boolean, smsOnArg?: boolean): Promise<Anthropic.Messages.ToolUnion[]> {
   // Roster from the live DB (Agent Studio) so newly-created specialists become
   // spawnable by KeyPlayer; fall back to the hardcoded registry if unseeded.
   let specs = await listSpawnableSpecs().catch(() => [] as Array<{ id: string; description: string }>);
@@ -122,6 +123,7 @@ async function buildTools(gwAllowedArg?: boolean): Promise<Anthropic.Messages.To
   // Offer the Google Workspace tools to KeyPlayer only when connected + opted in.
   // Reuse the caller's precomputed flag when given (avoids a duplicate DB read).
   const gwAllowed = gwAllowedArg ?? await googleActionsAllowed();
+  const smsOn = smsOnArg ?? await smsAllowed();
 
   return [
     { type: 'web_search_20250305', name: 'web_search' },
@@ -240,6 +242,9 @@ async function buildTools(gwAllowedArg?: boolean): Promise<Anthropic.Messages.To
     //    can now create Docs/Sheets/folders, send Gmail, manage Calendar + Meet.
     ...(gwAllowed ? googleToolDefinitions() : []),
 
+    // ── SMS (Twilio) — only when Twilio is connected. ────────────────────────
+    ...(smsOn ? smsToolDefinitions() : []),
+
     {
       name: 'spawn_subagent',
       description:
@@ -322,11 +327,25 @@ async function callClaude(
         "They act on the owner's real connected Google account; every write is audit-logged.",
     });
   }
+  // SMS capability note — only when Twilio is connected (same prompt-awareness
+  // reason as Google: the base skills list doesn't mention it).
+  const smsOn = await smsAllowed().catch(() => false);
+  if (smsOn) {
+    systemBlocks.push({
+      type: 'text',
+      text:
+        '# Twilio SMS is connected\n' +
+        'You can send a real text message via the `sms_send` tool (to a phone number in ' +
+        'E.164 format, e.g. +15551234567). It sends an actual SMS that costs money — use it ' +
+        'when the owner asks you to text someone or for a genuine time-sensitive alert. ' +
+        'Every send is audit-logged.',
+    });
+  }
   return client.messages.create({
     model: MODEL,
     max_tokens: 8000,
     system: systemBlocks,
-    tools: await buildTools(gwAllowed),
+    tools: await buildTools(gwAllowed, smsOn),
     messages,
   });
 }
@@ -349,6 +368,8 @@ const CLIENT_TOOL_NAMES = new Set<string>([
   // Google Workspace tools (present only when gated on) must be recognized here
   // too, or the loop won't process them and the turn ends with no text reply.
   ...GOOGLE_TOOL_NAMES,
+  // SMS (Twilio) — same requirement: recognize the name or the loop bails.
+  ...SMS_TOOL_NAMES,
 ]);
 
 async function handleClientToolUse(
@@ -475,6 +496,11 @@ async function handleClientToolUse(
   // ── Google Workspace tools (only present when gated on; shared handler) ──────
   if ((GOOGLE_TOOL_NAMES as readonly string[]).includes(toolUse.name)) {
     return handleGoogleTool(toolUse, 'keyplayer');
+  }
+
+  // ── SMS (Twilio) tool (only present when connected; shared handler) ──────────
+  if ((SMS_TOOL_NAMES as readonly string[]).includes(toolUse.name)) {
+    return handleSmsTool(toolUse, 'keyplayer');
   }
 
   // ── Drafts tools ─────────────────────────────────────────────────────────

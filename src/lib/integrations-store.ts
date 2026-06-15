@@ -46,6 +46,13 @@ export const PROVIDERS: IntegrationProviderDef[] = [
       { name: 'webhook_secret', label: 'Webhook Secret', type: 'password' },
       { name: 'sender_name', label: 'Sender Name', type: 'text' },
     ] },
+  { id: 'twilio', label: 'Twilio (SMS)', category: 'messaging',
+    scopesHint: 'From your Twilio console: Account SID + Auth Token (Account Info), and a Twilio phone number in E.164 (+15551234567) or a Messaging Service SID (MG…) as the From.',
+    fields: [
+      { name: 'account_sid', label: 'Account SID', type: 'text', required: true, placeholder: 'AC…' },
+      { name: 'auth_token', label: 'Auth Token', type: 'password', required: true },
+      { name: 'from_number', label: 'From number / Messaging Service SID', type: 'text', required: true, placeholder: '+15551234567 or MG…' },
+    ] },
   { id: 'telegram', label: 'Telegram (notifications)', category: 'messaging',
     scopesHint: 'Create a bot via @BotFather in Telegram (send /newbot) to get your bot token. Then get your chat ID: message your new bot, open https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates, and copy the "id" field from the "chat" object — or message @userinfobot to get your own user ID.',
     fields: [

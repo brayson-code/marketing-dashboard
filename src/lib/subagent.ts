@@ -7,6 +7,7 @@ import { startTask, finishTask, setTaskStream } from './agent-tasks';
 import { kgToolDefinitions, handleKgTool } from './kg-tools';
 import { skillRecallToolDefinitions, handleSkillRecallTool } from './skill-recall';
 import { googleToolDefinitions, handleGoogleTool, googleActionsAllowed, GOOGLE_TOOL_NAMES } from './google-tools';
+import { smsToolDefinitions, handleSmsTool, smsAllowed, SMS_TOOL_NAMES } from './sms-tools';
 import { chooseVariant } from './selection';
 import { constraintsForVariant, roleFor } from './constraints';
 import { selectGenesForTask, genesDirective, recordGeneApplications } from './genes';
@@ -413,6 +414,7 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
   // When the gate is false the tools array is byte-identical to before this feature
   // shipped — the model never sees the tools so it can never call them.
   const gwAllowed = opts?.tools !== 'none' && (await googleActionsAllowed());
+  const smsOn = opts?.tools !== 'none' && (await smsAllowed());
   const tools: Anthropic.Messages.ToolUnion[] = opts?.tools === 'none' ? [] : [
     { type: 'web_search_20250305', name: 'web_search' },
     // Shared KG tools so every sub-agent can read/write the team's graph.
@@ -422,6 +424,8 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
     ...skillRecallToolDefinitions(),
     // Google Workspace tools — only offered when tenant has connected + opted in.
     ...(gwAllowed ? googleToolDefinitions() : []),
+    // SMS (Twilio) — offered only when Twilio is connected.
+    ...(smsOn ? smsToolDefinitions() : []),
   ];
 
   // Cache the initial task message. Multi-turn agents (research runs a
@@ -558,7 +562,8 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
               b.name === 'kg_query' ||
               b.name === 'kg_remember' ||
               b.name === 'recall_skill' ||
-              (GOOGLE_TOOL_NAMES as readonly string[]).includes(b.name)
+              (GOOGLE_TOOL_NAMES as readonly string[]).includes(b.name) ||
+              (SMS_TOOL_NAMES as readonly string[]).includes(b.name)
             ),
         );
         if (handledToolUses.length === 0) break;
@@ -567,6 +572,7 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
         const toolResults = await Promise.all(handledToolUses.map((tu) => {
           if (tu.name === 'recall_skill') return handleSkillRecallTool(tu, type);
           if ((GOOGLE_TOOL_NAMES as readonly string[]).includes(tu.name)) return handleGoogleTool(tu, type);
+          if ((SMS_TOOL_NAMES as readonly string[]).includes(tu.name)) return handleSmsTool(tu, type);
           return handleKgTool(tu, type);
         }));
         // Merge the correction (if any) into the same user block as the tool
