@@ -109,7 +109,7 @@ async function loadRecentHistory(limit = HISTORY_LIMIT): Promise<Anthropic.Messa
   return out;
 }
 
-async function buildTools(): Promise<Anthropic.Messages.ToolUnion[]> {
+async function buildTools(gwAllowedArg?: boolean): Promise<Anthropic.Messages.ToolUnion[]> {
   // Roster from the live DB (Agent Studio) so newly-created specialists become
   // spawnable by KeyPlayer; fall back to the hardcoded registry if unseeded.
   let specs = await listSpawnableSpecs().catch(() => [] as Array<{ id: string; description: string }>);
@@ -120,7 +120,8 @@ async function buildTools(): Promise<Anthropic.Messages.ToolUnion[]> {
   const subagentDescriptions = specs.map((s) => `- \`${s.id}\` — ${s.description}`).join('\n');
 
   // Offer the Google Workspace tools to KeyPlayer only when connected + opted in.
-  const gwAllowed = await googleActionsAllowed();
+  // Reuse the caller's precomputed flag when given (avoids a duplicate DB read).
+  const gwAllowed = gwAllowedArg ?? await googleActionsAllowed();
 
   return [
     { type: 'web_search_20250305', name: 'web_search' },
@@ -301,11 +302,31 @@ async function callClaude(
       text: `# Compacted Memory (recent rollups)\n\n${memory}`,
     });
   }
+  // Google Workspace capability note — only when connected + opted in. The base
+  // skills.md enumerates a fixed tool list (web_search / notify_owner /
+  // spawn_subagent), so without this the model "believes" it lacks Google access
+  // and refuses even though the gw_*/gmail_*/cal_*/meet_* tools ARE in its array.
+  // Computed once and reused for the tools array so we don't double the DB reads.
+  const gwAllowed = await googleActionsAllowed().catch(() => false);
+  if (gwAllowed) {
+    systemBlocks.push({
+      type: 'text',
+      text:
+        '# Google Workspace is connected — you can act on it NOW\n' +
+        'Google is connected and actions are enabled, so you have these LIVE tools. ' +
+        "Use them directly when asked — do NOT say you lack Google/Drive access:\n" +
+        '- `gw_create_folder`, `gw_create_doc`, `gw_append_doc`, `gw_create_sheet`, `gw_append_sheet_row`, `gw_list_files` — Drive / Docs / Sheets\n' +
+        '- `gmail_list`, `gmail_send` (sends a REAL email), `gmail_draft` — Gmail\n' +
+        '- `cal_list`, `cal_create_event` — Calendar\n' +
+        '- `meet_create_space`, `meet_recent_transcript` — Google Meet\n' +
+        "They act on the owner's real connected Google account; every write is audit-logged.",
+    });
+  }
   return client.messages.create({
     model: MODEL,
     max_tokens: 8000,
     system: systemBlocks,
-    tools: await buildTools(),
+    tools: await buildTools(gwAllowed),
     messages,
   });
 }
