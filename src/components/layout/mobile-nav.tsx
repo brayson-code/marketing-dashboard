@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Gauge, Bot, Mail, Contact, MoreHorizontal,
-  PenLine, MessageCircle, Zap, FlaskConical, Search,
+  PenLine, MessageCircle, FlaskConical, Search,
   BarChart3, LineChart, BrainCircuit, Rocket, Clock, List, Settings,
   FolderOpen,
 } from 'lucide-react';
@@ -52,7 +52,6 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/agents/workspace', label: 'Workspace', icon: FolderOpen },
       { href: '/content', label: 'Content', icon: PenLine, countKey: 'content' },
       { href: '/engagement', label: 'Engagement', icon: MessageCircle },
-      { href: '/automations', label: 'Automations', icon: Zap, countKey: 'outreach' },
       { href: '/experiments', label: 'Experiments', icon: FlaskConical },
     ],
   },

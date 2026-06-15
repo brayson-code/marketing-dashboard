@@ -8,7 +8,7 @@
 // Plain fetch against the Twilio REST API (no SDK). The auth token is used only
 // to build the Basic-auth header and is NEVER logged.
 
-import { getDecryptedSecret } from './integrations-store';
+import { getDecryptedSecret, getIntegration } from './integrations-store';
 import { sql, tenantId } from './db/client';
 
 export interface TwilioConfig {
@@ -53,16 +53,33 @@ export interface SendSmsResult {
   reason?: string;
 }
 
-/** This tenant's stored Twilio credentials, or null when not connected. */
+/** This tenant's stored Twilio credentials, or null when not connected.
+ *
+ *  The Connections UI routes ONLY `password`-typed fields into the encrypted
+ *  secret; `text`-typed fields (account_sid, from_number) are stored in the
+ *  integration's `config` jsonb instead. So we read auth_token from the secret and
+ *  the non-secret fields from either source — which also repairs rows saved before
+ *  this was understood, with no re-entry needed. */
 export async function getTwilioConfig(): Promise<TwilioConfig | null> {
   try {
-    const s = (await getDecryptedSecret('twilio')) as Partial<TwilioConfig> | null;
-    const account_sid = s?.account_sid?.trim();
-    const auth_token = s?.auth_token?.trim();
-    const from_number = s?.from_number?.trim();
-    if (!account_sid || !auth_token || !from_number) return null;
+    const [secret, row] = await Promise.all([
+      getDecryptedSecret('twilio') as Promise<Partial<TwilioConfig> | null>,
+      getIntegration('twilio'),
+    ]);
+    const cfg = (row?.config ?? {}) as Partial<TwilioConfig>;
+    const account_sid = (secret?.account_sid ?? cfg.account_sid)?.trim();
+    const auth_token = (secret?.auth_token ?? cfg.auth_token)?.trim();
+    const from_number = (secret?.from_number ?? cfg.from_number)?.trim();
+    if (!account_sid || !auth_token || !from_number) {
+      console.warn(
+        '[twilio] getTwilioConfig: missing fields — account_sid:%s auth_token:%s from_number:%s',
+        !!account_sid, !!auth_token, !!from_number,
+      );
+      return null;
+    }
     return { account_sid, auth_token, from_number };
-  } catch {
+  } catch (e) {
+    console.error('[twilio] getTwilioConfig error:', (e as Error).message);
     return null;
   }
 }

@@ -47,7 +47,6 @@ const PRIMARY: NavGroup[] = [
     items: [
       { href: '/agents/squads', label: 'Agents', icon: Bot, matchPrefixes: ['/agents/squads'] },
       { href: '/boardroom', label: 'Boardroom', icon: MessagesSquare, matchPrefixes: ['/boardroom'] },
-      { href: '/automations', label: 'Automations', icon: Zap },
     ],
   },
   {

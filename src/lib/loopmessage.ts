@@ -1,6 +1,6 @@
 import { sql, jsonb, tenantId } from './db/client';
 import { mdToPlainText } from './md-to-text';
-import { getDecryptedSecret } from './integrations-store';
+import { getDecryptedSecret, getIntegration } from './integrations-store';
 
 const SEND_URL = 'https://a.loopmessage.com/api/v1/message/send/';
 
@@ -84,9 +84,16 @@ export interface LoopMessageConfig { auth_key: string; sender_name?: string }
  *  fallback (so the platform owner's account still works without a tenant row). */
 export async function getLoopMessageConfig(): Promise<LoopMessageConfig | null> {
   try {
-    const s = (await getDecryptedSecret('loopmessage')) as Partial<{ auth_key: string; sender_name: string }> | null;
+    // password-typed fields (auth_key) live in the encrypted secret; text fields
+    // (sender_name) live in the integration's `config` jsonb — read both.
+    const [s, row] = await Promise.all([
+      getDecryptedSecret('loopmessage') as Promise<Partial<{ auth_key: string; sender_name: string }> | null>,
+      getIntegration('loopmessage'),
+    ]);
+    const cfg = (row?.config ?? {}) as Partial<{ sender_name: string }>;
     const authKey = s?.auth_key?.trim();
-    if (authKey) return { auth_key: authKey, sender_name: s?.sender_name?.trim() || process.env.LOOPMESSAGE_SENDER_NAME };
+    const senderName = s?.sender_name?.trim() || cfg.sender_name?.trim() || process.env.LOOPMESSAGE_SENDER_NAME;
+    if (authKey) return { auth_key: authKey, sender_name: senderName };
   } catch {
     /* fall through to env */
   }

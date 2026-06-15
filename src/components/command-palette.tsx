@@ -36,7 +36,6 @@ const NAV_ITEMS: Array<{ label: string; path: string; icon: typeof Gauge; group:
   // AGENTS
   { label: 'Agents',       path: '/agents/squads',     icon: Bot,           group: 'Agents' },
   { label: 'Boardroom',    path: '/boardroom',         icon: MessagesSquare,group: 'Agents' },
-  { label: 'Automations',  path: '/automations',       icon: Zap,           group: 'Agents' },
   // CREATIVE (the Content Lab hub + its tabs)
   { label: 'Content Lab',  path: '/content/overview',  icon: FlaskConical,  group: 'Content Lab' },
   { label: 'Competitors',  path: '/competitors',       icon: Radio,         group: 'Content Lab' },
