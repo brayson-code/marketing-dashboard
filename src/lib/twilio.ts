@@ -9,11 +9,42 @@
 // to build the Basic-auth header and is NEVER logged.
 
 import { getDecryptedSecret } from './integrations-store';
+import { sql, tenantId } from './db/client';
 
 export interface TwilioConfig {
   account_sid: string;
   auth_token: string;
   from_number: string;
+}
+
+// Default daily outbound SMS cap per workspace (overridable via
+// business_profile.sms_daily_limit). Guards against a runaway agent texting in a
+// loop and racking up Twilio charges. Set to 0 to disable the cap.
+const DEFAULT_SMS_DAILY_LIMIT = 50;
+
+/** The tenant's daily SMS send limit (business_profile.sms_daily_limit, else default). */
+async function smsDailyLimit(): Promise<number> {
+  try {
+    const rows = (await sql()`
+      SELECT (business_profile->>'sms_daily_limit') AS lim FROM public.tenants WHERE id = ${tenantId()} LIMIT 1
+    `) as unknown as Array<{ lim: string | null }>;
+    const v = rows[0]?.lim;
+    if (v == null || v === '') return DEFAULT_SMS_DAILY_LIMIT;
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 ? n : DEFAULT_SMS_DAILY_LIMIT;
+  } catch {
+    return DEFAULT_SMS_DAILY_LIMIT;
+  }
+}
+
+/** Count of outbound SMS sent today (UTC) for this tenant. */
+async function sentToday(): Promise<number> {
+  const rows = (await sql()`
+    SELECT count(*)::int AS n FROM public.sms_messages
+    WHERE tenant_id = ${tenantId()} AND direction = 'out'
+      AND created_at >= date_trunc('day', now() at time zone 'utc')
+  `) as unknown as Array<{ n: number }>;
+  return rows[0]?.n ?? 0;
 }
 
 export interface SendSmsResult {
@@ -56,6 +87,15 @@ export async function sendSms(opts: { to: string; body: string }): Promise<SendS
   const cfg = await getTwilioConfig();
   if (!cfg) return { sent: false, reason: 'Twilio is not connected for this workspace' };
 
+  // Per-day cap — a runaway loop can't run up the Twilio bill. 0 = disabled.
+  const limit = await smsDailyLimit();
+  if (limit > 0) {
+    const used = await sentToday().catch(() => 0);
+    if (used >= limit) {
+      return { sent: false, reason: `daily SMS limit reached (${used}/${limit}) — raise it in Settings or wait until tomorrow (UTC)` };
+    }
+  }
+
   // Messaging Service SIDs start with 'MG' and go in MessagingServiceSid; a bare
   // phone number goes in From.
   const isMessagingService = /^MG[0-9a-f]{32}$/i.test(cfg.from_number);
@@ -80,7 +120,16 @@ export async function sendSms(opts: { to: string; body: string }): Promise<SendS
       },
     );
     const data = (await res.json().catch(() => ({}))) as { sid?: string; message?: string; code?: number };
-    if (res.ok && data.sid) return { sent: true, sid: data.sid };
+    if (res.ok && data.sid) {
+      // Record the outbound for history + the daily-limit count. Best-effort.
+      try {
+        await sql()`
+          INSERT INTO public.sms_messages (tenant_id, direction, message_sid, from_number, to_number, body, status)
+          VALUES (${tenantId()}, 'out', ${data.sid}, ${cfg.from_number}, ${to}, ${body}, ${'sent'})
+        `;
+      } catch { /* non-blocking */ }
+      return { sent: true, sid: data.sid };
+    }
     // Twilio puts the human cause in `message` — surface it without the token.
     return { sent: false, reason: data.message || `Twilio error (HTTP ${res.status})` };
   } catch (e) {

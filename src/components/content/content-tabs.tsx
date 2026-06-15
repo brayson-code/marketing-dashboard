@@ -15,11 +15,11 @@ import {
 // accent here since this is a single workflow, not five lenses.
 const TABS: Array<{ href: string; label: string; icon: typeof LayoutGrid }> = [
   { href: '/content/overview', label: 'Overview',    icon: LayoutGrid },
+  { href: '/competitors',      label: 'Competitors', icon: Telescope },
   { href: '/content-lab',      label: 'Ideas',       icon: FlaskConical },
   { href: '/scripts',          label: 'Scripts',     icon: Clapperboard },
   { href: '/content/hyperframes', label: 'Hyperframes', icon: Film },
   { href: '/content/media',    label: 'Media',       icon: FolderUp },
-  { href: '/competitors',      label: 'Competitors', icon: Telescope },
   { href: '/content',          label: 'Pipeline',    icon: CalendarDays },
   { href: '/content/library',  label: 'Library',     icon: FolderOpen },
   { href: '/engagement',       label: 'Engagement',  icon: MessageCircle },
