@@ -119,19 +119,37 @@ We may modify the Service and update these Terms. Material changes will be commu
 
 ---
 
-## 15. Governing law and disputes
+## 15. Governing law
 
-These Terms are governed by the laws of **[State/Country]**, without regard to conflict-of-laws rules. The parties submit to the exclusive jurisdiction of the courts located in **[venue]**, unless an arbitration clause is added here: **[optional arbitration / class-action-waiver provisions — confirm with counsel]**.
+These Terms are governed by the laws of **[State/Country]**, without regard to conflict-of-laws rules. Subject to the arbitration agreement in Section 16, the parties submit to the exclusive jurisdiction of the state and federal courts located in **[venue]** for any matter not subject to arbitration.
 
 ---
 
-## 16. General
+## 16. Binding arbitration & class-action waiver
+
+**PLEASE READ THIS SECTION CAREFULLY — IT AFFECTS YOUR LEGAL RIGHTS, INCLUDING YOUR RIGHT TO FILE A LAWSUIT IN COURT AND TO HAVE A JURY TRIAL.**
+
+**Agreement to arbitrate.** You and KeyPlayers agree that any dispute, claim, or controversy arising out of or relating to these Terms or the Service (a "Dispute") that is not resolved informally will be resolved exclusively by **final and binding arbitration**, rather than in court — except that (a) either party may bring an individual claim in small-claims court, and (b) either party may seek injunctive or other equitable relief in court for actual or threatened infringement, misappropriation, or violation of its intellectual property or confidential information.
+
+**Informal resolution first.** Before initiating arbitration, the complaining party will send a written notice of the Dispute and the parties will attempt to resolve it in good faith for at least **30 days**.
+
+**Rules and forum.** The arbitration will be administered by **[JAMS / the American Arbitration Association (AAA)]** under its then-current rules, before a single arbitrator, seated in **[venue]**. The arbitrator's award is final and binding and may be entered as a judgment in any court of competent jurisdiction. The arbitration may proceed by video, phone, or written submissions where the rules allow.
+
+**Class-action waiver.** All claims must be brought in the parties' **individual capacity, and not** as a plaintiff or class member in any purported class, collective, consolidated, or representative action. The arbitrator may not consolidate more than one party's claims or preside over any class or representative proceeding.
+
+**30-day opt-out.** You may opt out of this Section 16 by emailing **[legal@keyplayershq.com]** within **30 days** of first accepting these Terms, stating your name, account, and that you opt out of arbitration. Opting out does not affect the rest of these Terms.
+
+**Severability.** If the class-action waiver is held unenforceable as to a particular claim, that claim (and only that claim) will be severed and may proceed in court; the remainder of this Section stays in effect.
+
+---
+
+## 17. General
 
 These Terms (with the Privacy Policy and any order form or DPA) are the entire agreement between us. If any provision is unenforceable, the rest remains in effect. Our failure to enforce a provision is not a waiver. You may not assign these Terms without our consent; we may assign them in connection with a merger, acquisition, or sale of assets. Neither party is liable for delays caused by events beyond reasonable control (force majeure).
 
 ---
 
-## 17. Contact
+## 18. Contact
 
 **[Company Legal Name]**
 Support: **[support@keyplayershq.com]**
