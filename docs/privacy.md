@@ -3,9 +3,9 @@
 **Effective date:** June 15, 2026
 **Last updated:** June 15, 2026
 
-> **Template notice.** This policy is a thorough starting draft tailored to the KeyPlayers Command Center. It is **not legal advice** and must be reviewed by qualified counsel — and the bracketed placeholders (legal entity, governing law, contact addresses) completed — before you rely on it. Laws that may apply include the EU/UK GDPR, the California Consumer Privacy Act as amended (CCPA/CPRA), and U.S. messaging laws (TCPA, CAN-SPAM).
+> **Template notice.** This policy is a thorough starting draft tailored to the KeyPlayers Command Center. It is **not legal advice** and must be reviewed by qualified counsel — and the bracketed placeholders (legal entity, governing law, contact addresses) completed — before you rely on it. Laws that may apply include Canada's federal **PIPEDA** and anti-spam law (**CASL**), and — where you have users there — the EU/UK GDPR, the California Consumer Privacy Act as amended (CCPA/CPRA), and U.S. messaging laws (TCPA, CAN-SPAM).
 
-This Privacy Policy explains how **[Company Legal Name]** ("KeyPlayers," "we," "us") collects, uses, shares, and protects information in connection with the KeyPlayers Command Center (the "Service") at `command.keyplayershq.com`.
+This Privacy Policy explains how **1001060863 Ontario Corp.**, operating as KeyPlayers HQ ("KeyPlayers," "we," "us") collects, uses, shares, and protects information in connection with the KeyPlayers Command Center (the "Service") at `command.keyplayershq.com`.
 
 ---
 
@@ -100,7 +100,7 @@ We rely on the following providers. Those marked **Core** process data for every
 | **Google Analytics 4 / Plausible** | Product/web analytics | Usage events, IP-derived data |
 | **MCP servers you connect** | Custom agent tools | Whatever you route to them |
 
-A current sub-processor list is available on request at **[privacy@keyplayershq.com]**. We require sub-processors to protect data consistent with this policy.
+A current sub-processor list is available on request at **hello@keyplayershq.com**. We require sub-processors to protect data consistent with this policy.
 
 ---
 
@@ -148,7 +148,7 @@ Subject to your location and role (controller vs. the workspace owner), you may 
 - **opt out** of sale/sharing and certain profiling (CCPA/CPRA) — note that we do not sell personal data;
 - **lodge a complaint** with your supervisory authority.
 
-To exercise rights, email **[privacy@keyplayershq.com]**. We will verify your request and respond within the timeframes required by law. If your data sits inside a customer's workspace, we will refer or assist that customer as the controller. We will not discriminate against you for exercising your rights.
+To exercise rights, email **hello@keyplayershq.com**. We will verify your request and respond within the timeframes required by law. If you are in Canada, you also have rights under **PIPEDA** and may contact or file a complaint with the **Office of the Privacy Commissioner of Canada** (priv.gc.ca). If your data sits inside a customer's workspace, we will refer or assist that customer as the controller. We will not discriminate against you for exercising your rights.
 
 ---
 
@@ -166,7 +166,7 @@ We may update this policy from time to time. Material changes will be announced 
 
 ## 15. Contact
 
-**[Company Legal Name]**
-Privacy: **[privacy@keyplayershq.com]**
-Mailing address: **[Company mailing address]**
-Data Protection Officer / EU-UK Representative (if applicable): **[name / contact]**
+**1001060863 Ontario Corp.**
+Privacy: **hello@keyplayershq.com**
+Mailing address: **2025 Maria Street, Burlington, ON, Canada L7R 0E9**
+EU/UK representative: not applicable — the Service does not target users in the EU or UK.
