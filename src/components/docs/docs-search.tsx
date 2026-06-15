@@ -72,6 +72,10 @@ export function DocsSearch({ index }: { index: SearchEntry[] }) {
           }}
           placeholder="Search docs…"
           className="w-full rounded-lg border border-border bg-card pl-9 pr-3 py-2 text-[14px] text-foreground placeholder:text-muted-foreground focus-ring"
+          // Inline left-padding: the unlayered global `input { padding: 6px 10px }`
+          // in globals.css beats Tailwind's layered `pl-9`, so the text would slide
+          // under the search icon. Inline style wins, clearing the icon (left-3 + 15px).
+          style={{ paddingLeft: '2.25rem' }}
           aria-label="Search documentation"
         />
       </div>
