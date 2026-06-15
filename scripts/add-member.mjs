@@ -80,5 +80,5 @@ console.log(JSON.stringify({
   tenantId,
   role,
   password,
-  loginUrl: 'https://keyplayers-command-center-woad.vercel.app/login',
+  loginUrl: 'https://command.keyplayershq.com/login',
 }, null, 2));

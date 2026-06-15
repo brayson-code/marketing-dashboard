@@ -27,7 +27,7 @@ const key = env.STRIPE_SECRET_KEY;
 if (!key) throw new Error('STRIPE_SECRET_KEY missing from .env.local');
 const stripe = new Stripe(key);
 
-const WEBHOOK_URL = 'https://keyplayers-command-center-woad.vercel.app/api/stripe/webhook';
+const WEBHOOK_URL = 'https://command.keyplayershq.com/api/stripe/webhook';
 const PLANS = [
   { plan: 'lite', name: 'KeyPlayers Command Center — Lite', amount: 199700 },
   { plan: 'pro', name: 'KeyPlayers Command Center — Pro', amount: 329700 },
@@ -65,7 +65,7 @@ async function ensurePaymentLink(price, plan) {
     allow_promotion_codes: true,
     after_completion: {
       type: 'redirect',
-      redirect: { url: 'https://keyplayers-command-center-woad.vercel.app/?purchased=1' },
+      redirect: { url: 'https://command.keyplayershq.com/?purchased=1' },
     },
   });
 }

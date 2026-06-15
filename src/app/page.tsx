@@ -14,6 +14,7 @@ import { AutomationFlow } from '@/components/dashboard/automation-flow';
 import { TodaysPriorities, WeeklySnapshot } from '@/components/dashboard/workbench-widgets';
 import { CompetitorOverviewCard } from '@/components/dashboard/competitor-overview-card';
 import { ContentLabOverviewCard } from '@/components/dashboard/content-lab-overview-card';
+import { EngagementOverviewCard } from '@/components/dashboard/engagement-overview-card';
 import { UsageWidget } from '@/components/usage-widget';
 import type { Department } from '@/components/agent-orb';
 import { Loader2 } from 'lucide-react';
@@ -96,10 +97,12 @@ export default function OverviewPage() {
       </div>
 
       {/* Content command center row — Competitor Intel (what competitors do) +
-          Content Lab (what to make). Workbench-width 3-col grid. */}
+          Content Lab (what to make) + Engagement (who's reaching back). Fills the
+          workbench-width 3-col grid. */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <CompetitorOverviewCard />
         <ContentLabOverviewCard />
+        <EngagementOverviewCard />
       </div>
 
       <AutomationFlow />

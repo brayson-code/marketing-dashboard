@@ -253,7 +253,7 @@ Diagnose and propose a minimal fix.`;
     await finishTask(taskId, { status: 'done', result: prUrl ? `Opened draft PR: ${prUrl}` : `Proposed patch (${proposal.files.length} file(s))${prNote}`, inputTokens: totalInput, outputTokens: totalOutput });
 
     // Tell the owner a fix is ready to review.
-    const link = prUrl ?? `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://keyplayers-command-center-woad.vercel.app'}/issues/${issueId}`;
+    const link = prUrl ?? `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://command.keyplayershq.com'}/issues/${issueId}`;
     const msg = `🛠️ Fix proposed for: ${issue.title}\n${proposal.summary}\n${link}`;
     const fanout: Promise<unknown>[] = [
       createNotification({ type: 'custom', severity: 'info', title: 'Fix proposed', message: issue.title.slice(0, 120), data: { source: 'keywatch', issue_id: issueId, pr_url: prUrl ?? null } }),

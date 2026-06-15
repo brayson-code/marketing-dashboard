@@ -8,7 +8,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { createServerClient } from '@supabase/ssr';
 
-const BASE = process.env.VERIFY_BASE_URL || 'https://keyplayers-command-center-woad.vercel.app';
+const BASE = process.env.VERIFY_BASE_URL || 'https://command.keyplayershq.com';
 const EMAIL = process.env.VERIFY_EMAIL || 'braysonlenderman@gmail.com';
 const PASSWORD = process.env.VERIFY_PASSWORD || 'Kp!Test-9m4Qz2';
 
