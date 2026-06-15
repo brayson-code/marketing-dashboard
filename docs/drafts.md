@@ -1,5 +1,7 @@
 # Drafts & Approvals
 
+![Approvals in the KeyPlayers Command Center](/docs-images/drafts.png)
+
 **Approvals** (labelled **Approvals** in the left navigation, and still reachable at `/drafts`) is your approval queue. Everything your agents create that could go out into the world — content posts, emails, texts, meetings, campaigns — lands here first as a **draft**. **Nothing executes without your explicit approval.**
 
 ![the Drafts page with pending items awaiting approval](images/drafts-1.png)

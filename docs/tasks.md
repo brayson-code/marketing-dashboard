@@ -1,5 +1,7 @@
 # Tasks Board
 
+![Tasks in the KeyPlayers Command Center](/docs-images/tasks.png)
+
 **Tasks** is the live board of what your AI team is doing right now — and the place to step into any piece of work, refine the instruction, and send the agent back at it.
 
 ![the Tasks board with the four kanban columns](images/tasks-1.png)

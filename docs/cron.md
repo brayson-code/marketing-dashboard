@@ -1,5 +1,7 @@
 # Cron / Scheduled Jobs
 
+![Cron in the KeyPlayers Command Center](/docs-images/cron.png)
+
 **Cron** is where you set agents to run on a recurring schedule — like a daily competitor sweep, a morning research digest, or a weekly content batch. Set it once and it runs on its own.
 
 ![the Cron board listing scheduled jobs and recent runs](images/cron-1.png)

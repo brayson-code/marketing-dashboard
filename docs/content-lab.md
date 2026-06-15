@@ -1,5 +1,7 @@
 # Content Lab
 
+![Content Lab in the KeyPlayers Command Center](/docs-images/content-lab.png)
+
 The **Content Lab** is where competitive intel becomes your content. It has three tools: a **Trend Radar** that shows what's hot, an **Optimize my reel** scanner that tears down *your own* reels, and a **Trial Reel Generator** that spins up fresh concepts you can turn into scripts.
 
 ![the Content Lab page with Trend Radar and idea cards](images/content-lab-1.png)

@@ -1,5 +1,7 @@
 # Agents & Agent Studio
 
+![Agents in the KeyPlayers Command Center](/docs-images/agents.png)
+
 KeyCommand runs on a team of AI **agents** — specialists that do real work like researching, writing content, and drafting outreach. This page covers how to view your team, dig into a single agent, and use the **Agent Studio** to edit or create agents.
 
 ![the Agents page showing the team grid](images/agents-1.png)

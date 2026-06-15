@@ -1,5 +1,7 @@
 # Overview / Dashboard
 
+![Overview in the KeyPlayers Command Center](/docs-images/overview.png)
+
 The **Overview** is your home page — the first thing you see after signing in. It's a single scrollable view that answers "what's happening, what needs me, and what should I look at next?" at a glance.
 
 ![the full Overview dashboard](images/overview-1.png)

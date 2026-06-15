@@ -1,5 +1,7 @@
 # Connections
 
+![Connections in the KeyPlayers Command Center](/docs-images/connections.png)
+
 **Connections** is where you link the accounts and services your agents watch, post to, and act through. It's the single home for both your **social accounts** and your **API keys**.
 
 ![the Connections page with social tiles and the API keys grid](images/connections-1.png)

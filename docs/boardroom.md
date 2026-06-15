@@ -1,5 +1,7 @@
 # Boardroom
 
+![Boardroom in the KeyPlayers Command Center](/docs-images/boardroom.png)
+
 The **Boardroom** is where you talk to your lead agent (**KeyPlayer**) and watch your agents coordinate. It's the conversational front door to KeyCommand — ask for anything, and the orchestrator figures out who should do it. You'll find it under the **Agents** section of the left nav.
 
 ![the orchestrator chat with a conversation in progress](images/boardroom-1.png)

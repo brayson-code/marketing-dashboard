@@ -1,5 +1,7 @@
 # Engagement
 
+![Engagement in the KeyPlayers Command Center](/docs-images/engagement.png)
+
 **Engagement** is your reply desk — the comments, emails, and text messages coming back at your brand, all in one place, each one click away from an AI-drafted reply. It's a tab in the **Content Lab** hub.
 
 ![the Engagement page with the YouTube comments lane open](images/engagement-1.png)

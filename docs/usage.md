@@ -1,5 +1,7 @@
 # Usage & Spend
 
+![Usage in the KeyPlayers Command Center](/docs-images/usage.png)
+
 The **Usage** page shows what your agents cost — across the AI that powers them and the outside services they use. Because your connections are your own keys, these are your *real* numbers. You can also set a **daily token budget** to make sure a busy day of agent work doesn't quietly overshoot what you want to spend.
 
 ![the Usage page with spend cards and the daily chart](images/usage-1.png)

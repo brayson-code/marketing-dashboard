@@ -1,5 +1,7 @@
 # Analytics
 
+![Analytics in the KeyPlayers Command Center](/docs-images/analytics.png)
+
 **Analytics** is the performance read across everything you've connected — your website, X, LinkedIn, YouTube, Instagram, Facebook Ads, and TikTok — scoped to a time range you pick. Because the connections are your own accounts, these are your *real* numbers.
 
 ![the Analytics page with the social roll-up and per-platform panels](images/analytics-1.png)

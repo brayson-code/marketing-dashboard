@@ -1,5 +1,7 @@
 # Goals, Campaigns & Missions
 
+![Goals & Missions in the KeyPlayers Command Center](/docs-images/goals-and-missions.png)
+
 **Goals** are the outcomes you want. **Campaigns** are themed, multi-channel pushes toward a goal over a date range. **Missions** are the execution runs — coordinated waves of agent work — that happen underneath. Together they let you point KeyCommand at a result and watch it drive.
 
 ![the Goals page with active goals and progress](images/goals-and-missions-1.png)
