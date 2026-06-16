@@ -1013,16 +1013,26 @@ textarea:focus {
   border-radius: 8px;
   overflow: hidden;
 }
+/* !important: React Flow's own stylesheet is imported in the client bundle and
+   lands AFTER globals at equal specificity, so it wins ties. Force the theme. */
 .react-flow__controls-button {
-  background: var(--surface-1);
-  border-bottom: 1px solid var(--border);
-  color: var(--foreground);
+  background: var(--surface-1) !important;
+  border-bottom: 1px solid var(--border) !important;
+  color: var(--foreground) !important;
 }
-.react-flow__controls-button:hover { background: var(--surface-2); }
-.react-flow__controls-button svg { fill: currentColor; }
-.react-flow__minimap { background-color: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; }
+.react-flow__controls-button:hover { background: var(--surface-2) !important; }
+.react-flow__controls-button svg { fill: var(--foreground) !important; }
+.react-flow__minimap {
+  background-color: var(--surface-1) !important;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
 .react-flow__attribution {
   background: color-mix(in srgb, var(--surface-1) 70%, transparent);
   border-radius: 4px 0 0 0;
 }
 .react-flow__attribution a { color: var(--muted-foreground); }
+
+/* Editable canvas title — transparent until hover/focus; kill the global input ring. */
+input.canvas-title-input:hover { background: color-mix(in srgb, var(--surface-2) 55%, transparent) !important; }
+input.canvas-title-input:focus { background: color-mix(in srgb, var(--surface-2) 55%, transparent) !important; box-shadow: none !important; outline: none; }

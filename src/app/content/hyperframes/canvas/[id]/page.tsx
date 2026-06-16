@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -25,6 +25,7 @@ export default function CanvasPage() {
   const id = Number(params?.id);
   const [canvas, setCanvas] = useState<CanvasData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [title, setTitle] = useState('');
 
   useEffect(() => {
     if (!Number.isFinite(id)) { setError('Invalid canvas'); return; }
@@ -33,6 +34,12 @@ export default function CanvasPage() {
       .then((j) => { if (j.error) setError(j.error); else setCanvas(j.canvas); })
       .catch((e) => setError(String(e)));
   }, [id]);
+
+  useEffect(() => { if (canvas) setTitle(canvas.title); }, [canvas]);
+  const saveTitle = useCallback(() => {
+    const t = title.trim() || 'Untitled canvas';
+    fetch(`/api/generation/canvas/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: t }) }).catch(() => {});
+  }, [title, id]);
 
   return (
     <div className="space-y-4 animate-in">
@@ -43,13 +50,22 @@ export default function CanvasPage() {
         <div className="h-[60vh] grid place-items-center text-muted-foreground"><Loader2 className="animate-spin" /></div>
       ) : (
         <>
-          <h1 className="text-h1">{canvas.title}</h1>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={saveTitle}
+            onKeyDown={(e) => { if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur(); }}
+            placeholder="Untitled canvas"
+            aria-label="Canvas name"
+            className="canvas-title-input text-[var(--foreground)] rounded-md"
+            style={{ background: 'transparent', border: 'none', padding: '2px 6px', minHeight: 'auto', width: '100%', maxWidth: '42rem', fontFamily: 'var(--font-sora), var(--font-geist), sans-serif', fontSize: '2rem', fontWeight: 600, letterSpacing: '-0.015em', lineHeight: 1.15 }}
+          />
           <CanvasBoard
             canvasId={id}
             initialNodes={(canvas.nodes as never) ?? []}
             initialEdges={(canvas.edges as never) ?? []}
             initialViewport={canvas.viewport}
-            title={canvas.title}
+            title={title}
           />
         </>
       )}

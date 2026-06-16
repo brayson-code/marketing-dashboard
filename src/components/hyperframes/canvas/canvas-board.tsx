@@ -208,6 +208,7 @@ function Board({ canvasId, initialNodes, initialEdges, initialViewport, title }:
   const rf = useRef<ReactFlowInstance<FlowNode, Edge> | null>(null);
   const router = useRouter();
   const { getViewport, setViewport } = useReactFlow();
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch('/api/assets').then((r) => r.json()).then((j) => setAssets(j.assets ?? [])).catch(() => {});
@@ -313,16 +314,30 @@ function Board({ canvasId, initialNodes, initialEdges, initialViewport, title }:
     });
   }, [setNodes, setEdges]);
 
-  // Faster, cursor-anchored wheel zoom (React Flow's built-in scroll-zoom feels sluggish).
-  const onWheelZoom = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    const vp = getViewport();
-    const SPEED = 0.0028;
-    const next = Math.min(4, Math.max(0.1, vp.zoom * Math.exp(-e.deltaY * SPEED)));
-    const rect = e.currentTarget.getBoundingClientRect();
-    const px = e.clientX - rect.left;
-    const py = e.clientY - rect.top;
-    setViewport({ x: px - (px - vp.x) * (next / vp.zoom), y: py - (py - vp.y) * (next / vp.zoom), zoom: next });
+  // Faster, cursor-anchored wheel zoom. A native CAPTURE-phase listener runs before
+  // React Flow's pane handler (so it actually takes effect) and skips inputs/minimap
+  // so textareas still scroll.
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('.nowheel, input, textarea, select, .react-flow__minimap, .react-flow__controls')) return;
+      e.preventDefault();
+      // Normalize delta to pixels — Firefox/some mice report lines (deltaMode 1),
+      // which made raw deltaY tiny (~3) so zoom barely moved ("low dpi" feel).
+      let dy = e.deltaY;
+      if (e.deltaMode === 1) dy *= 16;
+      else if (e.deltaMode === 2) dy *= el.clientHeight || 800;
+      const vp = getViewport();
+      const next = Math.min(4, Math.max(0.1, vp.zoom * Math.exp(-dy * 0.0075)));
+      const rect = el.getBoundingClientRect();
+      const px = e.clientX - rect.left;
+      const py = e.clientY - rect.top;
+      setViewport({ x: px - (px - vp.x) * (next / vp.zoom), y: py - (py - vp.y) * (next / vp.zoom), zoom: next });
+    };
+    el.addEventListener('wheel', onWheel, { passive: false, capture: true });
+    return () => el.removeEventListener('wheel', onWheel, { capture: true } as unknown as EventListenerOptions);
   }, [getViewport, setViewport]);
 
   const ctx = useMemo<CanvasActions>(() => ({ updateNode, runNode, addNext, assemble, assets }), [updateNode, runNode, addNext, assemble, assets]);
@@ -330,7 +345,7 @@ function Board({ canvasId, initialNodes, initialEdges, initialViewport, title }:
 
   return (
     <Ctx.Provider value={ctx}>
-      <div className="relative rounded-xl border border-border overflow-hidden" style={{ height: 'calc(100vh - 210px)', minHeight: 520 }} onWheel={onWheelZoom}>
+      <div ref={wrapperRef} className="relative rounded-xl border border-border overflow-hidden" style={{ height: 'calc(100vh - 210px)', minHeight: 520 }}>
         <div className="absolute z-10 top-3 left-3 flex flex-wrap gap-1.5">
           {([
             ['prompt', 'Prompt', Type],
@@ -357,7 +372,7 @@ function Board({ canvasId, initialNodes, initialEdges, initialViewport, title }:
           minZoom={0.1}
           maxZoom={4}
         >
-          <Background color="var(--border)" gap={18} />
+          <Background gap={18} size={1.5} />
           <Controls />
           <MiniMap
             pannable
