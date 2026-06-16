@@ -1006,3 +1006,23 @@ textarea:focus {
     box-shadow: 0 22px 46px -12px rgba(234,88,12,0.34), 0 10px 22px -8px rgba(0,0,0,0.12);
   }
 }
+
+/* ─── React Flow (Hyperframes Canvas) — follow the app theme ───────────────── */
+.react-flow__controls {
+  box-shadow: 0 6px 18px -6px rgba(0,0,0,0.28);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.react-flow__controls-button {
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--border);
+  color: var(--foreground);
+}
+.react-flow__controls-button:hover { background: var(--surface-2); }
+.react-flow__controls-button svg { fill: currentColor; }
+.react-flow__minimap { background-color: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; }
+.react-flow__attribution {
+  background: color-mix(in srgb, var(--surface-1) 70%, transparent);
+  border-radius: 4px 0 0 0;
+}
+.react-flow__attribution a { color: var(--muted-foreground); }

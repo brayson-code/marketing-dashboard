@@ -12,6 +12,7 @@ import {
   addEdge,
   useNodesState,
   useEdgesState,
+  useReactFlow,
   type Node,
   type Edge,
   type Connection,
@@ -20,7 +21,7 @@ import {
   type Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Sparkles, Image as ImageIcon, Film, FileText, Layers, Loader2, Type } from 'lucide-react';
+import { Sparkles, Image as ImageIcon, Film, FileText, Layers, Loader2, Type, Plus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { toast } from '@/components/ui/toast';
 
@@ -42,6 +43,7 @@ interface AssetItem { id: number; url: string; kind: string; name: string | null
 interface CanvasActions {
   updateNode: (id: string, patch: Partial<NodeData>) => void;
   runNode: (id: string) => void;
+  addNext: (id: string) => void;
   assemble: () => void;
   assets: AssetItem[];
 }
@@ -60,20 +62,31 @@ function defaultData(type: string): NodeData {
 
 // ─── Custom nodes ─────────────────────────────────────────────────────────────
 
-function NodeShell({ title, icon, children, accent }: { title: string; icon: React.ReactNode; children: React.ReactNode; accent?: boolean }) {
+function NodeShell({ title, icon, children, accent, onAddNext }: { title: string; icon: React.ReactNode; children: React.ReactNode; accent?: boolean; onAddNext?: () => void }) {
   return (
-    <div className="rounded-lg border bg-card shadow-sm w-56 text-xs" style={{ borderColor: accent ? 'var(--primary)' : 'var(--border)' }}>
+    <div className="relative rounded-lg border bg-card shadow-sm w-56 text-xs" style={{ borderColor: accent ? 'var(--primary)' : 'var(--border)' }}>
       <div className="px-2.5 py-1.5 border-b border-border/60 font-semibold flex items-center gap-1.5">{icon} {title}</div>
       <div className="p-2 space-y-2">{children}</div>
+      {onAddNext && (
+        <button
+          type="button"
+          onClick={onAddNext}
+          title="Add the next node"
+          className="nodrag absolute -right-3 -top-3 z-10 w-6 h-6 rounded-full bg-[var(--primary)] text-white grid place-items-center shadow-md hover:scale-110 active:scale-95"
+          style={{ transition: 'transform var(--t-press,120ms) var(--ease-out,ease-out)' }}
+        >
+          <Plus size={13} />
+        </button>
+      )}
     </div>
   );
 }
 
 function PromptNode({ id, data }: NodeProps<FlowNode>) {
-  const { updateNode } = useCanvas();
+  const { updateNode, addNext } = useCanvas();
   return (
     <>
-      <NodeShell title="Prompt" icon={<Type size={12} className="text-[var(--primary)]" />}>
+      <NodeShell title="Prompt" icon={<Type size={12} className="text-[var(--primary)]" />} onAddNext={() => addNext(id)}>
         <textarea
           value={String(data.prompt ?? '')}
           onChange={(e) => updateNode(id, { prompt: e.target.value })}
@@ -88,13 +101,13 @@ function PromptNode({ id, data }: NodeProps<FlowNode>) {
 }
 
 function GenNode({ id, data, kind }: { id: string; data: NodeData; kind: 'image' | 'video' }) {
-  const { runNode } = useCanvas();
+  const { runNode, addNext } = useCanvas();
   const status = data.status as GenStatus | undefined;
   const isVideo = kind === 'video';
   return (
     <>
       <Handle type="target" position={Position.Left} />
-      <NodeShell title={isVideo ? 'Video · Veo' : 'Image · Nano Banana'} icon={isVideo ? <Film size={12} className="text-[var(--primary)]" /> : <ImageIcon size={12} className="text-[var(--primary)]" />}>
+      <NodeShell title={isVideo ? 'Video · Veo' : 'Image · Nano Banana'} onAddNext={() => addNext(id)} icon={isVideo ? <Film size={12} className="text-[var(--primary)]" /> : <ImageIcon size={12} className="text-[var(--primary)]" />}>
         {data.outputUrl ? (
           isVideo ? (
             <video src={String(data.outputUrl)} className="w-full rounded border border-border/60" controls muted loop />
@@ -120,10 +133,10 @@ function ImageNode(props: NodeProps<FlowNode>) { return <GenNode id={props.id} d
 function VideoNode(props: NodeProps<FlowNode>) { return <GenNode id={props.id} data={props.data} kind="video" />; }
 
 function AssetNode({ id, data }: NodeProps<FlowNode>) {
-  const { updateNode, assets } = useCanvas();
+  const { updateNode, assets, addNext } = useCanvas();
   return (
     <>
-      <NodeShell title="Asset" icon={<FileText size={12} className="text-[var(--primary)]" />}>
+      <NodeShell title="Asset" icon={<FileText size={12} className="text-[var(--primary)]" />} onAddNext={() => addNext(id)}>
         {data.assetUrl ? (
           String(data.kind) === 'video' ? (
             <video src={String(data.assetUrl)} className="w-full rounded border border-border/60" muted />
@@ -194,6 +207,7 @@ function Board({ canvasId, initialNodes, initialEdges, initialViewport, title }:
   const [assets, setAssets] = useState<AssetItem[]>([]);
   const rf = useRef<ReactFlowInstance<FlowNode, Edge> | null>(null);
   const router = useRouter();
+  const { getViewport, setViewport } = useReactFlow();
 
   useEffect(() => {
     fetch('/api/assets').then((r) => r.json()).then((j) => setAssets(j.assets ?? [])).catch(() => {});
@@ -287,12 +301,36 @@ function Board({ canvasId, initialNodes, initialEdges, initialViewport, title }:
     setNodes((ns) => [...ns, { id, type, position: { x: 120 + Math.random() * 220, y: 100 + Math.random() * 180 }, data: defaultData(type) }]);
   }, [setNodes]);
 
-  const ctx = useMemo<CanvasActions>(() => ({ updateNode, runNode, assemble, assets }), [updateNode, runNode, assemble, assets]);
+  // "+" quick-add: drop the sensible next node to the right and wire it from `fromId`.
+  const addNext = useCallback((fromId: string) => {
+    setNodes((ns) => {
+      const from = ns.find((n) => n.id === fromId);
+      if (!from) return ns;
+      const nextType = from.type === 'prompt' ? 'image' : from.type === 'image' ? 'video' : from.type === 'asset' ? 'video' : 'assembly';
+      const id = `${nextType}-${Date.now().toString(36)}`;
+      setEdges((es) => addEdge({ id: `e-${fromId}-${id}`, source: fromId, target: id, animated: true }, es));
+      return [...ns, { id, type: nextType, position: { x: from.position.x + 300, y: from.position.y }, data: defaultData(nextType) }];
+    });
+  }, [setNodes, setEdges]);
+
+  // Faster, cursor-anchored wheel zoom (React Flow's built-in scroll-zoom feels sluggish).
+  const onWheelZoom = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    const vp = getViewport();
+    const SPEED = 0.0028;
+    const next = Math.min(4, Math.max(0.1, vp.zoom * Math.exp(-e.deltaY * SPEED)));
+    const rect = e.currentTarget.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+    setViewport({ x: px - (px - vp.x) * (next / vp.zoom), y: py - (py - vp.y) * (next / vp.zoom), zoom: next });
+  }, [getViewport, setViewport]);
+
+  const ctx = useMemo<CanvasActions>(() => ({ updateNode, runNode, addNext, assemble, assets }), [updateNode, runNode, addNext, assemble, assets]);
   const nodeTypes = useMemo(() => ({ prompt: PromptNode, image: ImageNode, video: VideoNode, asset: AssetNode, assembly: AssemblyNode }), []);
 
   return (
     <Ctx.Provider value={ctx}>
-      <div className="relative rounded-xl border border-border overflow-hidden" style={{ height: 'calc(100vh - 210px)', minHeight: 520 }}>
+      <div className="relative rounded-xl border border-border overflow-hidden" style={{ height: 'calc(100vh - 210px)', minHeight: 520 }} onWheel={onWheelZoom}>
         <div className="absolute z-10 top-3 left-3 flex flex-wrap gap-1.5">
           {([
             ['prompt', 'Prompt', Type],
@@ -315,11 +353,20 @@ function Board({ canvasId, initialNodes, initialEdges, initialViewport, title }:
           nodeTypes={nodeTypes}
           onInit={(inst) => { rf.current = inst; if (initialViewport) inst.setViewport(initialViewport); }}
           fitView
-          minZoom={0.2}
+          zoomOnScroll={false}
+          minZoom={0.1}
+          maxZoom={4}
         >
-          <Background />
+          <Background color="var(--border)" gap={18} />
           <Controls />
-          <MiniMap pannable zoomable />
+          <MiniMap
+            pannable
+            zoomable
+            style={{ backgroundColor: 'var(--surface-1)' }}
+            maskColor="color-mix(in srgb, var(--background) 65%, transparent)"
+            nodeColor="var(--primary)"
+            nodeStrokeColor="var(--border)"
+          />
         </ReactFlow>
       </div>
     </Ctx.Provider>
