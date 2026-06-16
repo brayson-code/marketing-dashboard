@@ -393,6 +393,65 @@ function GoogleWorkspaceMark({ size, className, label }: SvgRendererProps) {
   );
 }
 
+function GeminiMark({ size, className, label }: SvgRendererProps) {
+  // Google Gemini four-point spark, in the Gemini blue→purple gradient.
+  const rawId = useId();
+  const gid = `gem-${rawId.replace(/:/g, '')}`;
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width={size} height={size} className={className} role="img" aria-label={label}>
+      <defs>
+        <linearGradient id={gid} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#4285F4" />
+          <stop offset="55%" stopColor="#9b72f2" />
+          <stop offset="100%" stopColor="#d96570" />
+        </linearGradient>
+      </defs>
+      <path fill={`url(#${gid})`} d="M12 0c.5 5.9 5.6 11 11.5 11.5C17.6 12 12.5 17.1 12 23c-.5-5.9-5.6-11-11.5-11.5C6.4 11 11.5 5.9 12 0z" />
+    </svg>
+  );
+}
+
+function TwilioMark({ size, className, label }: SvgRendererProps) {
+  // Simple Icons "twilio" — ring with four dots, in Twilio red #F22F46.
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width={size} height={size} className={className} role="img" aria-label={label} fill="#F22F46">
+      <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.6 0 12 0zm0 21.6c-5.3 0-9.6-4.3-9.6-9.6S6.7 2.4 12 2.4s9.6 4.3 9.6 9.6-4.3 9.6-9.6 9.6zm5.99-12.81a1.8 1.8 0 1 1-3.6 0 1.8 1.8 0 0 1 3.6 0zm0 6.04a1.8 1.8 0 1 1-3.6 0 1.8 1.8 0 0 1 3.6 0zm-6.04 0a1.8 1.8 0 1 1-3.6 0 1.8 1.8 0 0 1 3.6 0zm0-6.04a1.8 1.8 0 1 1-3.6 0 1.8 1.8 0 0 1 3.6 0z" />
+    </svg>
+  );
+}
+
+function TelegramMark({ size, className, label }: SvgRendererProps) {
+  // Simple Icons "telegram" paper plane, in Telegram blue #26A5E4.
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width={size} height={size} className={className} role="img" aria-label={label} fill="#26A5E4">
+      <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.479.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
+    </svg>
+  );
+}
+
+function ApifyMark({ size, className, label }: SvgRendererProps) {
+  // Purpose-built hexagon crawl glyph in Apify green #97D700 (no canonical SI mark).
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width={size} height={size} className={className} role="img" aria-label={label}>
+      <path fill="#97D700" d="M12 1.7l8.93 5.15v10.3L12 22.3l-8.93-5.15V6.85z" />
+      <path fill="#1a1a1a" d="M12 6.6l4.2 8.8h-2.05l-.74-1.66H10.6l-.74 1.66H7.8zm0 3.5l-.95 2.13h1.9z" />
+    </svg>
+  );
+}
+
+function DeepgramMark({ size, className, label }: SvgRendererProps) {
+  // Purpose-built waveform glyph in Deepgram mint #13EF93 (speech-to-text).
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width={size} height={size} className={className} role="img" aria-label={label} fill="#13EF93">
+      <rect x="3" y="10" width="2.4" height="4" rx="1.2" />
+      <rect x="7.2" y="7" width="2.4" height="10" rx="1.2" />
+      <rect x="11.4" y="4" width="2.4" height="16" rx="1.2" />
+      <rect x="15.6" y="7.5" width="2.4" height="9" rx="1.2" />
+      <rect x="19.8" y="10.5" width="2.4" height="3" rx="1.2" />
+    </svg>
+  );
+}
+
 function FallbackMark({ size, className, label }: SvgRendererProps) {
   return <Plug size={size} className={className} aria-label={label} />;
 }
@@ -409,6 +468,11 @@ const RENDERERS: Record<string, (p: SvgRendererProps) => JSX.Element> = {
   // API-key integration providers
   anthropic: AnthropicMark,
   openai: OpenAiMark,
+  'google-ai': GeminiMark,
+  twilio: TwilioMark,
+  telegram: TelegramMark,
+  apify: ApifyMark,
+  deepgram: DeepgramMark,
   agentmail: AgentMailMark,
   loopmessage: LoopMessageMark,
   gmail: GmailMark,

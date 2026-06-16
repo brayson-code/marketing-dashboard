@@ -210,8 +210,14 @@ export default function UsagePage() {
             <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="day" stroke="var(--muted-foreground)" fontSize={11} />
             <YAxis stroke="var(--muted-foreground)" fontSize={11} tickFormatter={(v) => `$${v}`} />
-            <Tooltip contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} formatter={(v) => fmtUsd(Number(v))} />
-            <Bar dataKey="cost_usd" fill="var(--primary)" />
+            <Tooltip
+              cursor={{ fill: 'var(--foreground)', fillOpacity: 0.08 }}
+              contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
+              formatter={(v) => fmtUsd(Number(v))}
+            />
+            {/* activeBar: the hovered bar gets a brighter, outlined fill so it stands
+                out against the same-color siblings (default highlight was invisible). */}
+            <Bar dataKey="cost_usd" fill="var(--primary)" activeBar={{ fill: '#34d399', stroke: 'var(--foreground)', strokeWidth: 1 }} />
           </BarChart>
         </ResponsiveContainer>
       </div>

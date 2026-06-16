@@ -12,6 +12,7 @@ interface ProviderDef {
   category: Category;
   fields: Array<{ name: string; label: string; type: 'text' | 'password' | 'url'; required?: boolean; placeholder?: string }>;
   scopesHint?: string;
+  comingSoon?: boolean;
 }
 
 interface Integration {
@@ -138,7 +139,7 @@ export function IntegrationsPanel() {
           const status = integration?.status ?? 'not_configured';
           const isEditing = editing === p.id;
           return (
-            <div key={p.id} className="panel" data-walkthrough={p.id === 'anthropic' ? 'connect-claude' : undefined}>
+            <div key={p.id} className={`panel ${p.comingSoon ? 'opacity-60' : ''}`} data-walkthrough={p.id === 'anthropic' ? 'connect-claude' : undefined}>
               <div className="p-4 space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="space-y-0.5">
@@ -147,26 +148,30 @@ export function IntegrationsPanel() {
                         <BrandLogo provider={p.id} size={16} />
                       </div>
                       <span className="font-semibold text-sm">{p.label}</span>
-                      <span className={`badge ${status === 'configured' ? 'badge-success' : status === 'error' || status === 'expired' ? 'badge-error' : 'badge-neutral'}`}>
-                        {status === 'configured' ? <><CheckCircle2 size={10} /> connected</> : status === 'not_configured' ? 'not set up' : status}
-                      </span>
+                      {p.comingSoon ? (
+                        <span className="badge badge-neutral">Coming soon</span>
+                      ) : (
+                        <span className={`badge ${status === 'configured' ? 'badge-success' : status === 'error' || status === 'expired' ? 'badge-error' : 'badge-neutral'}`}>
+                          {status === 'configured' ? <><CheckCircle2 size={10} /> connected</> : status === 'not_configured' ? 'not set up' : status}
+                        </span>
+                      )}
                     </div>
                     <div className="text-[10px] text-muted-foreground capitalize">{p.category}</div>
-                    {p.scopesHint && <div className="text-[10px] text-muted-foreground">Scopes: {p.scopesHint}</div>}
+                    {!p.comingSoon && p.scopesHint && <div className="text-[10px] text-muted-foreground">Scopes: {p.scopesHint}</div>}
                   </div>
                   <div className="flex gap-1">
-                    {!isEditing && (
+                    {!isEditing && !p.comingSoon && (
                       <button className="btn btn-ghost btn-sm" onClick={() => startEdit(p)}>
                         {integration?.has_secret ? 'Update' : 'Connect'}
                       </button>
                     )}
-                    {integration?.has_secret && !isEditing && (
+                    {integration?.has_secret && !isEditing && !p.comingSoon && (
                       <button className="btn btn-destructive btn-sm" onClick={() => clearProvider(p.id)}><X size={11} /></button>
                     )}
                   </div>
                 </div>
 
-                {isEditing && (
+                {isEditing && !p.comingSoon && (
                   <div className="space-y-2 pt-2 border-t border-border/40">
                     {p.fields.map((f) => (
                       <div key={f.name} className="space-y-1">

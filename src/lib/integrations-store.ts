@@ -19,6 +19,8 @@ export interface IntegrationProviderDef {
   category: 'ai' | 'messaging' | 'email' | 'calendar' | 'social' | 'analytics' | 'crm' | 'storage' | 'other';
   fields: Array<{ name: string; label: string; type: 'text' | 'password' | 'url'; required?: boolean; placeholder?: string }>;
   scopesHint?: string;
+  /** Not wired up yet — shown on Connections with a "Coming soon" badge, not connectable. */
+  comingSoon?: boolean;
 }
 
 export interface IntegrationRow {
@@ -38,7 +40,7 @@ export interface IntegrationRow {
 export const PROVIDERS: IntegrationProviderDef[] = [
   { id: 'anthropic', label: 'Anthropic (Claude API)', category: 'ai',
     fields: [{ name: 'api_key', label: 'API Key', type: 'password', required: true, placeholder: 'sk-ant-…' }] },
-  { id: 'openai', label: 'OpenAI', category: 'ai',
+  { id: 'openai', label: 'OpenAI', category: 'ai', comingSoon: true,
     fields: [{ name: 'api_key', label: 'API Key', type: 'password', required: true, placeholder: 'sk-…' }] },
   { id: 'google-ai', label: 'Google AI (Gemini · Nano Banana · Veo)', category: 'ai',
     scopesHint: 'Create an API key at aistudio.google.com → Get API key. Powers the Hyperframes Canvas image (Nano Banana Pro) + video (Veo) nodes. Paid usage billed by Google.',
@@ -72,22 +74,22 @@ export const PROVIDERS: IntegrationProviderDef[] = [
   // src/lib/google-calendar.ts. (The legacy IMAP route at
   // src/app/api/integrations/gmail/route.ts uses env EMAIL_USER/PASSWORD, not the
   // integration secret, so it's independent and untouched.)
-  { id: 'x', label: 'X (Twitter)', category: 'social',
+  { id: 'x', label: 'X (Twitter)', category: 'social', comingSoon: true,
     fields: [{ name: 'bearer_token', label: 'Bearer Token', type: 'password', required: true }] },
-  { id: 'linkedin', label: 'LinkedIn', category: 'social',
+  { id: 'linkedin', label: 'LinkedIn', category: 'social', comingSoon: true,
     fields: [
       { name: 'access_token', label: 'Access Token', type: 'password', required: true },
       { name: 'organization_urn', label: 'Organization URN', type: 'text', placeholder: 'urn:li:organization:123' },
     ] },
-  { id: 'instagram', label: 'Instagram (via Meta)', category: 'social',
+  { id: 'instagram', label: 'Instagram (via Meta)', category: 'social', comingSoon: true,
     fields: [{ name: 'access_token', label: 'Page Access Token', type: 'password', required: true }] },
-  { id: 'plausible', label: 'Plausible Analytics', category: 'analytics',
+  { id: 'plausible', label: 'Plausible Analytics', category: 'analytics', comingSoon: true,
     fields: [
       { name: 'site_id', label: 'Site ID', type: 'text', required: true },
       { name: 'api_key', label: 'API Key', type: 'password' },
       { name: 'base_url', label: 'Base URL', type: 'url', placeholder: 'https://plausible.io' },
     ] },
-  { id: 'ga4', label: 'Google Analytics 4', category: 'analytics',
+  { id: 'ga4', label: 'Google Analytics 4', category: 'analytics', comingSoon: true,
     fields: [
       { name: 'property_id', label: 'Property ID', type: 'text', required: true },
       { name: 'service_account_json', label: 'Service Account JSON', type: 'password', required: true },

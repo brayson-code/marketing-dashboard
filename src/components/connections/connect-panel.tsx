@@ -164,29 +164,31 @@ export default function ConnectPanel() {
         {providers.map((p) => {
           const isBusy = busy === p.key;
           const ready = configured && p.available !== false;
+          const soon = !p.connected && !ready;
           return (
-            <div key={p.key} className="panel p-3 flex items-center justify-between gap-3">
+            <div key={p.key} className={`panel p-3 flex items-center justify-between gap-3 ${soon ? 'opacity-60' : ''}`}>
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className="h-8 w-8 shrink-0 rounded-lg bg-[var(--surface-2)] border border-border flex items-center justify-center text-foreground">
                   <BrandLogo provider={p.key} size={18} />
                 </div>
                 <div className="min-w-0">
                   <div className="text-sm font-medium truncate">{p.label}</div>
-                  <span className={`badge ${p.connected ? 'badge-success' : ready ? 'badge-neutral' : 'badge-neutral'}`}>
-                    {p.connected ? 'connected' : ready ? 'not connected' : 'not set up yet'}
+                  <span className={`badge ${p.connected ? 'badge-success' : 'badge-neutral'}`}>
+                    {p.connected ? 'connected' : ready ? 'not connected' : 'Coming soon'}
                   </span>
                 </div>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
+                {!soon && (
                 <button
                   onClick={() => connect(p)}
                   disabled={isBusy || !ready}
                   className="btn btn-primary btn-sm"
-                  title={!ready ? 'This platform’s OAuth app isn’t set up yet' : undefined}
                 >
                   {isBusy ? <Loader2 size={12} className="animate-spin" /> : <Link2 size={12} />}
                   {p.connected ? 'Reconnect' : 'Connect'}
                 </button>
+                )}
                 {p.connected && (
                   <button
                     onClick={() => removeConnection(p)}
