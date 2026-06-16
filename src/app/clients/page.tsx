@@ -17,6 +17,7 @@ export default function ClientsPage() {
   const [forbidden, setForbidden] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [plan, setPlan] = useState<'pro' | 'lite'>('pro');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [invite, setInvite] = useState<{ email: string; link: string | null; emailed: boolean } | null>(null);
@@ -38,7 +39,7 @@ export default function ClientsPage() {
       const r = await fetch('/api/clients', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email }),
+        body: JSON.stringify({ name, email, plan }),
       });
       const j = await r.json();
       if (!r.ok) { setError(j.error || 'Failed to add client'); return; }
@@ -97,9 +98,30 @@ export default function ClientsPage() {
             <input id="client-email" name="client-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="founder@acme.com" autoComplete="email" style={{ width: '100%' }} required />
           </div>
         </div>
+        <div className="space-y-1">
+          <label className="text-[11px] font-medium">Plan</label>
+          <div className="flex gap-2">
+            {(['pro', 'lite'] as const).map((pl) => (
+              <button
+                key={pl}
+                type="button"
+                onClick={() => setPlan(pl)}
+                aria-pressed={plan === pl}
+                className={`btn btn-sm flex-1 ${plan === pl ? 'btn-primary' : 'btn-ghost'}`}
+              >
+                {plan === pl && <Check size={12} />} {pl === 'pro' ? 'Pro' : 'Lite'}
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            {plan === 'pro'
+              ? 'Pro — full Command Center (all agents, Genes, canvas, advanced features).'
+              : 'Lite — core agents and essentials; advanced features stay locked behind an upgrade.'}
+          </p>
+        </div>
         {error && <p className="text-xs text-destructive">{error}</p>}
         <button type="submit" disabled={busy} className="btn btn-primary btn-sm">
-          {busy ? 'Provisioning…' : 'Create workspace + invite'}
+          {busy ? 'Provisioning…' : `Create ${plan === 'pro' ? 'Pro' : 'Lite'} workspace + invite`}
         </button>
 
         {invite && (

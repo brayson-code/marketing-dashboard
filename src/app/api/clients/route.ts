@@ -58,12 +58,14 @@ export async function POST(request: Request) {
   enterTenant(await resolveTenant());
   if (!(await isHqOwner())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  let body: { name?: string; email?: string };
-  try { body = (await request.json()) as { name?: string; email?: string }; }
+  let body: { name?: string; email?: string; plan?: string };
+  try { body = (await request.json()) as { name?: string; email?: string; plan?: string }; }
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
 
   const email = (body.email ?? '').trim().toLowerCase();
   const name = (body.name ?? '').trim();
+  // Plan picked at provisioning time — only Pro or Lite are offered.
+  const plan = body.plan === 'lite' ? 'lite' : 'pro';
   if (!EMAIL_RE.test(email)) return NextResponse.json({ error: 'A valid email is required' }, { status: 400 });
   if (!name) return NextResponse.json({ error: 'A workspace name is required' }, { status: 400 });
 
@@ -100,7 +102,9 @@ export async function POST(request: Request) {
       WHERE user_id = ${userId} AND role = 'owner' AND workspace_id <> ${DEFAULT_TENANT_ID}
       ORDER BY created_at DESC LIMIT 1
     `) as unknown as Array<{ workspace_id: string }>;
-    const newTenantId = owned[0]?.workspace_id ?? (await createWorkspace(name, userId));
+    const newTenantId = owned[0]?.workspace_id ?? (await createWorkspace(name, userId, plan));
+    // Ensure the chosen plan sticks even when reusing a half-provisioned workspace.
+    await sql()`UPDATE public.tenants SET plan = ${plan} WHERE id = ${newTenantId}`;
 
     // 3) Stamp the tenant into the JWT so every request resolves to THEIR workspace.
     const { error: metaErr } = await admin.auth.admin.updateUserById(userId, {

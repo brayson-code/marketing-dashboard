@@ -49,9 +49,9 @@ export async function primaryWorkspaceId(userId: string): Promise<string | null>
 }
 
 /** Create a workspace and make `ownerUserId` its owner. Returns the new tenant id. */
-export async function createWorkspace(name: string, ownerUserId: string): Promise<string> {
+export async function createWorkspace(name: string, ownerUserId: string, plan = 'starter'): Promise<string> {
   const rows = (await sql()`
-    INSERT INTO public.tenants (name, plan) VALUES (${name}, 'starter') RETURNING id
+    INSERT INTO public.tenants (name, plan) VALUES (${name}, ${plan}) RETURNING id
   `) as unknown as Array<{ id: string }>;
   const id = String(rows[0].id);
   await sql()`
