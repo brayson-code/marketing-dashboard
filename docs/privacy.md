@@ -3,8 +3,6 @@
 **Effective date:** June 15, 2026
 **Last updated:** June 15, 2026
 
-> **Template notice.** This policy is a thorough starting draft tailored to the KeyPlayers Command Center. It is **not legal advice** and must be reviewed by qualified counsel — and the bracketed placeholders (legal entity, governing law, contact addresses) completed — before you rely on it. Laws that may apply include Canada's federal **PIPEDA** and anti-spam law (**CASL**), and — where you have users there — the EU/UK GDPR, the California Consumer Privacy Act as amended (CCPA/CPRA), and U.S. messaging laws (TCPA, CAN-SPAM).
-
 This Privacy Policy explains how **1001060863 Ontario Corp.**, operating as KeyPlayers HQ ("KeyPlayers," "we," "us") collects, uses, shares, and protects information in connection with the KeyPlayers Command Center (the "Service") at `command.keyplayershq.com`.
 
 ---

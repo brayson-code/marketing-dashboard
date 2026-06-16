@@ -3,8 +3,6 @@
 **Effective date:** June 15, 2026
 **Last updated:** June 15, 2026
 
-> **Template notice.** These Terms are a thorough starting draft for the KeyPlayers Command Center. They are **not legal advice** and must be reviewed by qualified counsel — and the bracketed placeholders completed — before you rely on them. Because the Service sends real messages and acts in connected accounts on your behalf, the **Acceptable Use** (§6) and **Your responsibility for agent actions** (§5) sections are especially important.
-
 These Terms of Service ("Terms") are a binding agreement between you (and the organization you represent, "Customer," "you") and **1001060863 Ontario Corp.**, operating as KeyPlayers HQ ("KeyPlayers," "we," "us") governing your use of the KeyPlayers Command Center (the "Service").
 
 By accessing or using the Service, you agree to these Terms and to our [Privacy Policy](/docs/privacy). If you do not agree, do not use the Service.
