@@ -1,4 +1,5 @@
 import { sql, jsonb, tenantId } from './db/client';
+import { DEFAULT_TENANT_ID } from './tenant';
 import { mdToPlainText } from './md-to-text';
 import { getDecryptedSecret, getIntegration } from './integrations-store';
 
@@ -18,6 +19,27 @@ export interface SendIMessageOptions {
 
 export function getOwnerPhone(): string | null {
   return process.env.KEYPLAYERS_OWNER_PHONE?.trim() || null;
+}
+
+/** The number to SHOW in the Boardroom badge for the active tenant. The env
+ *  KEYPLAYERS_OWNER_PHONE is the HQ owner's personal cell (owner↔agent lane) — it
+ *  must NEVER be shown to client workspaces. A client sees its own connected
+ *  messaging number (Twilio/LoopMessage), or null if it hasn't connected one. */
+export async function getBoardroomBadgePhone(): Promise<string | null> {
+  const isHqOrDev = tenantId() === DEFAULT_TENANT_ID || process.env.NODE_ENV !== 'production';
+  if (isHqOrDev) {
+    const env = getOwnerPhone();
+    if (env) return env;
+  }
+  // Display-only: read the connected sending number. `from_number` is a text field
+  // stored in the integration's `config` jsonb (not the encrypted secret), so we can
+  // show it without decryption and without needing the full Twilio credential set.
+  try {
+    const row = await getIntegration('twilio');
+    const from = (row?.config as { from_number?: string } | undefined)?.from_number?.trim();
+    if (from) return from;
+  } catch { /* no connected number */ }
+  return null;
 }
 
 export function isLoopMessageConfigured(): boolean {

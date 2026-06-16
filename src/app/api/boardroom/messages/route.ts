@@ -1,7 +1,7 @@
 import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { sql, tenantId } from '@/lib/db/client';
-import { sendIMessage, getOwnerPhone, isLoopMessageConfigured } from '@/lib/loopmessage';
+import { sendIMessage, getBoardroomBadgePhone, isLoopMessageConfigured } from '@/lib/loopmessage';
 
 interface BoardroomRow {
   id: number;
@@ -30,7 +30,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     configured: isLoopMessageConfigured(),
-    owner_phone: getOwnerPhone(),
+    owner_phone: await getBoardroomBadgePhone(),
     messages: rows.reverse(),
   });
 }
