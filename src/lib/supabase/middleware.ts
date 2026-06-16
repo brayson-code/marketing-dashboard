@@ -65,7 +65,12 @@ export async function updateSession(request: NextRequest) {
   // break Supabase, reel embeds, or the app's many inline style={{}} attributes
   // (style-src keeps 'unsafe-inline' since nonces can't cover style attributes).
   const nonce = btoa(crypto.randomUUID());
-  const csp = buildCsp(nonce);
+  // The /walkthrough.html product-reveal deck is a single STATIC file with an
+  // inline <script> (it can't carry a per-request nonce), so the strict
+  // nonce/strict-dynamic script policy would block it. It holds no user data and
+  // no auth surface, so serve it a relaxed, self-contained CSP that permits its
+  // own inline script. Every other route keeps the strict nonce-based policy.
+  const csp = request.nextUrl.pathname === '/walkthrough.html' ? buildDeckCsp() : buildCsp(nonce);
   requestHeaders.set('x-nonce', nonce);
   requestHeaders.set('content-security-policy', csp);
 
@@ -92,5 +97,21 @@ function buildCsp(nonce: string): string {
     "connect-src 'self' https: wss:",
     "frame-src 'self' https:",
     "media-src 'self' blob: https:",
+  ].join('; ');
+}
+
+// Relaxed, self-contained CSP for the static /walkthrough.html deck only. Allows
+// its inline <script> (no nonce possible on a static file); still locks the page
+// to same-origin + https assets. Not used for any data-bearing route.
+function buildDeckCsp(): string {
+  return [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "script-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https:",
+    "font-src 'self' data:",
+    "connect-src 'self'",
   ].join('; ');
 }
