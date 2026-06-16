@@ -131,7 +131,9 @@ export function HelpWidget() {
           style={{
             width: 'min(380px, calc(100vw - 2rem))',
             height: 'min(560px, calc(100vh - 7rem))',
-            background: 'var(--surface-1)',
+            // --overlay-bg is the OPAQUE elevated surface (--surface-1 is rgba(…,0.03)
+            // in dark mode → the panel was see-through and unreadable).
+            background: 'var(--overlay-bg)',
             borderColor: 'var(--border)',
             boxShadow: '0 20px 50px -12px rgba(0,0,0,0.35)',
           }}
