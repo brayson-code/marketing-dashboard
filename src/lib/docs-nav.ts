@@ -54,6 +54,13 @@ export const DOCS_NAV: DocNavGroup[] = [
     ],
   },
   {
+    group: 'Help',
+    items: [
+      { slug: 'faq', title: 'FAQ', blurb: 'Quick answers to the questions people ask most' },
+      { slug: 'troubleshooting', title: 'Troubleshooting', blurb: 'Concrete fixes for common "it\'s not working" moments' },
+    ],
+  },
+  {
     group: 'Legal',
     items: [
       { slug: 'privacy', title: 'Privacy Policy', blurb: 'What data we process, why, and your rights' },

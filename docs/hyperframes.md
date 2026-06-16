@@ -18,6 +18,27 @@ A script is a wall of text; a storyboard tells you what to put on screen, *when*
 
 ---
 
+## The node canvas
+
+For building a reel shot-by-shot, Hyperframes has a **node canvas** — a draggable node graph where each node is one AI step and you wire them together left-to-right like scenes. Open it from the **Hyperframes hub**.
+
+![the Hyperframes node canvas — frames wired from prompt to image to video, ready to assemble](images/hyperframes-2.png)
+
+Each node is a stage in generating one frame:
+
+- **Prompt** — the text description of the shot you want.
+- **Image** — turns that prompt into a still, rendered by **Nano Banana Pro**.
+- **Video** — animates the still into a clip, rendered by **Veo**.
+- **Assemble** — stitches the connected frames into a finished reel.
+
+You build a reel by laying frames out left-to-right, the same way you'd order scenes: the first frame is your opening shot, the next is the second beat, and so on. To extend a frame, click the small **"+" button** on a node — it adds the next step in the chain, pre-wired, so you don't have to draw the connection yourself (Prompt → Image → Video, scene after scene).
+
+When the frames are wired up the way you want, the **Assemble** node builds a reel from everything connected to it and renders it through the same **Hyperframes / HeyGen** pipeline the storyboard editor uses — so the output lands in your reel just like a rendered storyboard would.
+
+> The node canvas and the storyboard are two ways into the same place: the storyboard is fastest when you want a full script-and-shotlist from one brief; the canvas is best when you want to direct each shot yourself and see the prompt → image → video chain explicitly.
+
+---
+
 ## The layout
 
 - **Generate (top).** A brief box with a **platform** and **length** picker, and a **Generate** button.

@@ -289,7 +289,7 @@
     "slug": "goals-and-missions",
     "index": 2,
     "filename": "goals-and-missions-2.png",
-    "caption": "a goal in pending review with the Confirm done button",
+    "caption": "a goal in pending review with the Confirm done button (cropped)",
     "route": "/goals",
     "fullPage": false,
     "clipSelector": ".panel:has(.badge-warning)",
@@ -426,6 +426,50 @@
     "fullPage": false,
     "clipSelector": ".panel:has(table.data-table)",
     "waitForSelector": "table.data-table tbody tr",
+    "preAction": null
+  },
+  {
+    "slug": "sms",
+    "index": 1,
+    "filename": "sms-1.png",
+    "caption": "The SMS inbox in Engagement — every thread in one place",
+    "route": "/engagement",
+    "fullPage": false,
+    "clipSelector": ".panel-body",
+    "waitForSelector": ".tab.active",
+    "preAction": "click the SMS tab"
+  },
+  {
+    "slug": "connectors-mcp",
+    "index": 1,
+    "filename": "connectors-mcp-1.png",
+    "caption": "A connected MCP server — toggle it on to let your agents call its tools",
+    "route": "/connections",
+    "fullPage": false,
+    "clipSelector": ".panel:has(.section-title:has-text('MCP'))",
+    "waitForSelector": ".section-title",
+    "preAction": null
+  },
+  {
+    "slug": "google-workspace",
+    "index": 1,
+    "filename": "google-workspace-1.png",
+    "caption": "Google Workspace connected on the Connections page",
+    "route": "/connections",
+    "fullPage": false,
+    "clipSelector": ".panel:has-text('Google')",
+    "waitForSelector": ".section-title",
+    "preAction": null
+  },
+  {
+    "slug": "hyperframes",
+    "index": 2,
+    "filename": "hyperframes-2.png",
+    "caption": "the Hyperframes node canvas — frames wired from prompt to image to video, ready to assemble",
+    "route": "/content/hyperframes/canvas/2",
+    "fullPage": true,
+    "clipSelector": null,
+    "waitForSelector": ".react-flow",
     "preAction": null
   }
 ]

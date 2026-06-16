@@ -29,9 +29,7 @@ Most of KeyCommand's pages are structured tools. The Boardroom is the open-ended
 2. Type a request — *"Draft three reel hooks about our new feature,"* or *"What did our competitors post this week?"*
 3. KeyPlayer plans the work, dispatches specialists if needed, and replies. Anything it produces for action shows up in [Drafts](./drafts.md).
 
-**Send it a screenshot.** You can paste, drag-and-drop, or attach an image, and KeyPlayer can read it — handy for "here's a reel I saw, what do you think?"
-
-![pasting a screenshot into the orchestrator chat for KeyPlayer to read](images/boardroom-2.png)
+**Send it a screenshot.** Use the attach button in the chat box — or just paste or drag-and-drop an image straight into the conversation — and KeyPlayer can read it. It's handy for "here's a reel I saw, what do you think?" or pasting a dashboard you want it to interpret.
 
 ### Watch agents collaborate
 

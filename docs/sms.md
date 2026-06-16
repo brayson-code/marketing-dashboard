@@ -2,7 +2,7 @@
 
 Connect Twilio and your agents can send text messages on your behalf — and you get an **SMS inbox** right inside KeyCommand where you can read replies and text back yourself.
 
-> _Screenshot: the SMS lane in the Engagement tab, with a contacts list on the left and a conversation on the right._
+![The SMS inbox in Engagement — every thread in one place](images/sms-1.png)
 
 ---
 
@@ -24,9 +24,7 @@ Inbound replies from contacts land in the inbox automatically, so you always hav
 3. Paste your **Account SID**, **Auth Token**, and the **From number** (the Twilio phone number texts will be sent from).
 4. Click **Save**. The tile flips to **connected**.
 
-Once connected, the SMS lane appears in the Engagement tab.
-
-> _Screenshot: the Twilio tile on the Connections page in the connected state._
+Once connected, the Twilio tile flips to **connected** and the SMS lane appears in the Engagement tab.
 
 ---
 

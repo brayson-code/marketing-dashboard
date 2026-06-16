@@ -51,6 +51,8 @@
 
 - [Getting Started](./getting-started.md) — sign in, connect your Claude key and Google, and what to do first
 - [Concepts & Glossary](./concepts.md) — agents, drafts, goals, the autonomy gate, and more
+- [FAQ](./faq.md) — quick answers to the questions people ask most
+- [Troubleshooting](./troubleshooting.md) — concrete fixes for common "it's not working" moments
 
 ---
 

@@ -2,7 +2,7 @@
 
 **MCP (Model Context Protocol) servers** let you plug additional tools directly into your agents. Connect a remote MCP server and your agents can automatically use the capabilities it provides — extra data sources, specialized APIs, custom business tools, or anything else an MCP server exposes.
 
-> _Screenshot: the Connections page showing an MCP server card with the on/off toggle._
+![A connected MCP server — toggle it on to let your agents call its tools](images/connectors-mcp-1.png)
 
 ---
 
@@ -27,7 +27,7 @@ Think of each MCP server as a plug-in that extends what your agents can do, with
 5. Click **Save**. The server appears as a card.
 6. Flip the **toggle on** to activate it. Your agents can now use its tools.
 
-> _Screenshot: the "Add MCP server" form with URL and credentials fields._
+The **Add MCP server** form asks for the server URL and any auth credentials it needs — paste them in and save, and the new server shows up as its own card.
 
 ---
 

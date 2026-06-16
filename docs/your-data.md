@@ -26,8 +26,6 @@ Nothing is left out. If KeyCommand created it, stored it, or learned it on your 
 3. Click the **Export** button.
 4. Your browser downloads a ZIP file. The file is self-contained — open it in any standard archive tool to read the contents.
 
-> _Screenshot: the Export your data section in Settings with the Export button._
-
 The export is a point-in-time snapshot of your workspace. If you want an up-to-date copy, just run it again.
 
 ---

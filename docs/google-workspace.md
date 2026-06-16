@@ -2,7 +2,7 @@
 
 One connection gives your agents access to the full Google suite: Docs, Sheets, Drive, Gmail, Calendar, and Meet. You don't need to connect them one by one — a single **Connect Google** on the Connections page covers all six.
 
-> _Screenshot: the Connections page showing the "Connect Google" tile in the connected state._
+![Google Workspace connected on the Connections page](images/google-workspace-1.png)
 
 ---
 

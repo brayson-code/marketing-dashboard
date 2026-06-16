@@ -40,7 +40,7 @@ The **SMS** lane is a two-pane chat: contacts on the left, the full thread and a
 
 Phone numbers are auto-normalized — `(415) 555-0123` and `4155550123` are treated the same. Needs Twilio connected; see [SMS & Text Messaging](./sms.md).
 
-> _Screenshot: the SMS lane showing a contact list on the left and an open thread on the right._
+![The SMS lane in Engagement — your contact threads on the left, the open conversation on the right](images/sms-1.png)
 
 ### Daily follow-ups (CRM)
 
