@@ -37,6 +37,9 @@ export async function GET() {
   const response = NextResponse.json({
     user: { id: user.id, username: user.email, email: user.email, role: 'admin' },
     has_workspace: hasWorkspace(),
+    // HQ-only surfaces (e.g. KeyWatch / Issues) use this to hide themselves from
+    // client workspaces. The API routes enforce it server-side regardless.
+    is_hq: tid === DEFAULT_TENANT_ID,
   });
   response.headers.set('Cache-Control', 'no-store');
   return response;

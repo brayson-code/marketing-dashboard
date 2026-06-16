@@ -111,6 +111,13 @@ export function NavRail() {
   const pathname = usePathname();
   const realOnly = useDashboard(s => s.realOnly);
   const [opsOpen, setOpsOpen] = useState(false);
+  // KeyWatch / Issues is HQ-only. Hide it from client workspaces (the API enforces
+  // it server-side too). Default false so it's hidden until proven HQ.
+  const [isHq, setIsHq] = useState(false);
+  useEffect(() => {
+    fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)).then((j) => setIsHq(!!j?.is_hq)).catch(() => {});
+  }, []);
+  const opsItems = OPS.items.filter((i) => i.href !== '/issues' || isHq);
 
   const { data: counts } = useSmartPoll<NavCounts>(
     () => fetch(`/api/counts${realOnly ? '?real=true' : ''}`).then(r => r.json()),
@@ -119,8 +126,8 @@ export function NavRail() {
 
   // Auto-open OPS if you navigated into one of its items.
   useEffect(() => {
-    if (OPS.items.some((i) => pathname.startsWith(i.href))) setOpsOpen(true);
-  }, [pathname]);
+    if (opsItems.some((i) => pathname.startsWith(i.href))) setOpsOpen(true);
+  }, [pathname, opsItems]);
 
   return (
     <nav className="nav-rail fixed left-0 top-[var(--header-height)] bottom-0 w-[var(--nav-width)] surface-opaque border-r border-border z-40 hidden md:flex flex-col">
@@ -147,7 +154,7 @@ export function NavRail() {
           </button>
           {opsOpen && (
             <div className="space-y-0.5 mt-1" data-stagger>
-              {OPS.items.map((item) => (
+              {opsItems.map((item) => (
                 <NavLink key={item.href} item={item} active={pathname.startsWith(item.href)} count={0} />
               ))}
             </div>

@@ -1,4 +1,5 @@
 import { enterTenant, resolveTenant } from '@/lib/with-tenant';
+import { requireHq } from '@/lib/hq-guard';
 import { NextResponse, after } from 'next/server';
 import { getIssue, updateIssue } from '@/lib/observability';
 import { runFixer } from '@/lib/fixer';
@@ -11,6 +12,8 @@ export const maxDuration = 300;
 // immediately; the board polls for the status/PR to appear.
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   enterTenant(await resolveTenant());
+  const denied = requireHq();
+  if (denied) return denied;
   const { id } = await params;
   const issue = await getIssue(id);
   if (!issue) return NextResponse.json({ error: 'Not found' }, { status: 404 });

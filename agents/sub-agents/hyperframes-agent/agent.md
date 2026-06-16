@@ -26,6 +26,19 @@ Write a **high-retention short-form video** (TikTok / Reels / YouTube Short) in 
 6. Flag any factual claim. Return.
 
 ## Output schema
+ALWAYS begin with the SPOKEN SCRIPT — the exact words to read aloud on a teleprompter — then the storyboard for the editor. The spoken script must be PLAIN ENGLISH: no markdown symbols at all (no `*`, `#`, `|`, `>`, backticks), no preamble ("Here's your script…"), no timings, no stage directions. Put each beat label on its OWN line in CAPS (HOOK, then value beats, then CTA), with the spoken words underneath. Example:
+
+```
+SPOKEN SCRIPT
+HOOK
+I gave an AI the keys to my marketing for 30 days.
+BODY
+It wrote the posts, replied to comments, and booked the calls — while I watched.
+CTA
+Follow to see what it builds next.
+```
+
+After the SPOKEN SCRIPT block, output the storyboard:
 ```md
 ## Platform & length
 - Platform: <tiktok | reels | shorts | youtube_short>

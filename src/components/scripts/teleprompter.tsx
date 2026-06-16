@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import {
   X, Play, Pause, Minus, Plus, FlipHorizontal2, RotateCcw, Type, Gauge,
 } from 'lucide-react';
+import { parseScript } from '@/lib/script-format';
 
 // Full-screen teleprompter overlay. Big, high-contrast, auto-scrolling script
 // text for recording. Portaled to <body> so the fixed overlay covers the real
@@ -138,7 +139,28 @@ export function Teleprompter({ text, onClose }: { text: string; onClose: () => v
             textShadow: '0 1px 18px rgba(0,0,0,0.6)',
           }}
         >
-          {text.trim() || 'This script is empty.'}
+          {(() => {
+            const blocks = parseScript(text);
+            if (blocks.length === 0) return 'This script is empty.';
+            return blocks.map((b, i) => (
+              <div key={i} style={{ marginBottom: '0.7em' }}>
+                {b.label && (
+                  <div
+                    style={{
+                      color: 'var(--primary)',
+                      fontSize: '0.62em',
+                      letterSpacing: '0.14em',
+                      fontWeight: 800,
+                      marginBottom: '0.12em',
+                    }}
+                  >
+                    {b.label}
+                  </div>
+                )}
+                {b.body && <div>{b.body}</div>}
+              </div>
+            ));
+          })()}
         </div>
       </div>
 

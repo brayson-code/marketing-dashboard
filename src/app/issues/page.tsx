@@ -69,6 +69,11 @@ export default function IssuesPage() {
   const [caps, setCaps] = useState<Capabilities>({ github: false, slack: false, imessage: false });
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // KeyWatch is HQ-only (it can open GitHub PRs against the product). null = checking.
+  const [isHq, setIsHq] = useState<boolean | null>(null);
+  useEffect(() => {
+    fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)).then((j) => setIsHq(!!j?.is_hq)).catch(() => setIsHq(false));
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -90,6 +95,25 @@ export default function IssuesPage() {
 
   const active = COLUMNS.filter((c) => c.status !== 'resolved' && c.status !== 'ignored');
   const archived = COLUMNS.filter((c) => c.status === 'resolved' || c.status === 'ignored');
+
+  // HQ-only surface. Non-HQ workspaces get a clean "not available" panel (the API
+  // is independently guarded, so this is a UX nicety, not the security boundary).
+  if (isHq === false) {
+    return (
+      <div className="animate-in">
+        <div className="panel p-8 max-w-lg mx-auto mt-10 text-center space-y-3">
+          <ShieldCheck size={28} className="mx-auto text-muted-foreground" />
+          <h1 className="text-h2">Not available</h1>
+          <p className="text-sm text-muted-foreground">
+            KeyWatch is an internal operations tool for the KeyPlayers team and isn’t part of your workspace.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  if (isHq === null) {
+    return <div className="h-[50vh] grid place-items-center"><Loader2 className="animate-spin text-muted-foreground" /></div>;
+  }
 
   return (
     <div className="space-y-4 animate-in">

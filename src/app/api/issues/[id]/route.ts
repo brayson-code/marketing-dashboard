@@ -1,4 +1,5 @@
 import { enterTenant, resolveTenant } from '@/lib/with-tenant';
+import { requireHq } from '@/lib/hq-guard';
 import { NextResponse } from 'next/server';
 import { getIssue, getIssueEvents, getIssueTask, updateIssue, type IssueStatus, type IssuePriority } from '@/lib/observability';
 
@@ -9,6 +10,8 @@ const PRIORITIES: IssuePriority[] = ['low', 'med', 'high', 'urgent'];
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   enterTenant(await resolveTenant());
+  const denied = requireHq();
+  if (denied) return denied;
   const { id } = await params;
   const issue = await getIssue(id);
   if (!issue) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -21,6 +24,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   enterTenant(await resolveTenant());
+  const denied = requireHq();
+  if (denied) return denied;
   const { id } = await params;
   let body: { status?: string; priority?: string };
   try { body = await request.json(); }
