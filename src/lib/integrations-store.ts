@@ -40,6 +40,9 @@ export const PROVIDERS: IntegrationProviderDef[] = [
     fields: [{ name: 'api_key', label: 'API Key', type: 'password', required: true, placeholder: 'sk-ant-…' }] },
   { id: 'openai', label: 'OpenAI', category: 'ai',
     fields: [{ name: 'api_key', label: 'API Key', type: 'password', required: true, placeholder: 'sk-…' }] },
+  { id: 'google-ai', label: 'Google AI (Gemini · Nano Banana · Veo)', category: 'ai',
+    scopesHint: 'Create an API key at aistudio.google.com → Get API key. Powers the Hyperframes Canvas image (Nano Banana Pro) + video (Veo) nodes. Paid usage billed by Google.',
+    fields: [{ name: 'api_key', label: 'API Key', type: 'password', required: true, placeholder: 'AIza…' }] },
   { id: 'loopmessage', label: 'LoopMessage (iMessage)', category: 'messaging',
     fields: [
       { name: 'auth_key', label: 'Auth Key', type: 'password', required: true },

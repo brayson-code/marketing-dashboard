@@ -4,13 +4,74 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   Film, Sparkles, Loader2, Copy, Check, ExternalLink, Save, Pencil, X, Wand2, Clapperboard, SlidersHorizontal,
+  Plus, Workflow,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
 import { ContentTabs } from '@/components/content/content-tabs';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { toast } from '@/components/ui/toast';
+import { timeAgo } from '@/lib/utils';
 import { parseStoryboard, type Storyboard } from '@/lib/hyperframes-storyboard';
 import type { DraftRow } from '@/lib/drafts';
+
+// ─── Canvas mode (new node-based studio) ──────────────────────────────────────
+function CanvasSection() {
+  const router = useRouter();
+  const [canvases, setCanvases] = useState<Array<{ id: number; title: string; updated_at: string }>>([]);
+  const [creating, setCreating] = useState(false);
+
+  const load = useCallback(() => {
+    fetch('/api/generation/canvas', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((j) => setCanvases(j.canvases ?? []))
+      .catch(() => {});
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const create = useCallback(async () => {
+    setCreating(true);
+    try {
+      const res = await fetch('/api/generation/canvas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const j = await res.json();
+      if (j.canvas?.id) router.push(`/content/hyperframes/canvas/${j.canvas.id}`);
+      else toast.error(j.error || 'Could not create canvas');
+    } finally {
+      setCreating(false);
+    }
+  }, [router]);
+
+  return (
+    <div className="panel">
+      <div className="panel-header items-center">
+        <h3 className="text-sm font-semibold flex items-center gap-2">
+          <Workflow size={14} className="text-[var(--primary)]" /> Canvas <span className="badge badge-info text-[10px]">new</span>
+        </h3>
+        <button onClick={create} disabled={creating} className="btn btn-primary btn-sm ml-auto inline-flex items-center gap-1">
+          {creating ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} New canvas
+        </button>
+      </div>
+      <div className="panel-body">
+        <p className="text-xs text-muted-foreground mb-3">
+          Build a reel on a node canvas — wire AI image (Nano Banana Pro) and video (Veo) nodes frame by frame, then
+          <strong> Assemble</strong> through Hyperframes to render + publish. The classic storyboard generator is below.
+        </p>
+        {canvases.length === 0 ? (
+          <div className="text-xs text-muted-foreground">No canvases yet. Tap “New canvas” to start.</div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {canvases.map((c) => (
+              <Link key={c.id} href={`/content/hyperframes/canvas/${c.id}`} className="rounded-lg border border-border/60 p-3 hover:border-[var(--primary)]/40 transition-colors">
+                <div className="text-sm font-medium truncate">{c.title}</div>
+                <div className="text-[10px] text-muted-foreground mt-0.5">edited {timeAgo(c.updated_at)}</div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // Hyperframes hub (Phase 1) — the agent's script+storyboard output as a
 // first-class, editable surface. Generate a storyboard from a brief, browse
@@ -75,6 +136,8 @@ export default function HyperframesPage() {
       />
 
       <ContentTabs />
+
+      <CanvasSection />
 
       {/* Generate */}
       <div className="panel">
