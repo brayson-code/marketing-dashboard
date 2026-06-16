@@ -48,6 +48,8 @@ export const DOCS_NAV: DocNavGroup[] = [
     group: 'Setup & control',
     items: [
       { slug: 'drafts', title: 'Drafts & Approvals', blurb: 'The approval queue — nothing ships without you; publishing is real' },
+      { slug: 'learning', title: 'Learning', blurb: 'How every agent run is scored and the squad leans toward what works' },
+      { slug: 'strategy-genes', title: 'Strategy Genes', blurb: 'The plain-English lessons your agents learn — review, approve, and apply them' },
       { slug: 'cron', title: 'Scheduled Jobs', blurb: 'Run agents on a recurring schedule, in plain English' },
       { slug: 'usage', title: 'Usage & Spend', blurb: 'Track what your agents cost and set a daily token budget' },
       { slug: 'your-data', title: 'Your Data', blurb: 'Export everything your workspace created — your data is yours' },

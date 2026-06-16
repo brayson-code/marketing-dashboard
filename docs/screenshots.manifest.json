@@ -471,5 +471,38 @@
     "clipSelector": null,
     "waitForSelector": ".react-flow",
     "preAction": null
+  },
+  {
+    "slug": "strategy-genes",
+    "index": 1,
+    "filename": "genes-1.png",
+    "caption": "Strategy Genes — the lessons your agents have learned",
+    "route": "/genes",
+    "fullPage": true,
+    "clipSelector": null,
+    "waitForSelector": ".panel-body",
+    "preAction": null
+  },
+  {
+    "slug": "learning",
+    "index": 1,
+    "filename": "learning-1.png",
+    "caption": "Learning — how each agent is scored and improving over time",
+    "route": "/learning",
+    "fullPage": true,
+    "clipSelector": null,
+    "waitForSelector": ".panel-body",
+    "preAction": null
+  },
+  {
+    "slug": "agents",
+    "index": 4,
+    "filename": "agents-4.png",
+    "caption": "the AI org chart — your executive agents and their teams",
+    "route": "/agents/squads",
+    "fullPage": true,
+    "clipSelector": null,
+    "waitForSelector": "h1",
+    "preAction": null
   }
 ]
