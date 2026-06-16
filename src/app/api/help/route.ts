@@ -99,6 +99,13 @@ export async function POST(request: Request) {
       answer: answer || 'I\'m not sure about that one — try [the docs](/docs) or email support@keyplayershq.com.',
     });
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message || 'Help is unavailable right now.' }, { status: 502 });
+    // Never surface a raw provider error (e.g. billing/credits, rate limits) to the
+    // user — degrade to a helpful, friendly fallback that points at the docs.
+    console.error('[api/help]', (e as Error)?.message);
+    return NextResponse.json({
+      answer:
+        'I can\'t reach the assistant right now, but the full documentation has you covered — ' +
+        'start at [the docs](/docs), or email **support@keyplayershq.com** and a human will help.',
+    });
   }
 }

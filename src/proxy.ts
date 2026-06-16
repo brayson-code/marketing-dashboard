@@ -46,6 +46,7 @@ const CRON_RUNNER_PATHS = new Set([
 function isPublicPath(pathname: string): boolean {
   if (pathname === '/login') return true;
   if (pathname === '/docs' || pathname.startsWith('/docs/')) return true; // public knowledge base
+  if (pathname === '/walkthrough.html') return true; // public product-reveal deck (shareable / film aid)
   if (pathname.startsWith('/auth/')) return true; // Supabase OAuth/callback routes
   if (pathname.startsWith('/api/webhook/')) return true; // auth enforced in-handler
   if (pathname === '/api/stripe/webhook') return true; // Stripe signature enforced in-handler
