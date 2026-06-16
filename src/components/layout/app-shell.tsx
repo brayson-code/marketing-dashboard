@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useDashboard } from '@/store';
 import { LiveFeed } from '@/components/live-feed';
+import { HelpWidget } from '@/components/help/help-widget';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { feedOpen, toggleFeed } = useDashboard();
@@ -27,6 +28,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {children}
       </main>
       <LiveFeed open={feedOpen} onClose={toggleFeed} />
+      <HelpWidget />
     </>
   );
 }

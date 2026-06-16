@@ -13,7 +13,10 @@ const nextConfig: NextConfig = {
   // the function bundle and the reads would silently return empty prompts. Force
   // them into every API function (spawns + the Agent Studio editor fallback).
   outputFileTracingIncludes: {
-    '/api/**/*': ['./agents/**/*'],
+    // agents/** → spawn prompts. docs/** → the in-app Help assistant (/api/help)
+    // reads the public docs at runtime to ground its answers, so they must be
+    // traced into the function bundle (same reason as agents/**).
+    '/api/**/*': ['./agents/**/*', './docs/**/*'],
   },
   // Baseline security headers (the safe set — addresses the common DAST/ZAP-baseline
   // "missing security header" findings). HSTS is already added by Vercel. CSP is
