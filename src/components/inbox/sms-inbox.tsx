@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Smartphone, Send, Inbox, Loader2, AlertCircle } from 'lucide-react';
+import { Smartphone, Send, Inbox, Loader2, AlertCircle, Plus, UserPlus, X } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -46,9 +46,10 @@ interface ContactRowProps {
   thread: Thread;
   selected: boolean;
   onSelect: () => void;
+  displayName?: string;
 }
 
-function ContactRow({ thread, selected, onSelect }: ContactRowProps) {
+function ContactRow({ thread, selected, onSelect, displayName }: ContactRowProps) {
   const latest = thread.messages[thread.messages.length - 1];
   return (
     <button
@@ -76,7 +77,7 @@ function ContactRow({ thread, selected, onSelect }: ContactRowProps) {
       {/* Info */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1 justify-between">
-          <span className="text-xs font-semibold truncate">{thread.contact}</span>
+          <span className="text-xs font-semibold truncate">{displayName || thread.contact}</span>
           <span className="text-[10px] text-muted-foreground shrink-0">{relTime(thread.latest_at)}</span>
         </div>
         {latest && (
@@ -94,9 +95,10 @@ function ContactRow({ thread, selected, onSelect }: ContactRowProps) {
 interface ThreadPaneProps {
   thread: Thread;
   onSent: (optimistic: SmsMsg) => void;
+  displayName?: string;
 }
 
-function ThreadPane({ thread, onSent }: ThreadPaneProps) {
+function ThreadPane({ thread, onSent, displayName }: ThreadPaneProps) {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -171,8 +173,10 @@ function ThreadPane({ thread, onSent }: ThreadPaneProps) {
           <Smartphone size={13} />
         </span>
         <div>
-          <div className="text-xs font-semibold">{thread.contact}</div>
-          <div className="text-[10px] text-muted-foreground">{thread.messages.length} message{thread.messages.length !== 1 ? 's' : ''}</div>
+          <div className="text-xs font-semibold">{displayName || thread.contact}</div>
+          <div className="text-[10px] text-muted-foreground">
+            {displayName ? `${thread.contact} · ` : ''}{thread.messages.length} message{thread.messages.length !== 1 ? 's' : ''}
+          </div>
         </div>
       </div>
 
@@ -272,6 +276,8 @@ export function SmsInbox() {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [selectedContact, setSelectedContact] = useState<string | null>(null);
+  const [contacts, setContacts] = useState<Record<string, string>>({});
+  const [composing, setComposing] = useState(false);
 
   const load = useCallback(async (keepSelected?: string) => {
     try {
@@ -294,13 +300,26 @@ export function SmsInbox() {
     }
   }, []);
 
+  const loadContacts = useCallback(async () => {
+    try {
+      const r = await fetch('/api/engagement/contacts', { cache: 'no-store' });
+      const j = (await r.json()) as { contacts?: Array<{ phone: string; name: string | null }> };
+      const map: Record<string, string> = {};
+      for (const c of j.contacts ?? []) if (c.name) map[c.phone] = c.name;
+      setContacts(map);
+    } catch {
+      /* saved contacts are optional decoration — ignore failures */
+    }
+  }, []);
+
   useEffect(() => {
     load();
+    loadContacts();
     // No stale-closure arg needed — load()'s setSelectedContact(prev => …) keeps
     // the LIVE selection (the `prev` branch) on every refresh.
-    const id = setInterval(() => load(), 30_000);
+    const id = setInterval(() => { load(); loadContacts(); }, 30_000);
     return () => clearInterval(id);
-  }, [load]);
+  }, [load, loadContacts]);
 
   // Optimistic append: add a sent bubble to the active thread immediately.
   const handleSent = useCallback((contact: string, msg: SmsMsg) => {
@@ -313,7 +332,16 @@ export function SmsInbox() {
     );
   }, []);
 
+  // After composing a brand-new message: clear selection so load() auto-selects
+  // the newest thread (the one we just texted), and refresh saved contacts.
+  const handleComposeSent = useCallback(async () => {
+    setComposing(false);
+    setSelectedContact(null);
+    await Promise.all([load(), loadContacts()]);
+  }, [load, loadContacts]);
+
   const activeThread = threads.find((t) => t.contact === selectedContact) ?? null;
+  const nameFor = (phone: string): string | undefined => contacts[phone];
 
   // ── Loading / error states ──
 
@@ -343,23 +371,7 @@ export function SmsInbox() {
     );
   }
 
-  if (threads.length === 0) {
-    return (
-      <div className="panel">
-        <div className="panel-header flex items-center gap-2">
-          <Smartphone size={14} className="text-[#7c3aed]" />
-          <h3 className="section-title">SMS</h3>
-          <span className="text-micro text-muted-foreground">Twilio · auto-refresh 30s</span>
-        </div>
-        <div className="panel-body py-10 text-center text-small flex flex-col items-center gap-2">
-          <Inbox size={20} className="opacity-40" />
-          No SMS yet. Texts your agents send and replies you receive show up here.
-        </div>
-      </div>
-    );
-  }
-
-  // ── Two-pane layout ──
+  // ── Two-pane layout (rendered even with zero threads, so "New" always works) ──
 
   return (
     <div className="panel overflow-hidden" style={{ height: 'calc(100vh - 220px)', minHeight: 480, display: 'flex', flexDirection: 'column' }}>
@@ -368,6 +380,14 @@ export function SmsInbox() {
         <Smartphone size={14} className="text-[#7c3aed]" />
         <h3 className="section-title">SMS</h3>
         <span className="text-micro text-muted-foreground">Twilio · auto-refresh 30s</span>
+        <button
+          type="button"
+          onClick={() => { setComposing(true); setSelectedContact(null); }}
+          className="btn btn-primary btn-sm ml-auto inline-flex items-center gap-1"
+          title="New message"
+        >
+          <Plus size={13} /> New
+        </button>
       </div>
 
       {/* Two-pane body */}
@@ -380,27 +400,136 @@ export function SmsInbox() {
             borderRight: '1px solid var(--border)',
           }}
         >
-          {threads.map((t) => (
-            <ContactRow
-              key={t.contact}
-              thread={t}
-              selected={t.contact === selectedContact}
-              onSelect={() => setSelectedContact(t.contact)}
-            />
-          ))}
+          {threads.length === 0 ? (
+            <div className="px-4 py-8 text-center text-[11px] text-muted-foreground flex flex-col items-center gap-2">
+              <Inbox size={18} className="opacity-40" />
+              <span>No conversations yet. Tap <strong>New</strong> to text someone.</span>
+            </div>
+          ) : (
+            threads.map((t) => (
+              <ContactRow
+                key={t.contact}
+                thread={t}
+                selected={!composing && t.contact === selectedContact}
+                onSelect={() => { setComposing(false); setSelectedContact(t.contact); }}
+                displayName={nameFor(t.contact)}
+              />
+            ))
+          )}
         </div>
 
-        {/* RIGHT — thread + composer */}
+        {/* RIGHT — thread / composer / new message */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          {activeThread ? (
+          {composing ? (
+            <ComposeNew onSent={handleComposeSent} onCancel={() => setComposing(false)} />
+          ) : activeThread ? (
             <ThreadPane
               thread={activeThread}
               onSent={(msg) => handleSent(activeThread.contact, msg)}
+              displayName={nameFor(activeThread.contact)}
             />
           ) : (
             <EmptyThread />
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── New-message composer ─────────────────────────────────────────────────────
+
+function ComposeNew({ onSent, onCancel }: { onSent: () => void; onCancel: () => void }) {
+  const [to, setTo] = useState('');
+  const [name, setName] = useState('');
+  const [body, setBody] = useState('');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const canSend = to.trim().length > 0 && body.trim().length > 0 && !sending;
+
+  const send = async () => {
+    if (!canSend) return;
+    setSending(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/engagement/sms/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: to.trim(), body: body.trim() }),
+      });
+      const json = (await res.json()) as { ok?: boolean; error?: string };
+      if (!res.ok || !json.ok) {
+        setError(json.error ?? `Error ${res.status}`);
+        return;
+      }
+      // Save the contact name if provided (best-effort — non-blocking).
+      if (name.trim()) {
+        await fetch('/api/engagement/contacts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: to.trim(), name: name.trim() }),
+        }).catch(() => {});
+      }
+      onSent();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col" style={{ height: '100%' }}>
+      <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b shrink-0" style={{ borderColor: 'var(--border)' }}>
+        <div className="text-xs font-semibold">New message</div>
+        <button type="button" onClick={onCancel} className="btn btn-ghost btn-sm" title="Cancel"><X size={13} /></button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <label className="block space-y-1">
+          <span className="text-[11px] text-muted-foreground">To · phone number</span>
+          <input
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            placeholder="(415) 555-0123 or +14155550123"
+            className="w-full text-sm"
+            autoFocus
+            inputMode="tel"
+          />
+        </label>
+        <label className="block space-y-1">
+          <span className="text-[11px] text-muted-foreground inline-flex items-center gap-1">
+            <UserPlus size={11} /> Save as contact (optional)
+          </span>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Contact name"
+            className="w-full text-sm"
+          />
+        </label>
+        <label className="block space-y-1">
+          <span className="text-[11px] text-muted-foreground">Message</span>
+          <textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            rows={5}
+            placeholder="Type your message…"
+            className="w-full resize-none text-sm"
+          />
+        </label>
+        {error && (
+          <div className="text-[11px] text-destructive flex items-center gap-1.5">
+            <AlertCircle size={12} className="shrink-0" /> {error}
+          </div>
+        )}
+      </div>
+
+      <div className="border-t shrink-0 p-3 flex justify-end" style={{ borderColor: 'var(--border)' }}>
+        <button type="button" onClick={send} disabled={!canSend} className="btn btn-primary inline-flex items-center gap-1.5">
+          {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Send
+        </button>
       </div>
     </div>
   );
