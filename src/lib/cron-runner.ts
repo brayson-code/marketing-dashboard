@@ -40,6 +40,7 @@ interface DueJobRow {
   schedule_expr: string;
   schedule_tz: string;
   payload: { kind?: string; message?: string; saveToKb?: boolean; kbDoc?: string } & Record<string, unknown>;
+  delivery: { channel?: string } & Record<string, unknown> | null;
 }
 
 function utcStamp(d = new Date()): string {
@@ -153,6 +154,20 @@ async function runOne(job: DueJobRow): Promise<{ id: string; status: 'ok' | 'err
       if (res.ok) {
         fullResult = (res.text ?? '').slice(0, RESULT_MAX);
         summary = (res.text ?? '').replace(/\s+/g, ' ').trim().slice(0, SUMMARY_MAX) || null;
+
+        // Delivery: text the workspace owner the digest over iMessage when the job
+        // asks for it (delivery.channel === 'imessage'). Per-tenant — sendIMessage
+        // uses THIS workspace's LoopMessage + owner phone. Best-effort; a failed
+        // delivery never fails the job.
+        if ((job.delivery as { channel?: string } | null)?.channel === 'imessage' && fullResult.trim()) {
+          try {
+            const { sendIMessage } = await import('./loopmessage');
+            const dr = await sendIMessage(fullResult.slice(0, 1400));
+            if (!dr.ok) console.warn(`[cron] iMessage delivery failed for "${label}": ${dr.error}`);
+          } catch (err) {
+            console.warn(`[cron] iMessage delivery error for "${label}":`, (err as Error).message);
+          }
+        }
         // Persist the readable digest into the editable KB doc.
         if (saveToKb && fullResult) {
           try {
@@ -245,7 +260,7 @@ async function buildAgentAugment(agentId: string | null): Promise<string> {
 
 async function loadJob(id: string): Promise<DueJobRow | null> {
   const rows = (await sql()`
-    SELECT id, name, agent_id, enabled, schedule_expr, schedule_tz, payload
+    SELECT id, name, agent_id, enabled, schedule_expr, schedule_tz, payload, delivery
     FROM public.cron_jobs
     WHERE tenant_id = ${tenantId()} AND id = ${id}
   `) as unknown as DueJobRow[];
@@ -274,7 +289,7 @@ export async function runDueJobs(): Promise<{ ran: number; results: Array<{ id: 
   // every other tenant's scheduled cron, incl. the competitor watchlist, would
   // silently never run.
   const due = (await sql()`
-    SELECT id, name, agent_id, enabled, schedule_expr, schedule_tz, payload, tenant_id
+    SELECT id, name, agent_id, enabled, schedule_expr, schedule_tz, payload, delivery, tenant_id
     FROM public.cron_jobs
     WHERE enabled = true
       AND next_run_at IS NOT NULL

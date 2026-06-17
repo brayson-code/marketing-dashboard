@@ -8,6 +8,7 @@ import { kgToolDefinitions, handleKgTool } from './kg-tools';
 import { skillRecallToolDefinitions, handleSkillRecallTool } from './skill-recall';
 import { googleToolDefinitions, handleGoogleTool, googleActionsAllowed, GOOGLE_TOOL_NAMES } from './google-tools';
 import { smsToolDefinitions, handleSmsTool, smsAllowed, SMS_TOOL_NAMES } from './sms-tools';
+import { fetchToolDefinitions, handleFetchTool, FETCH_TOOL_NAMES } from './fetch-tools';
 import { chooseVariant } from './selection';
 import { constraintsForVariant, roleFor } from './constraints';
 import { selectGenesForTask, genesDirective, recordGeneApplications } from './genes';
@@ -419,6 +420,9 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
   const smsOn = opts?.tools !== 'none' && (await smsAllowed());
   const tools: Anthropic.Messages.ToolUnion[] = opts?.tools === 'none' ? [] : [
     { type: 'web_search_20250305', name: 'web_search' },
+    // fetch_url — pull live data from a public http(s) URL (a JSON API / open-data
+    // endpoint). Turns a "scrape this link" skill into something the agent can do.
+    ...fetchToolDefinitions(),
     // Shared KG tools so every sub-agent can read/write the team's graph.
     ...kgToolDefinitions(),
     // On-demand skill recall — pull a playbook by name mid-run instead of baking
@@ -600,6 +604,7 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
               b.name === 'kg_query' ||
               b.name === 'kg_remember' ||
               b.name === 'recall_skill' ||
+              (FETCH_TOOL_NAMES as readonly string[]).includes(b.name) ||
               (GOOGLE_TOOL_NAMES as readonly string[]).includes(b.name) ||
               (SMS_TOOL_NAMES as readonly string[]).includes(b.name)
             ),
@@ -621,6 +626,7 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
         messages.push({ role: 'assistant', content: response.content });
         const toolResults = await Promise.all(handledToolUses.map((tu) => {
           if (tu.name === 'recall_skill') return handleSkillRecallTool(tu, type);
+          if ((FETCH_TOOL_NAMES as readonly string[]).includes(tu.name)) return handleFetchTool(tu, type);
           if ((GOOGLE_TOOL_NAMES as readonly string[]).includes(tu.name)) return handleGoogleTool(tu, type);
           if ((SMS_TOOL_NAMES as readonly string[]).includes(tu.name)) return handleSmsTool(tu, type);
           return handleKgTool(tu, type);
