@@ -64,7 +64,7 @@ export default function ContentLabPage() {
     <div className="space-y-5 animate-in">
       <PageHeader
         icon={<FlaskConical size={18} />}
-        title="Content Lab"
+        title="Ideas"
         subtitle="See what's trending, scan your own reels for a full teardown + rewrites, then spin up trial reel concepts — keep the winners and turn them into scripts."
       />
 

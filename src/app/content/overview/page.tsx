@@ -40,7 +40,7 @@ export default function ContentOverviewPage() {
     <div className="space-y-5 animate-in">
       <PageHeader
         icon={<LayoutGrid size={18} />}
-        title="Content"
+        title="Content Lab"
         subtitle="Your whole content workflow in one place — ideate, write, study the competition, publish, and engage. Pick an area to dive in."
       />
 
