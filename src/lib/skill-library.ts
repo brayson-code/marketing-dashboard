@@ -34,6 +34,36 @@ function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'skill';
 }
 
+function prettify(name: string): string {
+  return name.replace(/\.md$/i, '').replace(/[-_]+/g, ' ').trim().replace(/\b\w/g, (c) => c.toUpperCase()).slice(0, 120) || name;
+}
+
+function firstLine(body: string): string {
+  for (const ln of body.split('\n')) {
+    const t = ln.replace(/^#{1,6}\s*/, '').replace(/[*_`>]/g, '').trim();
+    if (t) return t;
+  }
+  return '';
+}
+
+// No-manifest fallback: list every .md skill in a repo (try skills/, then root).
+async function listMarkdownSkills(repo: string, branch: string, token?: string): Promise<ManifestEntry[]> {
+  const listDir = async (dir: string): Promise<Array<{ name: string; path: string; type: string }> | null> => {
+    const url = `https://api.github.com/repos/${repo}/contents/${dir}?ref=${encodeURIComponent(branch)}`;
+    const headers: Record<string, string> = { Accept: 'application/vnd.github+json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const r = await fetch(url, { headers, cache: 'no-store' });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return Array.isArray(j) ? j : null;
+  };
+  const items = (await listDir('skills')) ?? (await listDir(''));
+  if (!items) return [];
+  return items
+    .filter((it) => it.type === 'file' && /\.md$/i.test(it.name) && it.name.toLowerCase() !== 'readme.md')
+    .map((it) => ({ slug: it.name.replace(/\.md$/i, ''), name: prettify(it.name), category: 'custom', description: '', file: it.path }));
+}
+
 export interface AddSkillInput { name: string; category?: string; description?: string; body?: string; bodyUrl?: string }
 
 /** Add a workspace's OWN skill (paste a body or import from a raw URL). Tenant-scoped. */
@@ -87,11 +117,19 @@ export async function importRepoSkills(opts: { repo: string; branch?: string; to
     return r.ok ? await r.text() : null;
   };
 
-  const manRaw = await fetchFile('manifest.json');
-  if (manRaw == null) throw new Error(`Couldn't read ${repo}/manifest.json on "${branch}". Check the repo/branch — and add a token if it's private.`);
+  // Prefer a manifest.json; if there's none, fall back to every .md file under
+  // skills/ (or the repo root) — a bare folder of markdown skills just works.
   let manifest: ManifestEntry[];
-  try { manifest = JSON.parse(manRaw); } catch { throw new Error('manifest.json is not valid JSON.'); }
-  if (!Array.isArray(manifest)) throw new Error('manifest.json must be a JSON array of skills.');
+  const manRaw = await fetchFile('manifest.json');
+  if (manRaw != null) {
+    try { manifest = JSON.parse(manRaw); } catch { throw new Error('manifest.json is not valid JSON.'); }
+    if (!Array.isArray(manifest)) throw new Error('manifest.json must be a JSON array of skills.');
+  } else {
+    manifest = await listMarkdownSkills(repo, branch, token);
+    if (manifest.length === 0) {
+      throw new Error(`No manifest.json found, and no .md files under skills/ or the repo root in ${repo} (${branch}). Add a manifest.json, or put your skills as .md files in a skills/ folder.`);
+    }
+  }
 
   const tag = tenantId().replace(/-/g, '').slice(0, 8); // keeps slugs unique per workspace
   let imported = 0;
@@ -100,10 +138,11 @@ export async function importRepoSkills(opts: { repo: string; branch?: string; to
     const body = await fetchFile(e.file);
     if (body == null) continue;
     const slug = `${slugify(String(e.slug))}-${tag}`;
+    const description = (String(e.description || '').trim() || firstLine(body)).slice(0, 400);
     await sql()`
       INSERT INTO public.skill_library (tenant_id, slug, name, category, description, body, source_url)
       VALUES (${tenantId()}, ${slug}, ${String(e.name || e.slug).slice(0, 120)}, ${String(e.category || 'custom').slice(0, 40)},
-              ${String(e.description || '').slice(0, 400)}, ${body.trim().slice(0, 20000)}, ${`https://github.com/${repo}/blob/${branch}/${e.file}`})
+              ${description}, ${body.trim().slice(0, 20000)}, ${`https://github.com/${repo}/blob/${branch}/${e.file}`})
       ON CONFLICT (slug) DO UPDATE SET
         name = EXCLUDED.name, category = EXCLUDED.category, description = EXCLUDED.description,
         body = EXCLUDED.body, source_url = EXCLUDED.source_url, updated_at = now()

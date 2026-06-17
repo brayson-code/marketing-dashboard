@@ -154,7 +154,7 @@ export default function SkillLibraryPage() {
 
           <div className="pt-3 mt-1 border-t border-border/50 space-y-2">
             <div className="text-xs font-semibold flex items-center gap-1.5"><Github size={13} /> …or import your whole GitHub repo</div>
-            <p className="text-[11px] text-muted-foreground">Point at your own repo (with a <code>manifest.json</code> like ours) and we&apos;ll pull every skill into your library. Public repos need no token; private ones take a GitHub token (used once, never stored).</p>
+            <p className="text-[11px] text-muted-foreground">Point at your own repo and we&apos;ll pull every skill into your library — works with a <code>manifest.json</code>, or just a <code>skills/</code> folder of <code>.md</code> files (no manifest needed). Public repos need no token; private ones take a GitHub token (used once, never stored).</p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <input className="sm:col-span-2" placeholder="owner/repo (e.g. acme/agent-skills)" value={repoForm.repo} onChange={(e) => setRepoForm({ ...repoForm, repo: e.target.value })} style={{ width: '100%' }} />
               <input placeholder="branch (main)" value={repoForm.branch} onChange={(e) => setRepoForm({ ...repoForm, branch: e.target.value })} style={{ width: '100%' }} />
