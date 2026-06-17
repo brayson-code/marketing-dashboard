@@ -1,5 +1,7 @@
+import Anthropic from '@anthropic-ai/sdk';
 import { sql, tenantId } from './db/client';
 import { getAgentDefForEditor, upsertAgentDef } from './agent-defs';
+import { getAnthropicKey, NO_ANTHROPIC_KEY_MESSAGE } from './anthropic-key';
 import { supabaseAdmin } from './supabase/admin';
 
 // The Skill Library: a global, curated catalog of reusable agent skills. Users
@@ -62,6 +64,66 @@ async function listMarkdownSkills(repo: string, branch: string, token?: string):
   return items
     .filter((it) => it.type === 'file' && /\.md$/i.test(it.name) && it.name.toLowerCase() !== 'readme.md')
     .map((it) => ({ slug: it.name.replace(/\.md$/i, ''), name: prettify(it.name), category: 'custom', description: '', file: it.path }));
+}
+
+// The framework every generated skill follows — encodes what a GOOD agent skill
+// looks like so the output is operational, not fluffy.
+const SKILL_FRAMEWORK = [
+  'You write SKILLS for AI marketing agents. A skill is a tight, operational playbook the agent reads and then APPLIES while it works — written as direct imperative instructions, never meta-commentary about itself.',
+  '',
+  'Follow this framework for the body:',
+  '1. Open with the trigger: "When <the agent is doing X>…".',
+  '2. Give 3–6 concrete, opinionated rules the agent must follow — specific enough to change its output.',
+  '3. Include ONE short good-vs-bad example that sharpens the most important rule.',
+  '4. Plain English. No markdown headings, no bullet characters required, no preamble, no "As an AI", no "Here is".',
+  '5. Be specific to the intent — an agent should be able to act on every line. Keep the body under ~200 words.',
+  '',
+  'Pick a category from: outreach, content, sales, research, ops, analytics, general. Always call emit_skill.',
+].join('\n');
+
+export interface GeneratedSkill { name: string; category: string; description: string; body: string }
+
+/** Generate a structured skill from a one-line intent, using the workspace's
+ *  Claude key (BYO). The framework above shapes the output. */
+export async function generateSkill(intent: string): Promise<GeneratedSkill> {
+  const goal = (intent ?? '').trim();
+  if (!goal) throw new Error('Describe what the skill should do.');
+  const apiKey = await getAnthropicKey();
+  if (!apiKey) throw new Error(NO_ANTHROPIC_KEY_MESSAGE);
+
+  const tool: Anthropic.Messages.Tool = {
+    name: 'emit_skill',
+    description: 'Emit the finished agent skill.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Short title, 2–5 words.' },
+        category: { type: 'string', description: 'one of: outreach, content, sales, research, ops, analytics, general' },
+        description: { type: 'string', description: 'one-line summary, under 120 characters' },
+        body: { type: 'string', description: 'The skill as direct instructions to an agent, per the framework. No preamble.' },
+      },
+      required: ['name', 'category', 'description', 'body'],
+    },
+  };
+
+  const client = new Anthropic({ apiKey, maxRetries: 2 });
+  const res = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1200,
+    system: SKILL_FRAMEWORK,
+    tools: [tool],
+    tool_choice: { type: 'tool', name: 'emit_skill' },
+    messages: [{ role: 'user', content: `Create a skill for: ${goal}` }],
+  });
+  const use = res.content.find((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use' && b.name === 'emit_skill');
+  const out = (use?.input ?? {}) as Partial<GeneratedSkill>;
+  if (!out.body?.trim()) throw new Error('Could not generate a skill — try describing it with a bit more detail.');
+  return {
+    name: String(out.name || goal).slice(0, 120),
+    category: String(out.category || 'general').toLowerCase().slice(0, 40),
+    description: String(out.description || '').slice(0, 400),
+    body: String(out.body).trim().slice(0, 20000),
+  };
 }
 
 export interface AddSkillInput { name: string; category?: string; description?: string; body?: string; bodyUrl?: string }

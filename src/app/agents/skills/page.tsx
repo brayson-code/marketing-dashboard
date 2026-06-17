@@ -23,6 +23,9 @@ export default function SkillLibraryPage() {
   // "Import a whole GitHub repo" (the user's own)
   const [repoForm, setRepoForm] = useState({ repo: '', branch: 'main', token: '' });
   const [importing, setImporting] = useState(false);
+  // Generate-with-AI
+  const [intent, setIntent] = useState('');
+  const [generating, setGenerating] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -72,6 +75,20 @@ export default function SkillLibraryPage() {
       await load();
     } catch (e) { toast.error((e as Error).message); }
     finally { setSavingNew(false); }
+  }
+
+  async function generate() {
+    if (!intent.trim()) { toast.error('Describe the skill you want.'); return; }
+    setGenerating(true);
+    try {
+      const r = await fetch('/api/skills', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'generate', intent }) });
+      const j = await r.json();
+      if (!r.ok) { toast.error(j.error || 'Generation failed'); return; }
+      const s = j.skill;
+      setForm({ name: s.name || '', category: s.category || 'custom', description: s.description || '', bodyText: s.body || '', bodyUrl: '' });
+      toast.success('Drafted — review it below, then add to your library.');
+    } catch (e) { toast.error((e as Error).message); }
+    finally { setGenerating(false); }
   }
 
   async function importRepo() {
@@ -136,7 +153,26 @@ export default function SkillLibraryPage() {
       {adding && (
         <div className="panel p-4 space-y-2.5 animate-in">
           <div className="font-semibold text-sm">Add your own skill</div>
-          <p className="text-[11px] text-muted-foreground">Paste a skill you found (plain text or markdown), or import one from a raw URL. It joins your library and installs into agents like the rest.</p>
+
+          <div className="rounded-lg border border-[var(--primary)]/30 bg-[color-mix(in_srgb,var(--primary)_7%,transparent)] p-3 space-y-2">
+            <div className="text-xs font-semibold flex items-center gap-1.5"><Wand2 size={13} className="text-[var(--primary)]" /> Generate one with AI</div>
+            <p className="text-[11px] text-muted-foreground">Describe what you want the skill to do — we&apos;ll draft a structured, ready-to-use skill using our framework. Review and tweak before saving.</p>
+            <div className="flex gap-2">
+              <input
+                className="flex-1 text-xs"
+                placeholder="e.g. write punchy LinkedIn carousel hooks for B2B founders"
+                value={intent}
+                onChange={(e) => setIntent(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') generate(); }}
+                style={{ width: '100%' }}
+              />
+              <button className="btn btn-primary btn-sm shrink-0" onClick={generate} disabled={generating}>
+                {generating ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />} Generate
+              </button>
+            </div>
+          </div>
+
+          <p className="text-[11px] text-muted-foreground pt-1">…or paste a skill you found (plain text or markdown), or import one from a raw URL.</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input placeholder="Skill name (e.g. LinkedIn DM opener)" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={{ width: '100%' }} />
             <input placeholder="Category (e.g. outreach)" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} style={{ width: '100%' }} />
