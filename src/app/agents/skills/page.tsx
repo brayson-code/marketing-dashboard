@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Boxes, Plus, Loader2, RefreshCw, Check, X, Wand2 } from 'lucide-react';
+import { Boxes, Plus, Loader2, RefreshCw, Check, X, Wand2, Github } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { toast } from '@/components/ui/toast';
 
@@ -20,6 +20,9 @@ export default function SkillLibraryPage() {
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ name: '', category: 'custom', description: '', bodyText: '', bodyUrl: '' });
   const [savingNew, setSavingNew] = useState(false);
+  // "Import a whole GitHub repo" (the user's own)
+  const [repoForm, setRepoForm] = useState({ repo: '', branch: 'main', token: '' });
+  const [importing, setImporting] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -69,6 +72,24 @@ export default function SkillLibraryPage() {
       await load();
     } catch (e) { toast.error((e as Error).message); }
     finally { setSavingNew(false); }
+  }
+
+  async function importRepo() {
+    if (!repoForm.repo.trim()) { toast.error('Enter your repo as owner/name.'); return; }
+    setImporting(true);
+    try {
+      const r = await fetch('/api/skills', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'import-repo', repo: repoForm.repo, branch: repoForm.branch, token: repoForm.token || undefined }),
+      });
+      const j = await r.json();
+      if (!r.ok) { toast.error(j.error || 'Import failed'); return; }
+      toast.success(`Imported ${j.imported} skills from ${j.repo}`);
+      setRepoForm({ repo: '', branch: 'main', token: '' });
+      setAdding(false);
+      await load();
+    } catch (e) { toast.error((e as Error).message); }
+    finally { setImporting(false); }
   }
 
   async function deleteSkill(s: Skill) {
@@ -129,6 +150,17 @@ export default function SkillLibraryPage() {
           <div className="flex gap-2 pt-1">
             <button className="btn btn-primary btn-sm" onClick={addOwn} disabled={savingNew}>{savingNew ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} Add to library</button>
             <button className="btn btn-ghost btn-sm" onClick={() => setAdding(false)}>Cancel</button>
+          </div>
+
+          <div className="pt-3 mt-1 border-t border-border/50 space-y-2">
+            <div className="text-xs font-semibold flex items-center gap-1.5"><Github size={13} /> …or import your whole GitHub repo</div>
+            <p className="text-[11px] text-muted-foreground">Point at your own repo (with a <code>manifest.json</code> like ours) and we&apos;ll pull every skill into your library. Public repos need no token; private ones take a GitHub token (used once, never stored).</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <input className="sm:col-span-2" placeholder="owner/repo (e.g. acme/agent-skills)" value={repoForm.repo} onChange={(e) => setRepoForm({ ...repoForm, repo: e.target.value })} style={{ width: '100%' }} />
+              <input placeholder="branch (main)" value={repoForm.branch} onChange={(e) => setRepoForm({ ...repoForm, branch: e.target.value })} style={{ width: '100%' }} />
+            </div>
+            <input type="password" placeholder="GitHub token — only for a private repo (optional)" value={repoForm.token} onChange={(e) => setRepoForm({ ...repoForm, token: e.target.value })} style={{ width: '100%' }} />
+            <button className="btn btn-secondary btn-sm" onClick={importRepo} disabled={importing}>{importing ? <Loader2 size={12} className="animate-spin" /> : <Github size={12} />} Import repo</button>
           </div>
         </div>
       )}

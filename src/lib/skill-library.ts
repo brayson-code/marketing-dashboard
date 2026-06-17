@@ -68,6 +68,53 @@ export async function deleteCustomSkill(slug: string): Promise<void> {
   await sql()`DELETE FROM public.skill_library WHERE slug = ${slug} AND tenant_id = ${tenantId()}`;
 }
 
+/** Bulk-import a WORKSPACE'S OWN GitHub repo of skills into THEIR library
+ *  (tenant-scoped). Public repos need no token; private repos take a GitHub PAT
+ *  (used transiently, never stored). Re-importing updates by a deterministic
+ *  per-tenant slug, so it's a re-sync, not duplication. */
+export async function importRepoSkills(opts: { repo: string; branch?: string; token?: string }): Promise<{ imported: number; repo: string }> {
+  const repo = (opts.repo ?? '').trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '').replace(/\/+$/, '');
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Error('Repo must look like "owner/name".');
+  const branch = (opts.branch || 'main').trim();
+  const token = opts.token?.trim();
+
+  const fetchFile = async (path: string): Promise<string | null> => {
+    const url = token
+      ? `https://api.github.com/repos/${repo}/contents/${path}?ref=${encodeURIComponent(branch)}`
+      : `https://raw.githubusercontent.com/${repo}/${branch}/${path}`;
+    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.raw' } : {};
+    const r = await fetch(url, { headers, cache: 'no-store' });
+    return r.ok ? await r.text() : null;
+  };
+
+  const manRaw = await fetchFile('manifest.json');
+  if (manRaw == null) throw new Error(`Couldn't read ${repo}/manifest.json on "${branch}". Check the repo/branch — and add a token if it's private.`);
+  let manifest: ManifestEntry[];
+  try { manifest = JSON.parse(manRaw); } catch { throw new Error('manifest.json is not valid JSON.'); }
+  if (!Array.isArray(manifest)) throw new Error('manifest.json must be a JSON array of skills.');
+
+  const tag = tenantId().replace(/-/g, '').slice(0, 8); // keeps slugs unique per workspace
+  let imported = 0;
+  for (const e of manifest.slice(0, 200)) {
+    if (!e?.slug || !e?.file) continue;
+    const body = await fetchFile(e.file);
+    if (body == null) continue;
+    const slug = `${slugify(String(e.slug))}-${tag}`;
+    await sql()`
+      INSERT INTO public.skill_library (tenant_id, slug, name, category, description, body, source_url)
+      VALUES (${tenantId()}, ${slug}, ${String(e.name || e.slug).slice(0, 120)}, ${String(e.category || 'custom').slice(0, 40)},
+              ${String(e.description || '').slice(0, 400)}, ${body.trim().slice(0, 20000)}, ${`https://github.com/${repo}/blob/${branch}/${e.file}`})
+      ON CONFLICT (slug) DO UPDATE SET
+        name = EXCLUDED.name, category = EXCLUDED.category, description = EXCLUDED.description,
+        body = EXCLUDED.body, source_url = EXCLUDED.source_url, updated_at = now()
+      WHERE public.skill_library.tenant_id = ${tenantId()}
+    `;
+    imported += 1;
+  }
+  if (imported === 0) throw new Error('No skills imported — is the manifest empty or are the file paths wrong?');
+  return { imported, repo };
+}
+
 async function getSkill(slug: string): Promise<Skill | null> {
   const rows = (await sql()`
     SELECT id, slug, name, category, description, body, source_url
