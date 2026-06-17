@@ -105,6 +105,12 @@ export interface LoopMessageConfig { auth_key: string; sender_name?: string }
 /** This tenant's LoopMessage credentials — its own connection first, HQ env as a
  *  fallback (so the platform owner's account still works without a tenant row). */
 export async function getLoopMessageConfig(): Promise<LoopMessageConfig | null> {
+  // The platform env creds (LOOPMESSAGE_*) are the HQ owner's OWN LoopMessage
+  // account. They must NEVER leak into a client workspace's send — pairing HQ's
+  // sender_name with a client's auth_key (or vice-versa) is exactly what triggers
+  // LoopMessage's "invalid or unable to use this sender name". So env is a fallback
+  // for HQ/dev only; a client uses strictly its own connected creds.
+  const isHqOrDev = tenantId() === DEFAULT_TENANT_ID || process.env.NODE_ENV !== 'production';
   try {
     // password-typed fields (auth_key) live in the encrypted secret; text fields
     // (sender_name) live in the integration's `config` jsonb — read both.
@@ -114,12 +120,12 @@ export async function getLoopMessageConfig(): Promise<LoopMessageConfig | null> 
     ]);
     const cfg = (row?.config ?? {}) as Partial<{ sender_name: string }>;
     const authKey = s?.auth_key?.trim();
-    const senderName = s?.sender_name?.trim() || cfg.sender_name?.trim() || process.env.LOOPMESSAGE_SENDER_NAME;
+    const senderName = s?.sender_name?.trim() || cfg.sender_name?.trim() || (isHqOrDev ? process.env.LOOPMESSAGE_SENDER_NAME : undefined);
     if (authKey) return { auth_key: authKey, sender_name: senderName };
   } catch {
     /* fall through to env */
   }
-  const envKey = process.env.LOOPMESSAGE_AUTH_KEY?.trim();
+  const envKey = isHqOrDev ? process.env.LOOPMESSAGE_AUTH_KEY?.trim() : undefined;
   if (envKey) return { auth_key: envKey, sender_name: process.env.LOOPMESSAGE_SENDER_NAME };
   return null;
 }
