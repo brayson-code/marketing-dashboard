@@ -145,6 +145,19 @@ export function McpPanel() {
       {adding ? (
         <div className="panel p-4 space-y-2">
           <div className="space-y-1">
+            <label className="text-[11px] font-medium">Quick add</label>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => { setName('GitHub'); setUrl('https://api.githubcopilot.com/mcp/'); }}
+              >
+                GitHub
+              </button>
+              <span className="text-[10px] text-muted-foreground self-center">prefills the official GitHub MCP — paste a GitHub token below to authenticate.</span>
+            </div>
+          </div>
+          <div className="space-y-1">
             <label className="text-[11px] font-medium">Name<span className="text-destructive"> *</span></label>
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Sentry" style={{ width: '100%' }} />
           </div>

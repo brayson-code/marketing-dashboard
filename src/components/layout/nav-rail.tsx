@@ -8,7 +8,7 @@ import {
   Search, BarChart3, LineChart, FileText, Rocket, Clock, List, Settings,
   FolderOpen, MessagesSquare, Activity, Target, Inbox, Network, DollarSign, Bug,
   Waves, TrendingUp, Dna, Timer, Link2, Sparkles, ChevronDown, ChevronRight,
-  FlaskConical, BookOpen, ArrowUpRight,
+  FlaskConical, BookOpen, ArrowUpRight, Boxes,
 } from 'lucide-react';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { useDashboard } from '@/store';
@@ -46,6 +46,7 @@ const PRIMARY: NavGroup[] = [
     label: 'AGENTS',
     items: [
       { href: '/agents/squads', label: 'Agents', icon: Bot, matchPrefixes: ['/agents/squads'] },
+      { href: '/agents/skills', label: 'Skills', icon: Boxes, matchPrefixes: ['/agents/skills'] },
       { href: '/boardroom', label: 'Boardroom', icon: MessagesSquare, matchPrefixes: ['/boardroom'] },
     ],
   },
