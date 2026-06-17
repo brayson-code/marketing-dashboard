@@ -5,7 +5,7 @@ import { sql, jsonb, tenantId } from './db/client';
 // the previous filesystem store at state/keyplayer/goals.md so writes work on a
 // read-only serverless host (Vercel).
 
-export type GoalStatus = 'active' | 'pending_verification' | 'done' | 'abandoned';
+export type GoalStatus = 'active' | 'pending_verification' | 'done' | 'abandoned' | 'paused';
 
 export interface GoalProgress {
   ts: string; // ISO date (YYYY-MM-DD)

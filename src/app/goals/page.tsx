@@ -1,10 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Target, CheckCircle2, Clock, AlertCircle, Plus, RotateCcw, Check } from 'lucide-react';
+import { Target, CheckCircle2, Clock, AlertCircle, Plus, RotateCcw, Check, Pause, Play } from 'lucide-react';
 import { Explainer } from '@/components/ui/explainer';
 
-type GoalStatus = 'active' | 'pending_verification' | 'done' | 'abandoned';
+type GoalStatus = 'active' | 'pending_verification' | 'done' | 'abandoned' | 'paused';
 
 interface GoalProgress { ts: string; note: string }
 
@@ -25,6 +25,7 @@ function StatusBadge({ status }: { status: GoalStatus }) {
     pending_verification: { cls: 'badge-warning', label: 'pending review', icon: Clock },
     done: { cls: 'badge-success', label: 'done', icon: CheckCircle2 },
     abandoned: { cls: 'badge-neutral', label: 'abandoned', icon: AlertCircle },
+    paused: { cls: 'badge-warning', label: 'paused', icon: Pause },
   };
   const m = map[status];
   const Icon = m.icon;
@@ -64,7 +65,7 @@ export default function GoalsPage() {
     setCreating(false);
   }
 
-  const active = goals.filter((g) => g.status === 'active' || g.status === 'pending_verification');
+  const active = goals.filter((g) => g.status === 'active' || g.status === 'pending_verification' || g.status === 'paused');
   const archive = goals.filter((g) => g.status === 'done' || g.status === 'abandoned');
 
   return (
@@ -137,12 +138,22 @@ export default function GoalsPage() {
                     <Check size={11} /> Confirm done
                   </button>
                 )}
-                {g.status !== 'active' && (
+                {g.status === 'pending_verification' && (
                   <button className="btn btn-ghost btn-sm" onClick={() => postAction({ action: 'set_status', goal_id: g.id, status: 'active', note: 'reverted by owner' })}>
                     <RotateCcw size={11} /> Revert
                   </button>
                 )}
                 {g.status === 'active' && (
+                  <button className="btn btn-ghost btn-sm" onClick={() => postAction({ action: 'set_status', goal_id: g.id, status: 'paused', note: 'paused by owner' })}>
+                    <Pause size={11} /> Pause
+                  </button>
+                )}
+                {g.status === 'paused' && (
+                  <button className="btn btn-primary btn-sm" onClick={() => postAction({ action: 'set_status', goal_id: g.id, status: 'active', note: 'resumed by owner' })}>
+                    <Play size={11} /> Resume
+                  </button>
+                )}
+                {(g.status === 'active' || g.status === 'paused') && (
                   <button className="btn btn-destructive btn-sm" onClick={() => postAction({ action: 'set_status', goal_id: g.id, status: 'abandoned', note: 'abandoned by owner' })}>
                     Abandon
                   </button>
