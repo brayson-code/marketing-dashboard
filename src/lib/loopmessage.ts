@@ -21,6 +21,21 @@ export function getOwnerPhone(): string | null {
   return process.env.KEYPLAYERS_OWNER_PHONE?.trim() || null;
 }
 
+/** The phone number the orchestrator texts for THIS workspace's owner (the
+ *  owner↔agent lane). Per-tenant — set on the LoopMessage connection as
+ *  `owner_phone`. The env KEYPLAYERS_OWNER_PHONE is the HQ owner's cell and is a
+ *  fallback for HQ/dev ONLY: a client must never inherit HQ's number, or the
+ *  agent texts the wrong phone (and the client's sandbox rejects it). */
+export async function getTenantOwnerPhone(): Promise<string | null> {
+  try {
+    const row = await getIntegration('loopmessage');
+    const p = (row?.config as { owner_phone?: string } | undefined)?.owner_phone?.trim();
+    if (p) return p;
+  } catch { /* fall through to env (HQ only) */ }
+  const isHqOrDev = tenantId() === DEFAULT_TENANT_ID || process.env.NODE_ENV !== 'production';
+  return isHqOrDev ? (process.env.KEYPLAYERS_OWNER_PHONE?.trim() || null) : null;
+}
+
 /** The number to SHOW in the Boardroom badge for the active tenant. The env
  *  KEYPLAYERS_OWNER_PHONE is the HQ owner's personal cell (owner↔agent lane) — it
  *  must NEVER be shown to client workspaces. A client sees its own connected
@@ -50,12 +65,17 @@ export async function sendIMessage(rawText: string, opts: SendIMessageOptions = 
   // iMessage/SMS can't render markdown — flatten to clean plaintext here, the
   // single chokepoint, so every caller's reply lands readable (not raw **md**).
   const text = mdToPlainText(rawText);
-  const authKey = process.env.LOOPMESSAGE_AUTH_KEY;
-  const senderName = opts.sender ?? process.env.LOOPMESSAGE_SENDER_NAME;
-  const recipient = opts.recipient ?? getOwnerPhone();
+  // Per-tenant creds: a client's orchestrator must send through ITS OWN LoopMessage
+  // account to ITS OWN owner phone — never the HQ env account (that's the bug that
+  // made a client's replies vanish / fail with "invalid sender"). getLoopMessageConfig
+  // already falls back to the env account for HQ/dev only.
+  const cfg = await getLoopMessageConfig();
+  const authKey = cfg?.auth_key;
+  const senderName = opts.sender ?? cfg?.sender_name;
+  const recipient = opts.recipient ?? (await getTenantOwnerPhone());
 
-  if (!authKey) return { ok: false, error: 'LOOPMESSAGE_AUTH_KEY not configured' };
-  if (!recipient) return { ok: false, error: 'No recipient (set KEYPLAYERS_OWNER_PHONE or pass opts.recipient)' };
+  if (!authKey) return { ok: false, error: 'LoopMessage isn’t connected for this workspace.' };
+  if (!recipient) return { ok: false, error: 'No recipient — add your phone number on the LoopMessage connection (Connections → LoopMessage → “Your phone”).' };
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',

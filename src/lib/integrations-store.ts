@@ -49,8 +49,9 @@ export const PROVIDERS: IntegrationProviderDef[] = [
     scopesHint: 'Sign up at loopmessage.com and copy your Auth Key. Sender Name must be your EXACT sender from the LoopMessage dashboard (Senders) and it must be Active/verified — e.g. "sandbox.loopmessage.com@imsg.im" or the dedicated sender they assigned. It is NOT a made-up display name like "AI Bot"; a wrong value fails with "invalid or unable to use this sender name". On the free sandbox, use the sandbox sender LoopMessage gives you.',
     fields: [
       { name: 'auth_key', label: 'Auth Key', type: 'password', required: true },
+      { name: 'owner_phone', label: 'Your phone (where the orchestrator texts you)', type: 'text', placeholder: '+15551234567' },
       { name: 'webhook_secret', label: 'Webhook Secret', type: 'password' },
-      { name: 'sender_name', label: 'Sender Name (exact, from LoopMessage)', type: 'text', placeholder: 'e.g. sandbox.loopmessage.com@imsg.im' },
+      { name: 'sender_name', label: 'Sender Name — leave BLANK for sandbox / shared sender', type: 'text', placeholder: 'blank for sandbox; exact sender only for a dedicated one' },
     ] },
   { id: 'twilio', label: 'Twilio (SMS)', category: 'messaging',
     scopesHint: 'From your Twilio console: Account SID + Auth Token (Account Info), and a Twilio phone number in E.164 (+15551234567) or a Messaging Service SID (MG…) as the From.',
