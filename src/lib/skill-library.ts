@@ -1,4 +1,4 @@
-import { sql } from './db/client';
+import { sql, tenantId } from './db/client';
 import { getAgentDefForEditor, upsertAgentDef } from './agent-defs';
 import { supabaseAdmin } from './supabase/admin';
 
@@ -16,15 +16,56 @@ export interface Skill {
   description: string;
   body: string;
   source_url: string | null;
+  is_custom: boolean;
 }
 
-/** The whole catalog, grouped-friendly (category, then name). */
+/** Curated globals + this workspace's own custom skills (RLS scopes the rows).
+ *  Custom (workspace-owned) skills sort first so they're easy to find. */
 export async function listSkills(): Promise<Skill[]> {
   const rows = (await sql()`
-    SELECT id, slug, name, category, description, body, source_url
-    FROM public.skill_library ORDER BY category, name
+    SELECT id, slug, name, category, description, body, source_url,
+           (tenant_id IS NOT NULL) AS is_custom
+    FROM public.skill_library ORDER BY (tenant_id IS NOT NULL) DESC, category, name
   `) as unknown as Skill[];
   return rows;
+}
+
+function slugify(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'skill';
+}
+
+export interface AddSkillInput { name: string; category?: string; description?: string; body?: string; bodyUrl?: string }
+
+/** Add a workspace's OWN skill (paste a body or import from a raw URL). Tenant-scoped. */
+export async function addCustomSkill(input: AddSkillInput): Promise<Skill> {
+  const name = (input.name ?? '').trim();
+  if (!name) throw new Error('A skill name is required');
+  let body = (input.body ?? '').trim();
+  let sourceUrl: string | null = null;
+  if (!body && input.bodyUrl) {
+    const url = input.bodyUrl.trim();
+    if (!/^https?:\/\//.test(url)) throw new Error('Import URL must start with http(s)://');
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`Could not fetch that URL (HTTP ${res.status})`);
+    body = (await res.text()).trim();
+    sourceUrl = url;
+  }
+  if (!body) throw new Error('Paste the skill text or give an import URL');
+  // Random suffix keeps the global unique(slug) intact across tenants.
+  const rand = String(Math.abs(Number(`${name.length}${body.length}`) % 1e6)).padStart(6, '0');
+  const slug = `${slugify(name)}-${rand}`;
+  const rows = (await sql()`
+    INSERT INTO public.skill_library (tenant_id, slug, name, category, description, body, source_url)
+    VALUES (${tenantId()}, ${slug}, ${name.slice(0, 120)}, ${(input.category || 'custom').slice(0, 40)},
+            ${(input.description || '').slice(0, 400)}, ${body.slice(0, 20000)}, ${sourceUrl})
+    RETURNING id, slug, name, category, description, body, source_url, true AS is_custom
+  `) as unknown as Skill[];
+  return rows[0];
+}
+
+/** Delete a workspace's own custom skill (RLS prevents touching globals/others). */
+export async function deleteCustomSkill(slug: string): Promise<void> {
+  await sql()`DELETE FROM public.skill_library WHERE slug = ${slug} AND tenant_id = ${tenantId()}`;
 }
 
 async function getSkill(slug: string): Promise<Skill | null> {

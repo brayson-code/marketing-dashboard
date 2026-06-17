@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { requireHq } from '@/lib/hq-guard';
-import { listSkills, installSkillToAgent, removeSkillFromAgent, syncSkillsFromGitHub } from '@/lib/skill-library';
+import { listSkills, installSkillToAgent, removeSkillFromAgent, syncSkillsFromGitHub, addCustomSkill, deleteCustomSkill } from '@/lib/skill-library';
 import { listAgentDefs } from '@/lib/agent-defs';
 
 export const dynamic = 'force-dynamic';
@@ -25,11 +25,20 @@ export async function GET() {
 // POST /api/skills { action: 'install' | 'remove' | 'sync', slug?, agentId? }
 export async function POST(request: Request) {
   enterTenant(await resolveTenant());
-  let body: { action?: string; slug?: string; agentId?: string };
+  let body: { action?: string; slug?: string; agentId?: string; name?: string; category?: string; description?: string; bodyText?: string; bodyUrl?: string };
   try { body = await request.json(); }
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
 
   try {
+    if (body.action === 'add') {
+      const skill = await addCustomSkill({ name: body.name ?? '', category: body.category, description: body.description, body: body.bodyText, bodyUrl: body.bodyUrl });
+      return NextResponse.json({ ok: true, skill });
+    }
+    if (body.action === 'delete-skill') {
+      if (!body.slug) return NextResponse.json({ error: 'slug is required' }, { status: 400 });
+      await deleteCustomSkill(body.slug);
+      return NextResponse.json({ ok: true });
+    }
     if (body.action === 'sync') {
       const denied = requireHq();
       if (denied) return denied; // only HQ curates the global catalog

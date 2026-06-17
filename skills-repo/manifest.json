@@ -1,0 +1,23 @@
+[
+  {
+    "slug": "cold-email-opener",
+    "name": "Cold Email Opener",
+    "category": "outreach",
+    "description": "Write pattern-interrupt first lines for cold outreach that earn the next sentence.",
+    "file": "skills/cold-email-opener.md"
+  },
+  {
+    "slug": "hook-writer",
+    "name": "Short-form Hook Writer",
+    "category": "content",
+    "description": "Generate scroll-stopping first lines for reels, shorts, and posts.",
+    "file": "skills/hook-writer.md"
+  },
+  {
+    "slug": "competitor-teardown",
+    "name": "Competitor Teardown Framework",
+    "category": "research",
+    "description": "Reverse-engineer why a competitor's content or offer is working.",
+    "file": "skills/competitor-teardown.md"
+  }
+]
