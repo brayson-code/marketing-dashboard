@@ -155,17 +155,30 @@ async function runOne(job: DueJobRow): Promise<{ id: string; status: 'ok' | 'err
         fullResult = (res.text ?? '').slice(0, RESULT_MAX);
         summary = (res.text ?? '').replace(/\s+/g, ' ').trim().slice(0, SUMMARY_MAX) || null;
 
-        // Delivery: text the workspace owner the digest over iMessage when the job
-        // asks for it (delivery.channel === 'imessage'). Per-tenant — sendIMessage
-        // uses THIS workspace's LoopMessage + owner phone. Best-effort; a failed
-        // delivery never fails the job.
-        if ((job.delivery as { channel?: string } | null)?.channel === 'imessage' && fullResult.trim()) {
+        // Delivery: push the digest to the owner over the chosen channel. Per-tenant
+        // (uses THIS workspace's connected provider). Best-effort — a failed delivery
+        // never fails the job. delivery = { channel: 'imessage' | 'email', to?: '…' }.
+        const del = (job.delivery ?? {}) as { channel?: string; to?: string };
+        if (del.channel === 'imessage' && fullResult.trim()) {
           try {
             const { sendIMessage } = await import('./loopmessage');
             const dr = await sendIMessage(fullResult.slice(0, 1400));
             if (!dr.ok) console.warn(`[cron] iMessage delivery failed for "${label}": ${dr.error}`);
           } catch (err) {
             console.warn(`[cron] iMessage delivery error for "${label}":`, (err as Error).message);
+          }
+        } else if (del.channel === 'email' && fullResult.trim()) {
+          try {
+            const { listInboxes, sendEmail } = await import('./agentmail');
+            const inboxes = await listInboxes().catch(() => []);
+            const to = String(del.to ?? '').trim();
+            if (inboxes.length && to) {
+              await sendEmail(inboxes[0].inbox_id, { to: [to], subject: label, text: fullResult });
+            } else {
+              console.warn(`[cron] email delivery skipped for "${label}": ${!inboxes.length ? 'no AgentMail inbox' : 'no recipient'}`);
+            }
+          } catch (err) {
+            console.warn(`[cron] email delivery error for "${label}":`, (err as Error).message);
           }
         }
         // Persist the readable digest into the editable KB doc.
