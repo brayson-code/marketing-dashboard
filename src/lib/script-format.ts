@@ -81,79 +81,95 @@ function parseSpokenBlock(raw: string): ScriptBlock[] {
   return blocks.map((b) => ({ label: b.label, body: b.body.trim() })).filter((b) => b.label || b.body);
 }
 
-// ── Path B: Hyperframes storyboard → ONLY the spoken words, grouped into the
-// three beats a creator reads on a teleprompter: HOOK, BODY (every middle
-// scene's line merged), CTA. No per-scene labels, no visuals/timings/on-screen
-// text/hints — just the words to say. ───────────────────────────────────────────
+// Pull every double-quoted string ("…" or "…") of 2+ chars out of a line.
+function extractQuotes(s: string): string[] {
+  const out: string[] = [];
+  const re = /[“"]([^”"]{2,}?)[”"]/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(s)) !== null) out.push(m[1].trim());
+  return out;
+}
+
+function dedupe(arr: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of arr) {
+    const k = v.toLowerCase().replace(/\s+/g, ' ').trim();
+    if (k && !seen.has(k)) { seen.add(k); out.push(v); }
+  }
+  return out;
+}
+
+// ── Path B: Hyperframes storyboard → ONLY the spoken words, in three beats:
+// HOOK / BODY / CTA. The actual spoken content lives in QUOTED strings (the
+// scene captions/lines) and in the Audio field (hook + cta). EVERYTHING ELSE —
+// visual direction, timings, clip ids, and the agent's unquoted "rules" prose —
+// is dropped, because that's not what the creator reads aloud. ────────────────
 function parseStoryboard(raw: string): ScriptBlock[] {
   const lines = raw.split('\n');
-  // Find the Audio/spoken column index from the table header, if there is one.
   let audioCol = -1;
   for (const l of lines) {
-    if (/^\s*\|/.test(l) && /audio|spoken|voiceover|\bvo\b|narration|script|say/i.test(l)) {
-      audioCol = splitCells(l).findIndex((c) => /audio|spoken|voiceover|\bvo\b|narration|script|say/i.test(c));
+    if (/^\s*\|/.test(l) && /\b(audio|spoken|voiceover|vo|narration)\b/i.test(l)) {
+      audioCol = splitCells(l).findIndex((c) => /\b(audio|spoken|voiceover|vo|narration)\b/i.test(c));
       break;
     }
   }
 
-  const hook: string[] = [];
-  const body: string[] = [];
-  const cta: string[] = [];
-  // Which beat are we currently inside? Default to body (the middle).
+  // Per beat we collect the AUDIO line(s) and the QUOTED line(s) separately, then
+  // pick: hook/cta use audio (per the brief), body uses the quotations (scenes).
+  const A = { hook: [] as string[], body: [] as string[], cta: [] as string[] };
+  const Q = { hook: [] as string[], body: [] as string[], cta: [] as string[] };
   let beat: 'hook' | 'body' | 'cta' = 'body';
   let sawHook = false;
-  const push = (s: string) => {
-    const v = (s || '').trim();
-    if (!v) return;
-    (beat === 'hook' ? hook : beat === 'cta' ? cta : body).push(v);
-  };
+  const addAudio = (s: string) => { const v = stripHints(dequote(stripMarkdown(s))).trim(); if (v) A[beat].push(v); };
+  const addQuotes = (s: string) => { for (const q of extractQuotes(s)) { const v = stripHints(q).trim(); if (v) Q[beat].push(v); } };
 
   for (const line of lines) {
     const t = line.trim();
     if (!t || RULE_LINE.test(t) || TIMING_ONLY.test(t)) continue;
 
-    // Headings just switch which beat the following spoken lines belong to.
+    // Headings switch the beat.
     const h = /^#{1,6}\s+(.+?)\s*#*$/.exec(t);
     if (h) {
       const lab = normalizeLabel(h[1]);
       if (/^(HOOK|COLD OPEN|OPEN|OPENING|INTRO)\b/.test(lab)) { beat = 'hook'; sawHook = true; }
       else if (/^(CTA|CALL TO ACTION|OUTRO|CLOSE|CLOSING|END)\b/.test(lab)) { beat = 'cta'; }
-      else { beat = 'body'; } // scenes / platform / everything else = the middle
+      else beat = 'body';
       continue;
     }
 
-    // Table rows → pull the spoken cell only (drop time/visual/on-screen/clip).
+    // Table rows → the Audio cell is spoken; any quoted cell is a scene line.
     if (/^\s*\|/.test(line)) {
       const cells = splitCells(line);
-      if (cells.some((c) => /^:?-{2,}:?$/.test(c))) continue;
-      if (cells.some((c) => /^(time|visual|on[- ]?screen( text)?|clip|audio|spoken)$/i.test(c))) continue;
-      let spoken = audioCol >= 0 ? (cells[audioCol] || '') : '';
-      if (!spoken) spoken = cells.filter((c) => c && !/^\[/.test(c) && /\s/.test(c)).sort((a, b) => b.length - a.length)[0] || '';
-      push(stripHints(dequote(stripMarkdown(spoken))));
+      if (cells.some((c) => /^:?-{2,}:?$/.test(c))) continue;            // separator
+      if (cells.some((c) => /^(time|visual|on[- ]?screen( text)?|clip|audio|spoken)$/i.test(c))) continue; // header
+      if (audioCol >= 0 && cells[audioCol]) addAudio(cells[audioCol]);
+      addQuotes(line);
       continue;
     }
 
-    // Bullet/field lines: keep ONLY the spoken line; drop all scaffolding.
+    // Field lines: only Audio/Voiceover values count as spoken; quoted values are
+    // scene lines; visuals/clips/timings/rules are dropped entirely.
     const f = /^-?\s*([A-Za-z][A-Za-z' \-]{1,22}?)\s*:\s*(.*)$/.exec(t);
     if (f) {
       const key = f[1].trim();
-      const val = stripHints(dequote(stripMarkdown(f[2])));
-      if (SPOKEN_KEY.test(key)) { push(val); continue; }
-      if (SCAFFOLD_KEY.test(key)) continue;
       const lab = normalizeLabel(key);
-      if (/^(HOOK|COLD OPEN|OPEN|INTRO)\b/.test(lab)) { beat = 'hook'; sawHook = true; if (val) push(val); continue; }
-      if (/^(CTA|CALL TO ACTION|OUTRO|CLOSE|END)\b/.test(lab)) { beat = 'cta'; if (val) push(val); continue; }
-      if (LABEL_SET.has(lab)) { continue; } // some other label (Visual/Caption…) → ignore
-      if (val) push(val);
+      if (/^(HOOK|COLD OPEN|OPEN|INTRO)\b/.test(lab)) { beat = 'hook'; sawHook = true; }
+      else if (/^(CTA|CALL TO ACTION|OUTRO|CLOSE|END)\b/.test(lab)) { beat = 'cta'; }
+      if (SPOKEN_KEY.test(key)) { addAudio(f[2]); continue; }
+      addQuotes(f[2]); // on-screen text / caption etc. → its quoted value only
       continue;
     }
 
-    // Plain prose (skip stray hint-only lines).
-    if (!/^\[/.test(t)) push(stripHints(stripMarkdown(t)));
+    // Plain prose: keep ONLY the quoted parts (a scene line). Unquoted prose is
+    // the script's directions/rules — never read aloud, so drop it.
+    addQuotes(t);
   }
 
-  // If no explicit hook heading was seen, promote the first body line to the hook.
-  if (!sawHook && body.length) hook.push(body.shift() as string);
+  const hook = dedupe(A.hook.length ? A.hook : Q.hook);
+  const body = dedupe(Q.body.length ? Q.body : A.body);
+  const cta = dedupe(A.cta.length ? A.cta : Q.cta);
+  if (!sawHook && body.length && !hook.length) hook.push(body.shift() as string);
 
   const out: ScriptBlock[] = [];
   if (hook.length) out.push({ label: 'HOOK', body: hook.join('\n').trim() });
@@ -162,13 +178,15 @@ function parseStoryboard(raw: string): ScriptBlock[] {
   return out.filter((b) => b.body);
 }
 
-/** Parse a raw script into ordered, readable beats for the teleprompter. */
+/** Parse a raw script into ordered, readable beats for the teleprompter. Strict
+ *  storyboard extraction (quotes + audio only) is the default; the lenient
+ *  beat-parser is the fallback for a plain labeled script with no quotes/audio. */
 export function parseScript(raw: string): ScriptBlock[] {
   const text = (raw || '').replace(/\r\n/g, '\n');
-  const hasSpokenBlock = /^\s*#{0,6}\s*spoken script\s*:?\s*$/im.test(text);
-  const hasStoryboard = /\n\s*\|/.test(text) || /^\s*-?\s*(audio|voiceover|on[- ]?screen)\s*:/im.test(text) || /^#{1,6}\s+hook\b/im.test(text);
-  if (hasSpokenBlock || !hasStoryboard) return parseSpokenBlock(text);
-  return parseStoryboard(text);
+  if (/^\s*#{0,6}\s*spoken script\s*:?\s*$/im.test(text)) return parseSpokenBlock(text);
+  const sb = parseStoryboard(text);
+  if (sb.length) return sb;
+  return parseSpokenBlock(text);
 }
 
 /** A flat, markdown-free, preamble-free version of the script. */
