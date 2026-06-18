@@ -3,7 +3,9 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   output: 'standalone',
-  serverExternalPackages: ['better-sqlite3'],
+  // better-sqlite3 + impit are native (.node) modules — keep them external so Next
+  // doesn't try to bundle the binary; they're required from node_modules at runtime.
+  serverExternalPackages: ['better-sqlite3', 'impit'],
   // Prevent Next.js from inferring a parent workspace root from monorepo traversal, which
   // changes the standalone output path layout and breaks systemd start paths.
   outputFileTracingRoot: path.join(__dirname),
@@ -16,7 +18,10 @@ const nextConfig: NextConfig = {
     // agents/** → spawn prompts. docs/** → the in-app Help assistant (/api/help)
     // reads the public docs at runtime to ground its answers, so they must be
     // traced into the function bundle (same reason as agents/**).
-    '/api/**/*': ['./agents/**/*', './docs/**/*'],
+    // impit's platform binding (linux-x64-gnu on Vercel) is resolved via a dynamic
+    // platform-specific require that nft can't follow — force the .node into the
+    // bundle. The glob is a no-op locally on Windows (that binding isn't installed).
+    '/api/**/*': ['./agents/**/*', './docs/**/*', './node_modules/impit-linux-x64-gnu/**/*'],
   },
   // Baseline security headers (the safe set — addresses the common DAST/ZAP-baseline
   // "missing security header" findings). HSTS is already added by Vercel. CSP is
