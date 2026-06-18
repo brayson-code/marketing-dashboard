@@ -81,7 +81,10 @@ function parseSpokenBlock(raw: string): ScriptBlock[] {
   return blocks.map((b) => ({ label: b.label, body: b.body.trim() })).filter((b) => b.label || b.body);
 }
 
-// ── Path B: Hyperframes storyboard → extract every spoken beat in order ────────
+// ── Path B: Hyperframes storyboard → ONLY the spoken words, grouped into the
+// three beats a creator reads on a teleprompter: HOOK, BODY (every middle
+// scene's line merged), CTA. No per-scene labels, no visuals/timings/on-screen
+// text/hints — just the words to say. ───────────────────────────────────────────
 function parseStoryboard(raw: string): ScriptBlock[] {
   const lines = raw.split('\n');
   // Find the Audio/spoken column index from the table header, if there is one.
@@ -93,59 +96,70 @@ function parseStoryboard(raw: string): ScriptBlock[] {
     }
   }
 
-  const blocks: ScriptBlock[] = [];
-  const state: { cur: ScriptBlock | null } = { cur: null };
-  let sceneN = 0;
-  const open = (label: string | null) => { if (state.cur && (state.cur.label || state.cur.body)) blocks.push(state.cur); state.cur = { label, body: '' }; };
-  const add = (s: string) => { if (!s) return; if (!state.cur) state.cur = { label: null, body: '' }; state.cur.body += (state.cur.body ? '\n' : '') + s; };
+  const hook: string[] = [];
+  const body: string[] = [];
+  const cta: string[] = [];
+  // Which beat are we currently inside? Default to body (the middle).
+  let beat: 'hook' | 'body' | 'cta' = 'body';
+  let sawHook = false;
+  const push = (s: string) => {
+    const v = (s || '').trim();
+    if (!v) return;
+    (beat === 'hook' ? hook : beat === 'cta' ? cta : body).push(v);
+  };
 
   for (const line of lines) {
     const t = line.trim();
     if (!t || RULE_LINE.test(t) || TIMING_ONLY.test(t)) continue;
 
-    // Headings → section labels (skip pure-scaffold sections).
+    // Headings just switch which beat the following spoken lines belong to.
     const h = /^#{1,6}\s+(.+?)\s*#*$/.exec(t);
     if (h) {
       const lab = normalizeLabel(h[1]);
-      if (/^(PLATFORM|LENGTH|ASPECT|SCENES?|STORYBOARD|OUTPUT|HINTS?|MACHINE|PRODUCTION|MEDIA)/.test(lab)) { open(null); continue; }
-      open(lab);
+      if (/^(HOOK|COLD OPEN|OPEN|OPENING|INTRO)\b/.test(lab)) { beat = 'hook'; sawHook = true; }
+      else if (/^(CTA|CALL TO ACTION|OUTRO|CLOSE|CLOSING|END)\b/.test(lab)) { beat = 'cta'; }
+      else { beat = 'body'; } // scenes / platform / everything else = the middle
       continue;
     }
 
-    // Table rows → pull the spoken cell.
+    // Table rows → pull the spoken cell only (drop time/visual/on-screen/clip).
     if (/^\s*\|/.test(line)) {
       const cells = splitCells(line);
-      // Skip the header row and the |---| separator.
       if (cells.some((c) => /^:?-{2,}:?$/.test(c))) continue;
       if (cells.some((c) => /^(time|visual|on[- ]?screen( text)?|clip|audio|spoken)$/i.test(c))) continue;
       let spoken = audioCol >= 0 ? (cells[audioCol] || '') : '';
-      if (!spoken) {
-        // No labeled column — take the longest sentence-like, non-hint cell.
-        spoken = cells.filter((c) => c && !/^\[/.test(c) && /\s/.test(c)).sort((a, b) => b.length - a.length)[0] || '';
-      }
-      spoken = stripHints(dequote(stripMarkdown(spoken)));
-      if (spoken) { sceneN += 1; open(`SCENE ${sceneN}`); add(spoken); }
+      if (!spoken) spoken = cells.filter((c) => c && !/^\[/.test(c) && /\s/.test(c)).sort((a, b) => b.length - a.length)[0] || '';
+      push(stripHints(dequote(stripMarkdown(spoken))));
       continue;
     }
 
-    // Bullet/field lines ("- Audio: …", "On-screen text: …", "Hook: …").
+    // Bullet/field lines: keep ONLY the spoken line; drop all scaffolding.
     const f = /^-?\s*([A-Za-z][A-Za-z' \-]{1,22}?)\s*:\s*(.*)$/.exec(t);
     if (f) {
       const key = f[1].trim();
       const val = stripHints(dequote(stripMarkdown(f[2])));
-      if (SPOKEN_KEY.test(key)) { add(val); continue; }
+      if (SPOKEN_KEY.test(key)) { push(val); continue; }
       if (SCAFFOLD_KEY.test(key)) continue;
       const lab = normalizeLabel(key);
-      if (LABEL_SET.has(lab)) { open(lab); if (val) add(val); continue; }
-      if (val) add(val);
+      if (/^(HOOK|COLD OPEN|OPEN|INTRO)\b/.test(lab)) { beat = 'hook'; sawHook = true; if (val) push(val); continue; }
+      if (/^(CTA|CALL TO ACTION|OUTRO|CLOSE|END)\b/.test(lab)) { beat = 'cta'; if (val) push(val); continue; }
+      if (LABEL_SET.has(lab)) { continue; } // some other label (Visual/Caption…) → ignore
+      if (val) push(val);
       continue;
     }
 
     // Plain prose (skip stray hint-only lines).
-    if (!/^\[/.test(t)) add(stripHints(stripMarkdown(t)));
+    if (!/^\[/.test(t)) push(stripHints(stripMarkdown(t)));
   }
-  if (state.cur && (state.cur.label || state.cur.body)) blocks.push(state.cur);
-  return blocks.map((b) => ({ label: b.label, body: b.body.trim() })).filter((b) => b.label || b.body);
+
+  // If no explicit hook heading was seen, promote the first body line to the hook.
+  if (!sawHook && body.length) hook.push(body.shift() as string);
+
+  const out: ScriptBlock[] = [];
+  if (hook.length) out.push({ label: 'HOOK', body: hook.join('\n').trim() });
+  if (body.length) out.push({ label: 'BODY', body: body.join('\n').trim() });
+  if (cta.length) out.push({ label: 'CTA', body: cta.join('\n').trim() });
+  return out.filter((b) => b.body);
 }
 
 /** Parse a raw script into ordered, readable beats for the teleprompter. */

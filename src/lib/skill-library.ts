@@ -21,13 +21,17 @@ export interface Skill {
   is_custom: boolean;
 }
 
-/** Curated globals + this workspace's own custom skills (RLS scopes the rows).
- *  Custom (workspace-owned) skills sort first so they're easy to find. */
+/** Curated globals + THIS workspace's own custom skills. The backend sql() client
+ *  bypasses RLS, so we MUST scope by tenant_id in the query itself (RLS is only a
+ *  backstop for direct/anon access) — otherwise one workspace sees another's
+ *  custom skills. Custom (workspace-owned) skills sort first. */
 export async function listSkills(): Promise<Skill[]> {
   const rows = (await sql()`
     SELECT id, slug, name, category, description, body, source_url,
            (tenant_id IS NOT NULL) AS is_custom
-    FROM public.skill_library ORDER BY (tenant_id IS NOT NULL) DESC, category, name
+    FROM public.skill_library
+    WHERE tenant_id IS NULL OR tenant_id = ${tenantId()}
+    ORDER BY (tenant_id IS NOT NULL) DESC, category, name
   `) as unknown as Skill[];
   return rows;
 }
@@ -217,9 +221,13 @@ export async function importRepoSkills(opts: { repo: string; branch?: string; to
 }
 
 async function getSkill(slug: string): Promise<Skill | null> {
+  // Scope to globals + this tenant so a workspace can't install another's skill
+  // by guessing its slug (sql() bypasses RLS — see listSkills).
   const rows = (await sql()`
     SELECT id, slug, name, category, description, body, source_url
-    FROM public.skill_library WHERE slug = ${slug} LIMIT 1
+    FROM public.skill_library
+    WHERE slug = ${slug} AND (tenant_id IS NULL OR tenant_id = ${tenantId()})
+    LIMIT 1
   `) as unknown as Skill[];
   return rows[0] ?? null;
 }
