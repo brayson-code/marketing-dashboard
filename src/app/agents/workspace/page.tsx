@@ -304,7 +304,7 @@ export default function AgentStudioPage() {
             <div className="text-sm font-medium">Agents</div>
             <button
               type="button"
-              className="btn btn-sm text-xs"
+              className="btn btn-primary btn-sm text-xs"
               onClick={() => setShowNew(true)}
             >
               <Plus size={12} /> New agent

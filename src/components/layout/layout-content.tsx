@@ -68,7 +68,10 @@ export function LayoutContent({ children }: { children: React.ReactNode }) {
   return (
     <>
       <HeaderBar />
-      <div className="flex min-h-[calc(100vh-var(--header-height))]">
+      {/* 100dvh (not vh) so the page tracks the VISIBLE viewport on mobile — without
+          it, the bottom of long pages (e.g. the Ideas "Keep" section) sits behind the
+          browser chrome and can't be scrolled to. */}
+      <div className="flex min-h-[calc(100dvh-var(--header-height))]">
         <NavRail />
         <AppShell>{children}</AppShell>
       </div>

@@ -1,11 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Boxes, Plus, Loader2, RefreshCw, Check, X, Wand2, Github } from 'lucide-react';
+import { Boxes, Plus, Loader2, RefreshCw, Check, X, Wand2, Github, Eye } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { toast } from '@/components/ui/toast';
 
-interface Skill { id: number; slug: string; name: string; category: string; description: string; is_custom?: boolean }
+interface Skill { id: number; slug: string; name: string; category: string; description: string; body?: string; is_custom?: boolean }
 interface AgentOpt { id: string; name: string }
 
 export default function SkillLibraryPage() {
@@ -26,6 +26,7 @@ export default function SkillLibraryPage() {
   // Generate-with-AI
   const [intent, setIntent] = useState('');
   const [generating, setGenerating] = useState(false);
+  const [viewing, setViewing] = useState<string | null>(null); // slug whose full md is expanded
 
   const load = useCallback(async () => {
     try {
@@ -222,6 +223,20 @@ export default function SkillLibraryPage() {
                 </div>
               </div>
               <p className="text-xs text-muted-foreground leading-relaxed">{s.description}</p>
+
+              <button
+                type="button"
+                className="text-[11px] text-[var(--primary)] inline-flex items-center gap-1 hover:opacity-80"
+                onClick={() => setViewing((v) => (v === s.slug ? null : s.slug))}
+              >
+                <Eye size={11} /> {viewing === s.slug ? 'Hide skill' : 'View skill'}
+              </button>
+              {viewing === s.slug && (
+                <pre className="text-[11px] leading-relaxed whitespace-pre-wrap break-words bg-[var(--surface-2)] border border-border rounded-lg p-2.5 max-h-64 overflow-auto">
+                  {s.body || '(empty)'}
+                </pre>
+              )}
+
               <div className="flex items-center gap-2 pt-1">
                 <select
                   className="text-xs flex-1 min-w-0"

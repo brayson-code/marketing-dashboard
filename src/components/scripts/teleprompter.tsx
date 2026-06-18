@@ -100,6 +100,10 @@ export function Teleprompter({ text, onClose }: { text: string; onClose: () => v
   return createPortal(
     <div
       className="fixed inset-0 z-[100] flex flex-col bg-[#050505] animate-in"
+      // 100dvh tracks the VISIBLE viewport so the controls bar isn't hidden behind
+      // mobile browser chrome / the iOS home bar (the "can't see the speed buttons"
+      // bug). inset-0 stays as the fallback for browsers without dvh.
+      style={{ height: '100dvh' }}
       role="dialog"
       aria-modal="true"
       aria-label="Teleprompter"
@@ -164,9 +168,11 @@ export function Teleprompter({ text, onClose }: { text: string; onClose: () => v
         </div>
       </div>
 
-      {/* Controls bar — pinned to the bottom. */}
+      {/* Controls bar — pinned to the bottom. Extra bottom padding clears the iOS
+          home bar so the speed/font controls are never hidden under it. */}
       <div
         className="shrink-0 z-20 flex items-center justify-center gap-2 flex-wrap px-4 py-3 border-t border-white/10 bg-black/70 backdrop-blur-md"
+        style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
       >
         <button
           type="button"
