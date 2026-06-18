@@ -116,18 +116,18 @@ export default function MediaLibraryPage() {
       ) : shown.length === 0 ? (
         <div className="panel"><div className="panel-body text-sm text-muted-foreground">No clips yet — drop your footage in the box above to start your library.</div></div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5">
           {shown.map((a) => (
             <div key={a.id} className="panel overflow-hidden group relative">
-              <div className="relative" style={{ aspectRatio: '9 / 16', background: '#111' }}>
+              {/* 16:9 frame + object-contain so the WHOLE clip is visible whatever
+                  its native aspect (letterboxed, never cropped); smaller, wider
+                  tiles than the old tall 9:16 cards. `controls` plays in place. */}
+              <div className="relative" style={{ aspectRatio: '16 / 9', background: '#000' }}>
                 {a.kind === 'image' ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={a.url} alt={a.name || ''} className="w-full h-full object-cover" />
+                  <img src={a.url} alt={a.name || ''} className="w-full h-full object-contain" />
                 ) : (
-                  // 9:16 framed (object-cover) so it previews exactly as it'll sit
-                  // in a vertical reel; `controls` makes it play in place (was just
-                  // a static first-frame before).
-                  <video src={a.url} controls playsInline preload="metadata" className="w-full h-full object-cover" />
+                  <video src={a.url} controls playsInline preload="metadata" className="w-full h-full object-contain" />
                 )}
                 <button onClick={() => del(a.id)} className="absolute top-1.5 right-1.5 btn btn-destructive btn-sm opacity-0 group-hover:opacity-100 transition-opacity">
                   <Trash2 size={12} />
