@@ -3,10 +3,21 @@ import { put, del } from '@vercel/blob';
 import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { tenantId } from '@/lib/db/client';
 import { listAssets, createAsset, deleteAsset } from '@/lib/assets';
+import { rateLimit } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
+
+// Upload guardrails (audit finding #5: /api/assets was unguarded — no size or MIME
+// cap, so a single tenant could push arbitrary large/arbitrary-type blobs).
+const MAX_UPLOAD_BYTES = 100 * 1024 * 1024; // 100 MB — generous for a short clip.
+// Server-side MIME allowlist. The kind ('image' vs 'video') is derived from this,
+// so anything not listed is rejected rather than silently filed as 'video'.
+const ALLOWED_MIME = new Set<string>([
+  'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif',
+  'video/mp4', 'video/quicktime', 'video/webm',
+]);
 
 // GET /api/assets — the tenant's media library.
 export async function GET() {
@@ -21,10 +32,39 @@ export async function GET() {
 // POST /api/assets — multipart upload of a clip/image → Vercel Blob (public) → record.
 export async function POST(req: Request) {
   enterTenant(await resolveTenant());
+
+  // Per-tenant rate limit — uploads incur blob storage + egress cost and were
+  // unguarded (audit finding #5). 30 uploads/min per workspace is plenty for a
+  // human curating a media library while still braking an abusive loop.
+  const rl = rateLimit('assets-upload', tenantId(), { windowMs: 60_000, max: 30 });
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: 'Too many uploads — give it a moment and try again.' },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfterSec) } },
+    );
+  }
+
   try {
     const form = await req.formData();
     const file = form.get('file');
     if (!(file instanceof File)) return NextResponse.json({ error: 'file is required' }, { status: 400 });
+
+    // Validate MIME server-side BEFORE deriving kind — an empty/unknown type or a
+    // disallowed one is rejected, never silently filed as 'video'.
+    if (!ALLOWED_MIME.has(file.type)) {
+      return NextResponse.json(
+        { error: `Unsupported file type${file.type ? ` (${file.type})` : ''}. Allowed: PNG, JPEG, GIF, WebP, AVIF, MP4, MOV, WebM.` },
+        { status: 415 },
+      );
+    }
+    // Cap size server-side. file.size is the browser-reported length of the
+    // multipart part; reject oversized uploads before streaming to blob storage.
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return NextResponse.json(
+        { error: `File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Max is ${MAX_UPLOAD_BYTES / 1024 / 1024} MB.` },
+        { status: 413 },
+      );
+    }
 
     const kind: 'video' | 'image' = file.type.startsWith('image/') ? 'image' : 'video';
     const safe = (file.name || 'clip').replace(/[^a-zA-Z0-9._-]/g, '_');

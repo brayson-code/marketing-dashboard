@@ -14,10 +14,11 @@
 import { NextResponse } from 'next/server';
 import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { sql, jsonb, tenantId } from '@/lib/db/client';
-import { NO_TENANT_ID } from '@/lib/tenant';
+import { NO_TENANT_ID, currentUserId } from '@/lib/tenant';
 import { supabaseAdmin, findUserByEmail } from '@/lib/supabase/admin';
 import { createNotification } from '@/lib/notifications';
 import { sendTransactionalEmail, renderInviteEmail } from '@/lib/transactional-email';
+import { requireOwner } from '@/lib/authz/owner-gate';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -56,6 +57,13 @@ export async function POST(request: Request) {
   if (tenantId() === NO_TENANT_ID) {
     return NextResponse.json({ ok: false, error: 'No active workspace' }, { status: 403 });
   }
+
+  // Member management is OWNER-ONLY (VA permission matrix / audit finding #2: today
+  // any member can invite). Hard 403 for non-owners, independent of AUTHZ_ENFORCE —
+  // single-owner prod is unaffected (the owner always passes). Mirrors
+  // policies/members.ts (action 'invite').
+  const gate = await requireOwner();
+  if (gate) return gate;
 
   let body: { email?: string; name?: string; role?: string };
   try {
@@ -192,6 +200,22 @@ export async function POST(request: Request) {
         : `${email} was added to ${workspaceName} — email not sent (${emailReason ?? 'unknown'}); share their sign-in link manually.`,
       data: { email, name, role, emailed },
     }).catch(() => { /* notification is best-effort */ });
+
+    // Audit the privileged action (audit finding #2: invite had no audit trail).
+    // Written directly with the real actor_id = currentUserId() — the same pattern
+    // the ABAC guard + api-auth.ts use — so the trail is non-anonymous without
+    // depending on the legacy logAudit() User shape (its actor_id wiring is a
+    // separate quick-win owned elsewhere).
+    try {
+      await sql()`
+        INSERT INTO audit_log (tenant_id, actor_id, actor_username, action, target, detail)
+        VALUES (
+          ${tenantId()}, ${currentUserId()}, ${null},
+          ${'invite'}, ${email},
+          ${JSON.stringify({ role, name: name ?? null, user_id: userId, emailed })}
+        )
+      `;
+    } catch { /* audit is best-effort; never block the invite on a log failure */ }
 
     return NextResponse.json({
       ok: true, email, status: 'invited', inviteLink,

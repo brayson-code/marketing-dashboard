@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { runWithTenant } from '@/lib/tenant';
 import { tenantExists } from '@/lib/webhook-tenant';
 import { handleTwilioInbound } from '@/lib/twilio-webhook';
+import { rateLimit } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -19,6 +20,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ ten
 
   if (!(await tenantExists(tenantId))) {
     return NextResponse.json({ error: 'Unknown workspace' }, { status: 404 });
+  }
+
+  // Per-tenant rate limit — each accepted inbound SMS can spawn an orchestrator
+  // reply (LLM spend), and this is a public URL keyed only by a guessable workspace
+  // id (audit finding #5). The Twilio request signature (verified in
+  // handleTwilioInbound) is the real auth; this caps inbound bursts per workspace.
+  // 30/min absorbs normal SMS traffic while braking a flood. Keyed on the path id.
+  const rl = rateLimit('webhook-twilio', tenantId, { windowMs: 60_000, max: 30 });
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: 'Too many requests' },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfterSec) } },
+    );
   }
 
   const path = `/api/webhook/twilio/${tenantId}`;

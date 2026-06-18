@@ -1,7 +1,7 @@
 'use client';
 
 import {
-  Search, Sun, Moon, Radio, LogOut, Bell, Eye, EyeOff, Check, CheckCheck,
+  Search, Sun, Moon, Radio, LogOut, ShieldOff, Bell, Eye, EyeOff, Check, CheckCheck,
   Lightbulb, Zap, Rocket, Plus, Calendar, Activity, ChevronDown,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
@@ -262,9 +262,19 @@ function ProfileMenu() {
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  async function logout() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
+  // Sign out via the server endpoint so cookies are cleared server-side. `global`
+  // revokes EVERY session for this user (all devices) — use it if a credential may be
+  // compromised. Falls back to a direct client sign-out if the endpoint is unreachable.
+  async function logout(scope: 'local' | 'global' = 'local') {
+    try {
+      await fetch('/api/auth/signout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope }),
+      });
+    } catch {
+      try { await createClient().auth.signOut(); } catch { /* ignore */ }
+    }
     router.push('/login'); router.refresh();
   }
   const initial = (email?.[0] ?? 'U').toUpperCase();
@@ -298,7 +308,8 @@ function ProfileMenu() {
               label={feedOpen ? 'Hide live feed' : 'Show live feed'} />
             <SyncRow />
             <hr className="my-1 border-border/30" />
-            <MenuButton onClick={logout} icon={<LogOut size={13} />} label="Sign out" destructive />
+            <MenuButton onClick={() => logout('local')} icon={<LogOut size={13} />} label="Sign out" destructive />
+            <MenuButton onClick={() => logout('global')} icon={<ShieldOff size={13} />} label="Sign out everywhere" destructive />
           </div>
         </div>
       )}

@@ -6,6 +6,8 @@ import {
   disconnect,
 } from '@/lib/nango';
 import { enterTenant, resolveTenant } from '@/lib/with-tenant';
+import { getSubject } from '@/lib/authz';
+import { createDisconnectApproval } from '@/lib/pending-approvals';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -55,6 +57,30 @@ export async function DELETE(request: Request) {
     if (!provider) {
       return NextResponse.json({ error: 'provider query param is required' }, { status: 400 });
     }
+
+    // SPECIAL step-up (VA permission matrix): disconnect destroys a credential, so
+    // it is the same owner-step-up case as a secret rotation. Owner (or billing_admin)
+    // disconnects immediately; a VA/member gets a pending_approvals row INSTEAD, and
+    // the owner approves it in-app (/api/approvals/pending). Real 202 here is
+    // independent of AUTHZ_ENFORCE; single-owner prod is unaffected (owner executes).
+    // Mirrors policies/client-integrations.ts (disconnect).
+    const subject = await getSubject({ live: true });
+    const mayDisconnect = subject.role === 'owner' || subject.attrs.billing_admin === true;
+    if (!mayDisconnect) {
+      const approvalId = await createDisconnectApproval(provider);
+      return NextResponse.json(
+        {
+          ok: false,
+          pending_approval: true,
+          pending_approval_id: approvalId,
+          reason: 'secret_change_requires_owner',
+          message:
+            'Disconnecting this provider needs owner approval. The request was sent to the workspace owner to confirm.',
+        },
+        { status: 202 },
+      );
+    }
+
     await disconnect(provider);
     return NextResponse.json({ ok: true });
   } catch (error) {

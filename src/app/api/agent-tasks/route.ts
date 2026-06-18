@@ -3,6 +3,7 @@ import { NextResponse, after } from 'next/server';
 import { listTasks } from '@/lib/agent-tasks';
 import { spawnSubAgent } from '@/lib/subagent';
 import { tenantId, currentUserId, runWithTenant } from '@/lib/tenant';
+import { rateLimit } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -23,6 +24,19 @@ export async function GET(request: Request) {
 // shows up live in the Doing column. BYO-key gated inside spawnSubAgent.
 export async function POST(request: Request) {
   enterTenant(await resolveTenant());
+
+  // Per-tenant rate limit — every POST dispatches a background agent run (LLM
+  // spend); the endpoint itself was unguarded (audit finding #5). 30 dispatches/min
+  // per workspace brakes a runaway board without hampering normal "work on it"
+  // clicks. (spawnSubAgent has its own per-agent-type hourly cap; this guards the
+  // dispatch surface so a tight loop can't queue work faster than that cap blocks.)
+  const rl = rateLimit('agent-tasks-dispatch', tenantId(), { windowMs: 60_000, max: 30 });
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: 'Too many tasks dispatched — give it a moment and try again.' },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfterSec) } },
+    );
+  }
 
   let body: { agent_id?: string; task?: string };
   try { body = await request.json(); }

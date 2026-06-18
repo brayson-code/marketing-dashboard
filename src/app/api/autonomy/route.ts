@@ -5,6 +5,7 @@ import {
   type Autonomy, type OverrideValue,
 } from '@/lib/autonomy';
 import { getEntitlements } from '@/lib/entitlements';
+import { requireOwnerOrMember } from '@/lib/authz/owner-gate';
 import type { DraftType } from '@/lib/drafts';
 
 export const dynamic = 'force-dynamic';
@@ -30,6 +31,12 @@ export async function GET() {
 // level values and only 'auto' | 'approve' overrides are persisted.
 export async function PUT(request: Request) {
   enterTenant(await resolveTenant());
+  // Hard role gate (audit finding #1): changing the GLOBAL autonomy level — incl.
+  // flipping to full auto-execute — is owner+member only; a VA is blocked. This is
+  // independent of AUTHZ_ENFORCE because single-owner prod (the owner is the only
+  // member) is unaffected: the owner always passes. Mirrors policies/autonomy.ts.
+  const gate = await requireOwnerOrMember();
+  if (gate) return gate;
   try {
     const body = (await request.json()) as { level?: string; overrides?: Record<string, string> };
     const patch: { level?: Autonomy; overrides?: Partial<Record<DraftType, OverrideValue>> } = {};

@@ -62,6 +62,17 @@ export function hasTenantContext(): boolean {
   return storage.getStore() != null;
 }
 
+/**
+ * The raw per-request ALS store object (or undefined outside a request).
+ * Exposed ONLY as a stable per-request identity for request-scoped memoization
+ * (e.g. the ABAC subject cache keys a WeakMap on this object reference, so the
+ * cache cannot poison across concurrent requests and is collected with the store).
+ * Do NOT use it to read tenantId/userId — use tenantId()/currentUserId() for that.
+ */
+export function getStore(): TenantContext | undefined {
+  return storage.getStore();
+}
+
 /** True when the active request resolves to a real workspace (not the no-workspace
  *  sentinel). An authenticated user without an assigned workspace resolves to
  *  NO_TENANT_ID; system/cron paths resolve to DEFAULT_TENANT_ID, which IS a real one. */

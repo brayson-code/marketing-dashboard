@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { sql, jsonb, tenantId } from '@/lib/db/client';
 import { runOrchestrator } from '@/lib/orchestrator';
 import { parseAttachments } from '@/lib/vision';
+import { rateLimit } from '@/lib/rate-limit';
 
 // (usage is returned by runOrchestrator and stored on the assistant message)
 
@@ -17,6 +18,19 @@ export const maxDuration = 300;
 // return its reply. Auth is enforced by the Supabase middleware (proxy.ts).
 export async function POST(request: Request) {
   enterTenant(await resolveTenant());
+
+  // Per-tenant rate limit — each call runs a full orchestrator turn (multiple LLM
+  // calls + sub-agent spawns), the most expensive path in the app, and was
+  // unguarded (audit finding #5). 12 turns/min per workspace is well above
+  // conversational pace while braking a runaway client or a stuck retry loop.
+  const rl = rateLimit('boardroom-ask', tenantId(), { windowMs: 60_000, max: 12 });
+  if (!rl.ok) {
+    return NextResponse.json(
+      { ok: false, error: 'You\'re sending messages faster than I can think — give me a moment.' },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfterSec) } },
+    );
+  }
+
   let body: { text?: string; attachments?: unknown };
   try { body = await request.json(); }
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }

@@ -2,11 +2,13 @@ import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { tenantId, DEFAULT_TENANT_ID, NO_TENANT_ID, hasWorkspace } from '@/lib/tenant';
+import { getSubject, ROLE_TO_RBAC } from '@/lib/authz';
 import { redeemPendingEntitlement } from '@/lib/stripe';
 
-// Returns the current Supabase-authenticated user. V1 single-tenant: the owner
-// is treated as 'admin' (full access). Replace `role` with the user's
-// tenant_members.role when multi-tenant RBAC lands. No better-sqlite3.
+// Returns the current Supabase-authenticated user, with the REAL intra-workspace role
+// (owner | member | va) read from workspace_members (via getSubject()). This lets the
+// UI differentiate roles; the API routes still enforce access server-side regardless,
+// so surfacing the role does NOT change access. No better-sqlite3.
 export async function GET() {
   enterTenant(await resolveTenant());
   const supabase = await createClient();
@@ -34,8 +36,52 @@ export async function GET() {
     }
   }
 
+  // Real role from workspace_members (owner | member | va). When the user is
+  // authenticated but not a member of the active tenant, getSubject() returns the
+  // least-privilege 'va' (fail-closed) and the UI hides privileged surfaces.
+  //
+  // De-stub note: previously `role` was hardcoded 'admin' for everyone. We now derive
+  // it from the DB. The existing UI is coded against the rbac.ts vocabulary
+  // (admin|editor|viewer), so `role` keeps that shape via the ROLE_TO_RBAC bridge
+  // (owner→admin, member→editor, va→viewer) — every current consumer keeps working
+  // and a single-owner workspace is UNAFFECTED (owner→admin, exactly as before). The
+  // raw workspace role is additionally exposed as `workspace_role` for new UI.
+  const subject = await getSubject();
+  const rbacRole = ROLE_TO_RBAC[subject.role];
+
+  // KILL SWITCH (membership revocation). A removed member can still hold a valid JWT
+  // with the old tenant claim until it expires. resolveTenant() trusts that claim
+  // without re-confirming membership, so without this check a removed member keeps
+  // (least-privilege) read access until token expiry. Here — using the ALREADY-cached
+  // subject (zero extra query) — if the user resolved INTO a real, non-system tenant
+  // but has NO live workspace_members row there (isMember === false), they were
+  // removed (or hold a stale claim): drop them with 401 so the client logs them out.
+  //
+  // Gated OFF by default (AUTHZ_KILL_REMOVED_MEMBERS !== 'true') so behavior is
+  // identical to today until explicitly enabled. Single-owner owners always have a
+  // membership row (created at provisioning), so they NEVER trip this in any mode.
+  const realTenant = tid !== DEFAULT_TENANT_ID && tid !== NO_TENANT_ID;
+  if (
+    process.env.AUTHZ_KILL_REMOVED_MEMBERS === 'true' &&
+    realTenant &&
+    !subject.isMember
+  ) {
+    const gone = NextResponse.json(
+      { error: 'Membership revoked', code: 'membership_revoked' },
+      { status: 401 },
+    );
+    gone.headers.set('Cache-Control', 'no-store');
+    return gone;
+  }
+
   const response = NextResponse.json({
-    user: { id: user.id, username: user.email, email: user.email, role: 'admin' },
+    user: {
+      id: user.id,
+      username: user.email,
+      email: user.email,
+      role: rbacRole,
+      workspace_role: subject.role,
+    },
     has_workspace: hasWorkspace(),
     // HQ-only surfaces (e.g. KeyWatch / Issues) use this to hide themselves from
     // client workspaces. The API routes enforce it server-side regardless.

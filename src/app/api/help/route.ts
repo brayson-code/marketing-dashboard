@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { enterTenant, resolveTenant } from '@/lib/with-tenant';
+import { tenantId, hasTenantContext } from '@/lib/tenant';
 import { getAnthropicKey } from '@/lib/anthropic-key';
 import { buildHelpContext } from '@/lib/help-context';
+import { rateLimit } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -57,6 +59,21 @@ export async function POST(request: Request) {
   // but never hard-fail help on tenant resolution; fall back to the platform key.
   let hasTenant = false;
   try { enterTenant(await resolveTenant()); hasTenant = true; } catch { /* anonymous help */ }
+
+  // Per-tenant rate limit — this endpoint burns LLM tokens on every call and was
+  // unguarded (audit finding #5). Key on the tenant when resolved; anonymous help
+  // (no tenant) falls back to the client IP so it can't be used as an open token
+  // faucet. ~20 questions/min is generous for a human asking for help.
+  const rlKey = hasTenant && hasTenantContext()
+    ? tenantId()
+    : `ip:${request.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown'}`;
+  const rl = rateLimit('help', rlKey, { windowMs: 60_000, max: 20 });
+  if (!rl.ok) {
+    return NextResponse.json(
+      { answer: 'I\'m getting a lot of questions right now — give me a moment and try again.' },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfterSec) } },
+    );
+  }
 
   let body: { messages?: unknown };
   try { body = await request.json(); }
