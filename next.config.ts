@@ -23,6 +23,10 @@ const nextConfig: NextConfig = {
     // platform-specific require that nft can't follow — force the .node into the
     // bundle. The glob is a no-op locally on Windows (that binding isn't installed).
     '/api/**/*': ['./agents/**/*', './docs/**/*', './node_modules/impit-linux-x64-gnu/**/*'],
+    // @sparticuz/chromium reads its brotli-compressed Chromium pack from bin/*.br
+    // at runtime via a disk path nft can't follow — force it into the clip-search
+    // function bundle (scoped here so the ~50MB pack doesn't bloat every function).
+    '/api/clips/**/*': ['./node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/chromium/bin/**/*'],
   },
   // Baseline security headers (the safe set — addresses the common DAST/ZAP-baseline
   // "missing security header" findings). HSTS is already added by Vercel. CSP is
