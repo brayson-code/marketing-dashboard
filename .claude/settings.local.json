@@ -75,7 +75,9 @@
       "WebFetch(domain:eastondev.com)",
       "WebFetch(domain:celvix.co)",
       "WebFetch(domain:supabase.com)",
-      "mcp__claude_ai_Supabase__get_logs"
+      "mcp__claude_ai_Supabase__get_logs",
+      "WebFetch(domain:help.loopmessage.com)",
+      "WebFetch(domain:loopmessage.com)"
     ]
   }
 }

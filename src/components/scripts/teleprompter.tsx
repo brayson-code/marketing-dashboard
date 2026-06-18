@@ -147,7 +147,7 @@ export function Teleprompter({ text, onClose }: { text: string; onClose: () => v
             const blocks = parseScript(text);
             if (blocks.length === 0) return 'This script is empty.';
             return blocks.map((b, i) => (
-              <div key={i} style={{ marginBottom: '0.7em' }}>
+              <div key={i} style={{ marginBottom: '1.1em' }}>
                 {b.label && (
                   <div
                     style={{
@@ -155,13 +155,33 @@ export function Teleprompter({ text, onClose }: { text: string; onClose: () => v
                       fontSize: '0.62em',
                       letterSpacing: '0.14em',
                       fontWeight: 800,
-                      marginBottom: '0.12em',
+                      marginBottom: b.cue ? '0.04em' : '0.12em',
                     }}
                   >
                     {b.label}
                   </div>
                 )}
-                {b.body && <div>{b.body}</div>}
+                {/* Delivery cue (tone/cadence) — small, dim, italic. NOT spoken;
+                    it's a direction so the reader knows how to deliver the line. */}
+                {b.cue && (
+                  <div
+                    style={{
+                      color: 'rgba(255,255,255,0.42)',
+                      fontSize: '0.42em',
+                      fontStyle: 'italic',
+                      fontWeight: 500,
+                      letterSpacing: '0.01em',
+                      marginBottom: '0.3em',
+                    }}
+                  >
+                    🗣 {b.cue}
+                  </div>
+                )}
+                {/* The words to say — each scene as its own spaced line so the
+                    reader's eye can track beats while scrolling. */}
+                {b.body && b.body.split('\n').map((line, j) => (
+                  <div key={j} style={{ marginBottom: '0.34em' }}>{line}</div>
+                ))}
               </div>
             ));
           })()}
