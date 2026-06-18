@@ -150,25 +150,34 @@ function mapClip(ph: Record<string, unknown>): MovieClip | null {
 // XHR(s), and best-effort scroll to pull more pages until we have `limit` clips.
 async function navigateSearch(page: Page, enc: string, limit: number): Promise<MovieClip[]> {
   const collected = new Map<string, MovieClip>();
+  let gotResponse = false; // a /search 200 arrived (even if it had 0 phrases)
+  // Collect from EVERY search XHR — don't match on the query string. PlayPhrase
+  // re-encodes punctuation (an apostrophe becomes %27) so a `q=` URL match is
+  // fragile and silently misses real results; polling the collector is robust.
   const onResp = (r: import('puppeteer-core').HTTPResponse) => {
     if (!r.url().includes('/api/v1/phrases/search?') || r.status() !== 200) return;
     r.json().then((d: { phrases?: Record<string, unknown>[] }) => {
+      gotResponse = true;
       for (const ph of d.phrases ?? []) { const c = mapClip(ph); if (c) collected.set(c.id, c); }
     }).catch(() => {});
   };
   page.on('response', onResp);
   try {
-    const first = page.waitForResponse(
-      (r) => r.url().includes('/api/v1/phrases/search?') && r.url().includes(`q=${enc}`) && r.status() === 200,
-      { timeout: 12_000 },
-    );
     // Reset then set the hash so a hashchange ALWAYS fires (even retrying same query).
     await page.evaluate(() => { window.location.hash = '#/'; });
     await page.evaluate((h) => { window.location.hash = h; }, `#/search?q=${enc}`);
-    await first;
-    // Best-effort pagination: PlayPhrase returns a small page (~5); scroll to load
-    // more until we reach `limit` or no new clips arrive. Failures here never break
-    // the base result — we always have at least the first page.
+
+    // Wait for the search to actually respond (up to 12s) — throwing only if NO
+    // response arrives (a real failure worth a self-healing retry). A response
+    // with zero phrases is a valid "no results", not an error.
+    const deadline = Date.now() + 12_000;
+    while (!gotResponse && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    if (!gotResponse) throw new Error('playphrase: no search response');
+
+    // Best-effort pagination to reach `limit`: PlayPhrase returns a small page
+    // (~5); scroll to load more until we hit the count or no new clips arrive.
     for (let i = 0; i < 5 && collected.size < limit; i++) {
       const before = collected.size;
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)).catch(() => {});
