@@ -10,10 +10,8 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // a cold instance must boot Chromium
 
-export const MOVIE_CLIPS_ENABLED = () => process.env.MOVIE_CLIPS_ENABLED === 'true';
-
 export async function POST(req: NextRequest) {
-  if (!MOVIE_CLIPS_ENABLED()) {
+  if (process.env.MOVIE_CLIPS_ENABLED !== 'true') {
     return NextResponse.json({ error: 'disabled', clips: [] }, { status: 503 });
   }
   try {
