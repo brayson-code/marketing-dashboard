@@ -33,7 +33,7 @@ export async function createAsset(a: {
   pathname?: string;
   sizeBytes?: number;
   durationMs?: number;
-  source?: 'upload' | 'ai';
+  source?: 'upload' | 'ai' | 'movie-clip';
 }): Promise<AssetRow> {
   const rows = (await sql().unsafe(
     `INSERT INTO tenant_assets (tenant_id, kind, name, url, pathname, size_bytes, duration_ms, source)

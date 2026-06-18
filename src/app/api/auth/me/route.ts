@@ -40,6 +40,9 @@ export async function GET() {
     // HQ-only surfaces (e.g. KeyWatch / Issues) use this to hide themselves from
     // client workspaces. The API routes enforce it server-side regardless.
     is_hq: tid === DEFAULT_TENANT_ID,
+    // Feature flags surfaced to the client purely to hide/show UI; the routes
+    // enforce them server-side regardless.
+    movie_clips_enabled: process.env.MOVIE_CLIPS_ENABLED === 'true',
   });
   response.headers.set('Cache-Control', 'no-store');
   return response;

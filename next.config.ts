@@ -3,9 +3,10 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   output: 'standalone',
-  // better-sqlite3 + impit are native (.node) modules — keep them external so Next
-  // doesn't try to bundle the binary; they're required from node_modules at runtime.
-  serverExternalPackages: ['better-sqlite3', 'impit'],
+  // Native / serverless-browser packages kept external so Next doesn't try to
+  // bundle their binaries; they're required from node_modules at runtime.
+  // @sparticuz/chromium ships a brotli-compressed Chromium it expands to /tmp.
+  serverExternalPackages: ['better-sqlite3', 'impit', '@sparticuz/chromium', 'puppeteer-core'],
   // Prevent Next.js from inferring a parent workspace root from monorepo traversal, which
   // changes the standalone output path layout and breaks systemd start paths.
   outputFileTracingRoot: path.join(__dirname),
