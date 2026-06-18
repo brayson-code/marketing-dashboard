@@ -171,7 +171,7 @@ async function runOne(job: DueJobRow): Promise<{ id: string; status: 'ok' | 'err
           try {
             const { listInboxes, sendEmail } = await import('./agentmail');
             const to = String(del.to ?? '').trim();
-            let fromInbox = (await listInboxes().catch(() => []))[0]?.inbox_id;
+            let fromInbox: string | undefined = (await listInboxes().catch(() => []))[0]?.inbox_id;
             if (!fromInbox) {
               // Key connected but no inbox yet — provision one so delivery "just works".
               const { provisionInbox } = await import('./agentmail-inboxes');
