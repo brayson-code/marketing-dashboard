@@ -14,6 +14,7 @@ import { toast } from '@/components/ui/toast';
 import { timeAgo } from '@/lib/utils';
 import { parseStoryboard, type Storyboard } from '@/lib/hyperframes-storyboard';
 import { ClipFinder } from '@/components/hyperframes/clip-finder';
+import { SupercutPanel } from '@/components/hyperframes/supercut-panel';
 import type { DraftRow } from '@/lib/drafts';
 
 // ─── Canvas mode (new node-based studio) ──────────────────────────────────────
@@ -171,6 +172,10 @@ export default function HyperframesPage() {
       {/* Movie-clip finder (flag-gated; renders nothing when disabled) — search a
           quote, preview real movie/TV clips, add the good ones as b-roll. */}
       <ClipFinder />
+
+      {/* Supercut (flag-gated; renders nothing when disabled) — type a sentence,
+          stitch it together from movie/TV quotes client-side with ffmpeg.wasm. */}
+      <SupercutPanel />
 
       <div className="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)] items-start">
         <BoardList boards={boards} loading={loading} selectedId={selectedId} onSelect={setSelectedId} />
