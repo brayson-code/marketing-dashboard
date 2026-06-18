@@ -9,6 +9,7 @@ import { skillRecallToolDefinitions, handleSkillRecallTool } from './skill-recal
 import { googleToolDefinitions, handleGoogleTool, googleActionsAllowed, GOOGLE_TOOL_NAMES } from './google-tools';
 import { smsToolDefinitions, handleSmsTool, smsAllowed, SMS_TOOL_NAMES } from './sms-tools';
 import { fetchToolDefinitions, handleFetchTool, FETCH_TOOL_NAMES } from './fetch-tools';
+import { clipToolDefinitions, handleClipTool, CLIP_TOOL_NAMES } from './clip-tools';
 import { chooseVariant } from './selection';
 import { constraintsForVariant, roleFor } from './constraints';
 import { selectGenesForTask, genesDirective, recordGeneApplications } from './genes';
@@ -418,11 +419,15 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
   // shipped — the model never sees the tools so it can never call them.
   const gwAllowed = opts?.tools !== 'none' && (await googleActionsAllowed());
   const smsOn = opts?.tools !== 'none' && (await smsAllowed());
+  // Movie-clip finder — same flag as the manual Hyperframes panel.
+  const clipsOn = opts?.tools !== 'none' && process.env.MOVIE_CLIPS_ENABLED === 'true';
   const tools: Anthropic.Messages.ToolUnion[] = opts?.tools === 'none' ? [] : [
     { type: 'web_search_20250305', name: 'web_search' },
     // fetch_url — pull live data from a public http(s) URL (a JSON API / open-data
     // endpoint). Turns a "scrape this link" skill into something the agent can do.
     ...fetchToolDefinitions(),
+    // find_clip — pull a real movie/TV clip for a phrase into the media library.
+    ...(clipsOn ? clipToolDefinitions() : []),
     // Shared KG tools so every sub-agent can read/write the team's graph.
     ...kgToolDefinitions(),
     // On-demand skill recall — pull a playbook by name mid-run instead of baking
@@ -605,6 +610,7 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
               b.name === 'kg_remember' ||
               b.name === 'recall_skill' ||
               (FETCH_TOOL_NAMES as readonly string[]).includes(b.name) ||
+              (CLIP_TOOL_NAMES as readonly string[]).includes(b.name) ||
               (GOOGLE_TOOL_NAMES as readonly string[]).includes(b.name) ||
               (SMS_TOOL_NAMES as readonly string[]).includes(b.name)
             ),
@@ -627,6 +633,7 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
         const toolResults = await Promise.all(handledToolUses.map((tu) => {
           if (tu.name === 'recall_skill') return handleSkillRecallTool(tu, type);
           if ((FETCH_TOOL_NAMES as readonly string[]).includes(tu.name)) return handleFetchTool(tu, type);
+          if ((CLIP_TOOL_NAMES as readonly string[]).includes(tu.name)) return handleClipTool(tu, type);
           if ((GOOGLE_TOOL_NAMES as readonly string[]).includes(tu.name)) return handleGoogleTool(tu, type);
           if ((SMS_TOOL_NAMES as readonly string[]).includes(tu.name)) return handleSmsTool(tu, type);
           return handleKgTool(tu, type);

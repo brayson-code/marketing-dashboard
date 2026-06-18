@@ -4,11 +4,32 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { enterTenant, resolveTenant } from '@/lib/with-tenant';
+import { tenantId } from '@/lib/db/client';
 import { searchMovieClips } from '@/lib/playphrase';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // a cold instance must boot Chromium
+
+// Per-tenant sliding-window rate limit. In-memory (resets on instance restart) —
+// fine for V1, same approach as the sub-agent limiter. Stops a single workspace
+// from hammering unique phrases (which would burn browser launches + risk getting
+// our egress IP throttled by PlayPhrase). Cached searches are cheap but still
+// counted so the endpoint itself can't be abused.
+const RL_WINDOW_MS = 60_000;
+const RL_MAX = 20;
+const hits = new Map<string, number[]>();
+function rateLimited(key: string): boolean {
+  const now = Date.now();
+  const recent = (hits.get(key) ?? []).filter((t) => now - t < RL_WINDOW_MS);
+  if (recent.length >= RL_MAX) {
+    hits.set(key, recent);
+    return true;
+  }
+  recent.push(now);
+  hits.set(key, recent);
+  return false;
+}
 
 export async function POST(req: NextRequest) {
   if (process.env.MOVIE_CLIPS_ENABLED !== 'true') {
@@ -20,9 +41,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
+  if (rateLimited(tenantId())) {
+    return NextResponse.json(
+      { error: 'Too many searches — give it a moment and try again.', clips: [] },
+      { status: 429 },
+    );
+  }
+
   let phrase = '';
+  let count = 8;
   try {
-    phrase = String((await req.json())?.phrase ?? '').slice(0, 120);
+    const body = await req.json();
+    phrase = String(body?.phrase ?? '').slice(0, 120);
+    if (Number.isFinite(body?.count)) count = Math.min(Math.max(Number(body.count), 1), 12);
   } catch {
     /* empty body */
   }
@@ -31,7 +62,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { clips, cached } = await searchMovieClips(phrase, { limit: 12 });
+    const { clips, cached } = await searchMovieClips(phrase, { limit: count });
     return NextResponse.json({ clips, cached }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (e) {
     return NextResponse.json(

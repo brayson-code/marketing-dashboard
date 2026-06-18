@@ -91,6 +91,22 @@ async function getBrowser(): Promise<Browser> {
   return browserPromise;
 }
 
+// Dispose just the page (next getPage rebuilds it on the same browser).
+async function resetPage(): Promise<void> {
+  const pg = bootstrappedPage;
+  bootstrappedPage = null;
+  try { if (pg && !pg.isClosed()) await pg.close(); } catch { /* ignore */ }
+}
+
+// Dispose the whole browser (next getBrowser relaunches). The hard reset for a
+// wedged/crashed Chromium so a bad instance can never get "stuck" for the user.
+async function resetBrowser(): Promise<void> {
+  bootstrappedPage = null;
+  const bp = browserPromise;
+  browserPromise = null;
+  try { (await bp)?.close(); } catch { /* ignore */ }
+}
+
 // One bootstrapped SPA page, reused. Returns a page already loaded on the
 // PlayPhrase origin with stealth installed, ready to navigate to #/search.
 async function getPage(): Promise<Page> {
@@ -99,7 +115,10 @@ async function getPage(): Promise<Page> {
   const page = await browser.newPage();
   await page.setUserAgent(UA);
   await page.evaluateOnNewDocument(STEALTH);
-  await page.goto(`${ORIGIN}/`, { waitUntil: 'networkidle2', timeout: 30_000 });
+  // domcontentloaded + a short settle (not networkidle, which can hang on the
+  // SPA's long-poll connections) so the router is booted and answers hash changes.
+  await page.goto(`${ORIGIN}/`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+  await new Promise((r) => setTimeout(r, 1500));
   bootstrappedPage = page;
   return page;
 }
@@ -126,22 +145,60 @@ function mapClip(ph: Record<string, unknown>): MovieClip | null {
   };
 }
 
-/** Drive the headless browser to fetch one phrase's clips. ~sub-2s on a warm
- *  page, ~5-7s on a cold instance (browser boot). Throws on browser/nav failure
- *  so the caller can surface a clean error (the cache still serves known phrases). */
+// Run ONE search on a given page: trigger the SPA via a hash change (more reliable
+// than page.goto to a hash URL, which can race the router), collect the search
+// XHR(s), and best-effort scroll to pull more pages until we have `limit` clips.
+async function navigateSearch(page: Page, enc: string, limit: number): Promise<MovieClip[]> {
+  const collected = new Map<string, MovieClip>();
+  const onResp = (r: import('puppeteer-core').HTTPResponse) => {
+    if (!r.url().includes('/api/v1/phrases/search?') || r.status() !== 200) return;
+    r.json().then((d: { phrases?: Record<string, unknown>[] }) => {
+      for (const ph of d.phrases ?? []) { const c = mapClip(ph); if (c) collected.set(c.id, c); }
+    }).catch(() => {});
+  };
+  page.on('response', onResp);
+  try {
+    const first = page.waitForResponse(
+      (r) => r.url().includes('/api/v1/phrases/search?') && r.url().includes(`q=${enc}`) && r.status() === 200,
+      { timeout: 12_000 },
+    );
+    // Reset then set the hash so a hashchange ALWAYS fires (even retrying same query).
+    await page.evaluate(() => { window.location.hash = '#/'; });
+    await page.evaluate((h) => { window.location.hash = h; }, `#/search?q=${enc}`);
+    await first;
+    // Best-effort pagination: PlayPhrase returns a small page (~5); scroll to load
+    // more until we reach `limit` or no new clips arrive. Failures here never break
+    // the base result — we always have at least the first page.
+    for (let i = 0; i < 5 && collected.size < limit; i++) {
+      const before = collected.size;
+      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)).catch(() => {});
+      await new Promise((r) => setTimeout(r, 1100));
+      if (collected.size === before) break;
+    }
+    return [...collected.values()].slice(0, limit);
+  } finally {
+    page.off('response', onResp);
+  }
+}
+
+/** Drive the headless browser to fetch one phrase's clips, SELF-HEALING: a stale
+ *  or wedged browser never fails the user — on any error we escalate (fresh page →
+ *  fresh browser) and retry. ~sub-2s warm, ~5-8s on a cold instance. Throws only
+ *  if all 3 attempts fail (the cache still serves known phrases). */
 async function browserSearch(phrase: string, limit: number): Promise<MovieClip[]> {
   return enqueue(async () => {
-    const page = await getPage();
-    const enc = encodeURIComponent(phrase);
-    const waitResp = page.waitForResponse(
-      (r) => r.url().includes('/api/v1/phrases/search?') && r.url().includes(`q=${enc}`) && r.status() === 200,
-      { timeout: 15_000 },
-    );
-    await page.goto(`${ORIGIN}/#/search?q=${enc}`);
-    const resp = await waitResp;
-    const data = (await resp.json()) as { phrases?: Record<string, unknown>[] };
-    const phrases = data.phrases ?? [];
-    return phrases.slice(0, limit).map(mapClip).filter((c): c is MovieClip => !!c);
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const page = await getPage();
+        return await navigateSearch(page, encodeURIComponent(phrase), limit);
+      } catch (e) {
+        lastErr = e;
+        if (attempt === 0) await resetPage();      // stale page → rebuild page
+        else await resetBrowser();                 // wedged browser → relaunch
+      }
+    }
+    throw lastErr instanceof Error ? lastErr : new Error('movie clip search failed');
   });
 }
 
@@ -166,22 +223,28 @@ async function cacheSet(key: string, clips: MovieClip[]): Promise<void> {
 /** Search PlayPhrase for a phrase. Cache-first: a known phrase returns instantly;
  *  a new phrase runs the browser once, caches, and returns. `fresh` indicates
  *  whether the browser was actually used (for diagnostics). */
+const CACHE_FILL = 12; // fetch this many per phrase so the cache serves any count up to it
+const MAX_LIMIT = 12;
+
 export async function searchMovieClips(
   phrase: string,
   opts: { limit?: number } = {},
 ): Promise<{ clips: MovieClip[]; cached: boolean }> {
   const key = normalize(phrase);
-  const limit = opts.limit ?? 8;
+  const limit = Math.min(Math.max(opts.limit ?? 8, 1), MAX_LIMIT);
   if (!key) return { clips: [], cached: false };
 
+  // Serve from cache when it already holds at least as many as requested.
   const hit = await cacheGet(key);
-  if (hit) return { clips: hit.slice(0, limit), cached: true };
+  if (hit && hit.length >= limit) return { clips: hit.slice(0, limit), cached: true };
 
-  const clips = await browserSearch(key, limit);
+  // Miss (or cache too small for this count): fetch richly, once, then cache.
+  const clips = await browserSearch(key, CACHE_FILL);
   // Only cache non-empty results — a transient browser hiccup shouldn't poison
   // the cache with a fake "no results" for a phrase that does have clips.
   if (clips.length) await cacheSet(key, clips).catch(() => {});
-  return { clips, cached: false };
+  const best = hit && hit.length > clips.length ? hit : clips; // never regress on a hiccup
+  return { clips: best.slice(0, limit), cached: false };
 }
 
 /** Import one clip into the tenant's media library: download the open-S3 MP4,

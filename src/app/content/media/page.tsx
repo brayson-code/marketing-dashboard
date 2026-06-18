@@ -124,7 +124,10 @@ export default function MediaLibraryPage() {
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={a.url} alt={a.name || ''} className="w-full h-full object-cover" />
                 ) : (
-                  <video src={a.url} muted preload="metadata" className="w-full h-full object-cover" />
+                  // 9:16 framed (object-cover) so it previews exactly as it'll sit
+                  // in a vertical reel; `controls` makes it play in place (was just
+                  // a static first-frame before).
+                  <video src={a.url} controls playsInline preload="metadata" className="w-full h-full object-cover" />
                 )}
                 <button onClick={() => del(a.id)} className="absolute top-1.5 right-1.5 btn btn-destructive btn-sm opacity-0 group-hover:opacity-100 transition-opacity">
                   <Trash2 size={12} />

@@ -20,6 +20,7 @@ interface MovieClip {
 export function ClipFinder({ onImported }: { onImported?: () => void }) {
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [phrase, setPhrase] = useState('');
+  const [count, setCount] = useState(8);
   const [clips, setClips] = useState<MovieClip[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
@@ -43,7 +44,7 @@ export function ClipFinder({ onImported }: { onImported?: () => void }) {
       const res = await fetch('/api/clips/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phrase: q }),
+        body: JSON.stringify({ phrase: q, count }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Search failed');
@@ -55,7 +56,7 @@ export function ClipFinder({ onImported }: { onImported?: () => void }) {
     } finally {
       setLoading(false);
     }
-  }, [phrase]);
+  }, [phrase, count]);
 
   const add = useCallback(
     async (clip: MovieClip) => {
@@ -107,6 +108,15 @@ export function ClipFinder({ onImported }: { onImported?: () => void }) {
               maxLength={120}
             />
           </div>
+          <select
+            value={count}
+            onChange={(e) => setCount(Number(e.target.value))}
+            className="px-2 text-sm"
+            title="How many clips to return"
+            aria-label="Number of results"
+          >
+            {[4, 8, 12].map((n) => <option key={n} value={n}>{n} results</option>)}
+          </select>
           <button type="submit" className="btn btn-primary btn-sm" disabled={loading || !phrase.trim()}>
             {loading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
             Search
