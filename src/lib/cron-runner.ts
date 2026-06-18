@@ -170,12 +170,17 @@ async function runOne(job: DueJobRow): Promise<{ id: string; status: 'ok' | 'err
         } else if (del.channel === 'email' && fullResult.trim()) {
           try {
             const { listInboxes, sendEmail } = await import('./agentmail');
-            const inboxes = await listInboxes().catch(() => []);
             const to = String(del.to ?? '').trim();
-            if (inboxes.length && to) {
-              await sendEmail(inboxes[0].inbox_id, { to: [to], subject: label, text: fullResult });
+            let fromInbox = (await listInboxes().catch(() => []))[0]?.inbox_id;
+            if (!fromInbox) {
+              // Key connected but no inbox yet — provision one so delivery "just works".
+              const { provisionInbox } = await import('./agentmail-inboxes');
+              fromInbox = (await provisionInbox({ agentId: job.agent_id ?? undefined }).catch(() => null))?.address;
+            }
+            if (fromInbox && to) {
+              await sendEmail(fromInbox, { to: [to], subject: label, text: fullResult });
             } else {
-              console.warn(`[cron] email delivery skipped for "${label}": ${!inboxes.length ? 'no AgentMail inbox' : 'no recipient'}`);
+              console.warn(`[cron] email delivery skipped for "${label}": ${!fromInbox ? 'no AgentMail inbox' : 'no recipient'}`);
             }
           } catch (err) {
             console.warn(`[cron] email delivery error for "${label}":`, (err as Error).message);
