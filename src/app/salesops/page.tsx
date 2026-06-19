@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   PhoneCall, Download, Plug, Settings2, History, Copy, Check, Trash2,
-  KeyRound, ExternalLink, AlertCircle,
+  KeyRound, ExternalLink, AlertCircle, Sparkles, Wand2, ArrowLeft, Plus, X,
+  BookOpen, CheckCircle2,
 } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 
@@ -60,6 +61,50 @@ interface SalesCall {
   suggestions_count: number;
 }
 
+// ── Playbook Studio types (mirror src/lib/salesops/playbook-gen.ts) ──────────────
+// The guided wizard's Q&A answers.
+interface PlaybookAnswers {
+  company_name: string;
+  product_name: string;
+  buyer_persona: string;
+  pricing: string;
+  differentiators: string;
+  sales_motion: string;
+  methodology: string;
+  common_objections: string;
+  desired_tone: string;
+  call_goal: string;
+}
+
+interface ObjectionScript { objection: string; response: string }
+
+// The structured playbook Claude returns / the owner reviews + edits before Apply.
+interface PlaybookContent {
+  persona: string;
+  company_name: string;
+  product_name: string;
+  pricing: string;
+  differentiators: string;
+  objection_keywords: string[];
+  opener: string;
+  discovery_questions: string[];
+  value_props: string[];
+  objection_handling: ObjectionScript[];
+  closing: string;
+  playbook_narrative: string;
+}
+
+// A row from GET /api/salesops-admin/playbook (list / future split-test UX).
+interface PlaybookListItem {
+  id: string;
+  name: string;
+  is_active: boolean;
+  source: string;
+  calls_count: number;
+  won_count: number;
+  created_at: string;
+}
+
 // chrome.runtime.sendMessage is only present inside an extension page; on a normal web
 // page Chrome injects a (very small) chrome.runtime when the page is externally_connectable
 // to an installed extension. We feature-detect it and fall back to copy/paste otherwise.
@@ -79,6 +124,9 @@ declare global {
 }
 
 export default function SalesOpsPage() {
+  // Bumped after a playbook is applied so the Configure section re-reads the synced config.
+  const [configReloadSignal, setConfigReloadSignal] = useState(0);
+
   return (
     <div className="space-y-6 animate-in">
       <div className="space-y-1">
@@ -93,15 +141,480 @@ export default function SalesOpsPage() {
         </p>
       </div>
 
+      <PlaybookStudioSection onApplied={() => setConfigReloadSignal((n) => n + 1)} />
+      <div className="border-t border-border/50" />
       <InstallSection />
       <div className="border-t border-border/50" />
       <ConnectSection />
       <div className="border-t border-border/50" />
-      <ConfigureSection />
+      <ConfigureSection reloadSignal={configReloadSignal} />
       <div className="border-t border-border/50" />
       <ReviewSection />
     </div>
   );
+}
+
+// ── 0. Playbook Studio (Phase 1: guided Q&A wizard) ───────────────────────────────
+// Three states on one card:
+//   'wizard'  — guided Q&A → POST /api/salesops-admin/playbook/generate
+//   'review'  — editable draft + name → POST /api/salesops-admin/playbook/apply (NON-DESTRUCTIVE:
+//               creates a NEW active playbook, never overwrites a prior one)
+//   (list)    — GET /api/salesops-admin/playbook, always shown below; seeds split-test UX
+// Apply mirrors the structured fields into salesops_config, so the live co-pilot uses the new
+// playbook immediately — onApplied() bumps the Configure section to re-read those synced fields.
+
+const METHODOLOGY_OPTIONS = ['Consultative', 'Challenger', 'SPIN', 'Sandler', 'Solution', 'MEDDIC', 'Other'];
+
+const EMPTY_ANSWERS: PlaybookAnswers = {
+  company_name: '', product_name: '', buyer_persona: '', pricing: '', differentiators: '',
+  sales_motion: '', methodology: '', common_objections: '', desired_tone: '', call_goal: '',
+};
+
+function PlaybookStudioSection({ onApplied }: { onApplied: () => void }) {
+  const [mode, setMode] = useState<'wizard' | 'review'>('wizard');
+  const [answers, setAnswers] = useState<PlaybookAnswers>(EMPTY_ANSWERS);
+  const [methodologyChoice, setMethodologyChoice] = useState(''); // select value; 'Other' → free text
+  const [draft, setDraft] = useState<PlaybookContent | null>(null);
+  const [name, setName] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [applying, setApplying] = useState(false);
+
+  // Existing playbooks list (always visible).
+  const [playbooks, setPlaybooks] = useState<PlaybookListItem[]>([]);
+  const [listLoading, setListLoading] = useState(true);
+
+  const loadList = useCallback(async () => {
+    setListLoading(true);
+    try {
+      const res = await fetch('/api/salesops-admin/playbook', { cache: 'no-store' });
+      if (res.ok) {
+        const json = await res.json();
+        setPlaybooks(json.playbooks ?? []);
+      }
+    } finally {
+      setListLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadList(); }, [loadList]);
+
+  const setAns = (k: keyof PlaybookAnswers, v: string) => setAnswers((a) => ({ ...a, [k]: v }));
+
+  async function generate() {
+    if (!answers.company_name.trim() || !answers.product_name.trim() || !answers.buyer_persona.trim()) {
+      toast.error('Company, product, and buyer persona are required.');
+      return;
+    }
+    setGenerating(true);
+    try {
+      const methodology = methodologyChoice === 'Other' ? answers.methodology : methodologyChoice;
+      const res = await fetch('/api/salesops-admin/playbook/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...answers, methodology }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (json.error === 'connect_anthropic') {
+          toast.error('Connect your Anthropic key in Connections → Anthropic to generate a playbook.');
+        } else if (json.error === 'missing_fields') {
+          toast.error('Please fill in company, product, and buyer persona.');
+        } else {
+          toast.error('Could not generate the playbook. Try again.');
+        }
+        return;
+      }
+      const d: PlaybookContent = json.draft;
+      setDraft(d);
+      // Suggest a sensible default name; the rep can rename before Apply.
+      setName(suggestPlaybookName(answers, methodology));
+      setMode('review');
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function apply() {
+    if (!draft) return;
+    const trimmed = name.trim();
+    if (!trimmed) {
+      toast.error('Give this playbook a name.');
+      return;
+    }
+    if (!draft.playbook_narrative.trim()) {
+      toast.error('The playbook narrative is empty — add some content before applying.');
+      return;
+    }
+    setApplying(true);
+    try {
+      const res = await fetch('/api/salesops-admin/playbook/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: trimmed, content: draft, inputs: answers }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (json.error === 'empty_playbook') toast.error('The playbook narrative is empty.');
+        else if (json.error === 'name is required') toast.error('Give this playbook a name.');
+        else toast.error('Could not apply the playbook. Try again.');
+        return;
+      }
+      toast.success(`“${trimmed}” is now your active playbook`);
+      // Reset the wizard, refresh the list + the Configure section (which now shows synced fields).
+      setMode('wizard');
+      setAnswers(EMPTY_ANSWERS);
+      setMethodologyChoice('');
+      setDraft(null);
+      setName('');
+      await loadList();
+      onApplied();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  return (
+    <section className="space-y-3">
+      <div className="space-y-1">
+        <div className="section-title flex items-center gap-1.5">
+          <BookOpen size={14} className="text-primary" /> Playbook Studio
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Answer a few questions and we&rsquo;ll draft a detailed, ready-to-use sales playbook with your Anthropic
+          key. Review and edit it, then apply it &mdash; that creates a new, named version and makes it active for
+          your live co-pilot. Your previous playbooks are kept.
+        </p>
+      </div>
+
+      {mode === 'wizard' ? (
+        <WizardForm
+          answers={answers}
+          setAns={setAns}
+          methodologyChoice={methodologyChoice}
+          setMethodologyChoice={setMethodologyChoice}
+          generating={generating}
+          onGenerate={generate}
+        />
+      ) : (
+        draft && (
+          <ReviewForm
+            draft={draft}
+            setDraft={setDraft}
+            name={name}
+            setName={setName}
+            applying={applying}
+            onApply={apply}
+            onBack={() => setMode('wizard')}
+          />
+        )
+      )}
+
+      <PlaybookList playbooks={playbooks} loading={listLoading} />
+    </section>
+  );
+}
+
+/** Step 1 — the guided Q&A wizard. */
+function WizardForm({
+  answers, setAns, methodologyChoice, setMethodologyChoice, generating, onGenerate,
+}: {
+  answers: PlaybookAnswers;
+  setAns: (k: keyof PlaybookAnswers, v: string) => void;
+  methodologyChoice: string;
+  setMethodologyChoice: (v: string) => void;
+  generating: boolean;
+  onGenerate: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-[color-mix(in_srgb,var(--surface-2)_55%,transparent)] p-4 space-y-3">
+      <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+        <Wand2 size={12} className="text-primary" /> Guided setup
+      </div>
+
+      <Field label="Company name" hint="What's your company called?">
+        <input value={answers.company_name} onChange={(e) => setAns('company_name', e.target.value)} style={{ width: '100%' }} placeholder="Acme Inc." />
+      </Field>
+      <Field label="What you sell" hint="The product or service.">
+        <input value={answers.product_name} onChange={(e) => setAns('product_name', e.target.value)} style={{ width: '100%' }} placeholder="e.g. an AI scheduling assistant for clinics" />
+      </Field>
+      <Field label="Who buys it" hint="Your typical buyer — role, company size, what they care about.">
+        <textarea value={answers.buyer_persona} onChange={(e) => setAns('buyer_persona', e.target.value)} style={{ width: '100%' }} rows={2} placeholder="e.g. Practice managers at 5–20 provider clinics, time-strapped, hate no-shows" />
+      </Field>
+      <Field label="Pricing" hint="We never invent prices — only what you enter here is used.">
+        <input value={answers.pricing} onChange={(e) => setAns('pricing', e.target.value)} style={{ width: '100%' }} placeholder="e.g. $499/mo, 20% off annual" />
+      </Field>
+      <Field label="Differentiators" hint="Why you win vs. the alternatives.">
+        <textarea value={answers.differentiators} onChange={(e) => setAns('differentiators', e.target.value)} style={{ width: '100%' }} rows={2} placeholder="e.g. Sets up in a day, native EHR sync, white-glove onboarding" />
+      </Field>
+      <Field label="Sales motion" hint="How these calls usually run.">
+        <input value={answers.sales_motion} onChange={(e) => setAns('sales_motion', e.target.value)} style={{ width: '100%' }} placeholder="e.g. 30-min inbound demo calls" />
+      </Field>
+      <Field label="Methodology" hint="Pick a framework, or choose Other to describe your own.">
+        <select value={methodologyChoice} onChange={(e) => setMethodologyChoice(e.target.value)} style={{ width: '100%' }}>
+          <option value="">No preference</option>
+          {METHODOLOGY_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+      </Field>
+      {methodologyChoice === 'Other' && (
+        <Field label="Describe your methodology">
+          <input value={answers.methodology} onChange={(e) => setAns('methodology', e.target.value)} style={{ width: '100%' }} placeholder="e.g. Discovery-led, demo last, never discount on call 1" />
+        </Field>
+      )}
+      <Field label="Common objections" hint="What prospects push back on. Comma-separated is fine.">
+        <textarea value={answers.common_objections} onChange={(e) => setAns('common_objections', e.target.value)} style={{ width: '100%' }} rows={2} placeholder="too expensive, need to ask my partner, already use a competitor, not the right time" />
+      </Field>
+      <Field label="Tone & persona" hint="How the coaching should sound.">
+        <input value={answers.desired_tone} onChange={(e) => setAns('desired_tone', e.target.value)} style={{ width: '100%' }} placeholder="e.g. confident, warm, concise" />
+      </Field>
+      <Field label="Goal of the call" hint="What a great call ends with.">
+        <input value={answers.call_goal} onChange={(e) => setAns('call_goal', e.target.value)} style={{ width: '100%' }} placeholder="e.g. book a paid pilot / close on the call" />
+      </Field>
+
+      <div className="pt-1">
+        <button className="btn btn-primary btn-sm inline-flex items-center gap-1.5" disabled={generating} onClick={onGenerate}>
+          <Sparkles size={13} /> {generating ? 'Generating…' : 'Generate playbook'}
+        </button>
+        <p className="text-[10px] text-muted-foreground mt-1.5">
+          Uses your own Anthropic key. This drafts a playbook for review — nothing is saved or activated until you apply it.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/** Step 2 — review + edit the generated draft, name it, then apply (non-destructive). */
+function ReviewForm({
+  draft, setDraft, name, setName, applying, onApply, onBack,
+}: {
+  draft: PlaybookContent;
+  setDraft: React.Dispatch<React.SetStateAction<PlaybookContent | null>>;
+  name: string;
+  setName: (v: string) => void;
+  applying: boolean;
+  onApply: () => void;
+  onBack: () => void;
+}) {
+  // Helpers that edit one field of the draft.
+  const set = <K extends keyof PlaybookContent>(k: K, v: PlaybookContent[K]) =>
+    setDraft((d) => (d ? { ...d, [k]: v } : d));
+
+  return (
+    <div className="rounded-xl border border-primary/30 bg-[color-mix(in_srgb,var(--surface-2)_55%,transparent)] p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <button className="btn btn-ghost btn-sm inline-flex items-center gap-1" onClick={onBack} disabled={applying}>
+          <ArrowLeft size={12} /> Back
+        </button>
+        <div className="flex items-center gap-1.5 text-[11px] font-medium text-primary">
+          <Sparkles size={12} /> Review your draft
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-info/30 bg-info/10 p-2.5 text-[10px] text-muted-foreground flex items-start gap-1.5">
+        <AlertCircle size={12} className="text-info shrink-0 mt-0.5" />
+        <span>
+          Edit anything below, then <span className="font-medium text-foreground">Apply</span>. Applying saves this as a
+          <span className="font-medium text-foreground"> new, named playbook</span> and makes it active for your live
+          co-pilot. It never overwrites a previous playbook &mdash; they&rsquo;re all kept for history and split-testing.
+        </span>
+      </div>
+
+      {/* Fields mirrored into salesops_config (what the live coach reads) */}
+      <Field label="Buyer persona">
+        <textarea value={draft.persona} onChange={(e) => set('persona', e.target.value)} style={{ width: '100%' }} rows={2} />
+      </Field>
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="Company name">
+          <input value={draft.company_name} onChange={(e) => set('company_name', e.target.value)} style={{ width: '100%' }} />
+        </Field>
+        <Field label="Product / service">
+          <input value={draft.product_name} onChange={(e) => set('product_name', e.target.value)} style={{ width: '100%' }} />
+        </Field>
+      </div>
+      <Field label="Pricing" hint="Only what you provide is used — never invented.">
+        <input value={draft.pricing} onChange={(e) => set('pricing', e.target.value)} style={{ width: '100%' }} />
+      </Field>
+      <Field label="Differentiators">
+        <textarea value={draft.differentiators} onChange={(e) => set('differentiators', e.target.value)} style={{ width: '100%' }} rows={2} />
+      </Field>
+
+      <Field label="Opener" hint="The first line or two of the call.">
+        <textarea value={draft.opener} onChange={(e) => set('opener', e.target.value)} style={{ width: '100%' }} rows={2} />
+      </Field>
+
+      <StringListEditor
+        label="Discovery questions"
+        hint="Questions to surface pain and fit."
+        items={draft.discovery_questions}
+        onChange={(items) => set('discovery_questions', items)}
+        placeholder="Add a discovery question…"
+      />
+      <StringListEditor
+        label="Value props"
+        hint="Punchy reasons to buy."
+        items={draft.value_props}
+        onChange={(items) => set('value_props', items)}
+        placeholder="Add a value prop…"
+      />
+
+      <ObjectionEditor
+        items={draft.objection_handling}
+        onChange={(items) => set('objection_handling', items)}
+      />
+
+      <Field label="Closing" hint="The next-step / close move.">
+        <textarea value={draft.closing} onChange={(e) => set('closing', e.target.value)} style={{ width: '100%' }} rows={2} />
+      </Field>
+
+      <Field label="Objection keywords" hint="Comma-separated. Trigger an instant suggestion when heard on a call.">
+        <input
+          value={draft.objection_keywords.join(', ')}
+          onChange={(e) => set('objection_keywords', e.target.value.split(',').map((s) => s.trim()).filter(Boolean))}
+          style={{ width: '100%' }}
+          placeholder="too expensive, competitor, not sure"
+        />
+      </Field>
+
+      <Field label="Playbook narrative" hint="The full playbook your live co-pilot reads on every call. Edit freely.">
+        <textarea value={draft.playbook_narrative} onChange={(e) => set('playbook_narrative', e.target.value)} style={{ width: '100%' }} rows={10} className="font-mono text-[11px]" />
+      </Field>
+
+      <div className="pt-1 border-t border-border/40 space-y-2">
+        <Field label="Playbook name" hint="Name this version so you can tell variants apart later.">
+          <input value={name} onChange={(e) => setName(e.target.value)} style={{ width: '100%' }} maxLength={120} placeholder="e.g. Consultative v1" />
+        </Field>
+        <div className="flex items-center gap-2">
+          <button className="btn btn-primary btn-sm inline-flex items-center gap-1.5" disabled={applying} onClick={onApply}>
+            <CheckCircle2 size={13} /> {applying ? 'Applying…' : 'Apply & activate'}
+          </button>
+          <button className="btn btn-ghost btn-sm" disabled={applying} onClick={onBack}>
+            Regenerate
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Editable list of free-text strings (discovery questions, value props). */
+function StringListEditor({
+  label, hint, items, onChange, placeholder,
+}: {
+  label: string;
+  hint?: string;
+  items: string[];
+  onChange: (items: string[]) => void;
+  placeholder?: string;
+}) {
+  const update = (i: number, v: string) => onChange(items.map((x, idx) => (idx === i ? v : x)));
+  const remove = (i: number) => onChange(items.filter((_, idx) => idx !== i));
+  const add = () => onChange([...items, '']);
+
+  return (
+    <div className="space-y-1">
+      <label className="text-[11px] font-medium">{label}</label>
+      {hint && <p className="text-[10px] text-muted-foreground -mt-0.5">{hint}</p>}
+      <div className="space-y-1.5">
+        {items.map((item, i) => (
+          <div key={i} className="flex items-center gap-1.5">
+            <input value={item} onChange={(e) => update(i, e.target.value)} style={{ width: '100%' }} placeholder={placeholder} />
+            <button type="button" className="btn btn-ghost btn-sm shrink-0" title="Remove" onClick={() => remove(i)}>
+              <X size={11} />
+            </button>
+          </div>
+        ))}
+        <button type="button" className="btn btn-ghost btn-sm inline-flex items-center gap-1" onClick={add}>
+          <Plus size={11} /> Add
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Editable list of objection → response script pairs. */
+function ObjectionEditor({
+  items, onChange,
+}: {
+  items: ObjectionScript[];
+  onChange: (items: ObjectionScript[]) => void;
+}) {
+  const update = (i: number, patch: Partial<ObjectionScript>) =>
+    onChange(items.map((x, idx) => (idx === i ? { ...x, ...patch } : x)));
+  const remove = (i: number) => onChange(items.filter((_, idx) => idx !== i));
+  const add = () => onChange([...items, { objection: '', response: '' }]);
+
+  return (
+    <div className="space-y-1">
+      <label className="text-[11px] font-medium">Objection handling</label>
+      <p className="text-[10px] text-muted-foreground -mt-0.5">A verbatim rebuttal for each objection.</p>
+      <div className="space-y-2">
+        {items.map((o, i) => (
+          <div key={i} className="rounded-lg border border-border/50 p-2 space-y-1.5">
+            <div className="flex items-center gap-1.5">
+              <input value={o.objection} onChange={(e) => update(i, { objection: e.target.value })} style={{ width: '100%' }} placeholder="Objection (how they say it)" />
+              <button type="button" className="btn btn-ghost btn-sm shrink-0" title="Remove" onClick={() => remove(i)}>
+                <X size={11} />
+              </button>
+            </div>
+            <textarea value={o.response} onChange={(e) => update(i, { response: e.target.value })} style={{ width: '100%' }} rows={2} placeholder="Your verbatim response" />
+          </div>
+        ))}
+        <button type="button" className="btn btn-ghost btn-sm inline-flex items-center gap-1" onClick={add}>
+          <Plus size={11} /> Add objection
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** The list of saved playbooks — always visible; seeds the future split-test UX. */
+function PlaybookList({ playbooks, loading }: { playbooks: PlaybookListItem[]; loading: boolean }) {
+  return (
+    <div className="space-y-1.5">
+      <div className="text-[11px] font-medium flex items-center gap-1.5 text-muted-foreground">
+        <BookOpen size={12} /> Your playbooks
+      </div>
+      {loading ? (
+        <p className="text-xs text-muted-foreground">Loading…</p>
+      ) : playbooks.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No playbooks yet — generate one above to get started.</p>
+      ) : (
+        <div className="space-y-1">
+          {playbooks.map((p) => (
+            <div key={p.id} className="flex items-center gap-2 rounded-lg border border-border/50 px-2.5 py-1.5">
+              <div className="min-w-0 flex-1">
+                <div className="text-[11px] font-medium truncate flex items-center gap-1.5">
+                  {p.name}
+                  {p.is_active && (
+                    <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border bg-success/15 text-success border-success/30">
+                      Active
+                    </span>
+                  )}
+                </div>
+                <div className="text-[10px] text-muted-foreground">
+                  Created {fmtDate(p.created_at)}
+                  <span className="opacity-60"> · split-test stats coming soon</span>
+                </div>
+              </div>
+              <div className="text-[10px] text-muted-foreground shrink-0 text-right" title="Calls / wons — coming with split-testing">
+                — / —
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A sensible default name for a freshly generated playbook (rep can rename). */
+function suggestPlaybookName(answers: PlaybookAnswers, methodology: string): string {
+  const base = methodology?.trim() || answers.product_name?.trim() || 'Playbook';
+  const stamp = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return `${base} · ${stamp}`.slice(0, 120);
 }
 
 // ── 1. Install ───────────────────────────────────────────────────────────────────
@@ -309,7 +822,7 @@ function ConnectSection() {
 // ── 3. Configure ─────────────────────────────────────────────────────────────────
 const SUMMARY_FIELD_OPTIONS = ['deal_temp', 'objections', 'pain_points', 'next_steps', 'action_items'];
 
-function ConfigureSection() {
+function ConfigureSection({ reloadSignal = 0 }: { reloadSignal?: number }) {
   const [saving, setSaving] = useState(false);
 
   // Local form state mirrors config; keyword/summary fields are edited as text.
@@ -338,7 +851,9 @@ function ConfigureSection() {
     });
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  // Initial load + reload whenever Playbook Studio applies a new playbook (the apply route
+  // mirrors the structured fields into salesops_config, so these fields reflect it).
+  useEffect(() => { load(); }, [load, reloadSignal]);
 
   async function save() {
     setSaving(true);
