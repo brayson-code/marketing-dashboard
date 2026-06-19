@@ -19,6 +19,7 @@
 // audit.ts/guard.ts); security_events is the high-signal operations stream the HQ
 // security console + alerts consume. Several call sites DUAL-WRITE both on purpose.
 
+import { after } from 'next/server';
 import { sql } from '@/lib/db/client';
 import { tenantId, currentUserId, NO_TENANT_ID } from '@/lib/tenant';
 
@@ -62,42 +63,52 @@ type AlertModule = {
  * On a critical-severity event, fires security-alerts (deduped) without blocking.
  */
 export async function emitSecurityEvent(input: SecurityEventInput): Promise<void> {
-  try {
-    // A system/anon event (no real workspace — e.g. an anonymous auth_fail, or a
-    // webhook limiter tripping pre-tenant) stores tenant_id = NULL rather than the
-    // NO_TENANT_ID sentinel, which isn't a real tenants row and would FK-fail. NULL
-    // rows are HQ-console-only (RLS excludes NULL from tenant-scoped reads).
-    const resolved = input.tenantId ?? tenantId();
-    const tid = resolved === NO_TENANT_ID ? null : resolved;
-    const actor = input.actorUserId === undefined ? currentUserId() : input.actorUserId;
-    const detail = input.detail ? JSON.stringify(input.detail) : null;
+  // Resolve tenant/actor NOW, in the LIVE request context — NOT inside the after()
+  // callback below, where the AsyncLocalStorage tenant context may already be torn
+  // down. A system/anon event (no real workspace — e.g. an anonymous auth_fail, or a
+  // webhook limiter tripping pre-tenant) stores tenant_id = NULL rather than the
+  // NO_TENANT_ID sentinel, which isn't a real tenants row and would FK-fail. NULL
+  // rows are HQ-console-only (RLS excludes NULL from tenant-scoped reads).
+  let resolved: string;
+  try { resolved = input.tenantId ?? tenantId(); } catch { resolved = NO_TENANT_ID; }
+  const tid = resolved === NO_TENANT_ID ? null : resolved;
+  let actor: string | null;
+  try { actor = input.actorUserId === undefined ? currentUserId() : input.actorUserId; }
+  catch { actor = input.actorUserId ?? null; }
+  const detail = input.detail ? JSON.stringify(input.detail) : null;
 
-    await sql()`
-      INSERT INTO public.security_events
-        (tenant_id, type, severity, actor_user_id, resource_ref, detail)
-      VALUES (
-        ${tid}, ${input.type}, ${input.severity},
-        ${actor ?? null}, ${input.resourceRef ?? null}, ${detail}
-      )
-    `;
-  } catch {
-    // Best-effort: an event-write failure must never block (or falsely allow) the caller.
-  }
-
-  // Critical events alert the HQ owner. Lazy dynamic import keeps this module a leaf and
-  // degrades to a no-op if the alerts module fails — alerting must never break a request.
-  // The events -> alerts edge is ONE-WAY and lazy (security-alerts.ts only `import type`s
-  // back), so there is no import cycle and no eager dependency at module-init time. A
-  // literal specifier (vs. the earlier indirect `const spec`) lets webpack resolve the
-  // chunk statically — same runtime behavior, no "Critical dependency" build warning.
-  if (input.severity === 'critical') {
+  const work = (async () => {
     try {
-      const mod = (await import('./security-alerts').catch(() => null)) as
-        | AlertModule
-        | null;
-      if (mod?.maybeAlert) await mod.maybeAlert(input);
+      await sql()`
+        INSERT INTO public.security_events
+          (tenant_id, type, severity, actor_user_id, resource_ref, detail)
+        VALUES (
+          ${tid}, ${input.type}, ${input.severity},
+          ${actor ?? null}, ${input.resourceRef ?? null}, ${detail}
+        )
+      `;
     } catch {
-      // Alerting is best-effort; swallow.
+      // Best-effort: an event-write failure must never block (or falsely allow) the caller.
     }
+    // Critical events alert the HQ owner via a one-way lazy import (no cycle).
+    if (input.severity === 'critical') {
+      try {
+        const mod = (await import('./security-alerts').catch(() => null)) as AlertModule | null;
+        if (mod?.maybeAlert) await mod.maybeAlert(input);
+      } catch {
+        // Alerting is best-effort; swallow.
+      }
+    }
+  })();
+
+  // Persist reliably on serverless: callers fire-and-forget this, then the handler
+  // returns and the function SUSPENDS — so an un-awaited INSERT would be lost (this
+  // was a real bug: 429s emitted but 0 rows landed). after() keeps the function alive
+  // past the response to flush the write without blocking it. Outside a request scope
+  // (cron, scripts, tests) after() throws → just run it inline.
+  try {
+    after(work);
+  } catch {
+    await work;
   }
 }

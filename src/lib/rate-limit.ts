@@ -11,6 +11,7 @@
 // Key on `${tenantId()}:${bucket}` so one workspace hammering an endpoint cannot
 // throttle another — the per-tenant property the audit asks for.
 
+import { after } from 'next/server';
 import { emitSecurityEvent, type SecurityEventInput } from './security-events';
 import { hasTenantContext } from './tenant';
 
@@ -118,8 +119,13 @@ function emitRateLimited(name: string, key: string, retryAfterSec: number): void
   // Escalate a sustained burst to critical so it pages the HQ owner (deduped upstream).
   // We reach the spike helpers via a DYNAMIC import (not a static one) so rate-limit.ts
   // stays a leaf with no static edge to security-alerts → loopmessage/transactional-email
-  // (no import cycle). The whole thing is void + best-effort; it never blocks the limiter.
-  void escalateAndEmit(base);
+  // (no import cycle). Schedule via after() so the import+emit chain actually flushes
+  // past the response (a plain `void` here suspends with the function → lost event).
+  try {
+    after(escalateAndEmit(base));
+  } catch {
+    void escalateAndEmit(base);
+  }
 }
 
 async function escalateAndEmit(base: SecurityEventInput): Promise<void> {
