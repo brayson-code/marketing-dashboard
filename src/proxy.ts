@@ -54,6 +54,7 @@ function isPublicPath(pathname: string): boolean {
   if (CRON_RUNNER_PATHS.has(pathname)) return true; // CRON_SECRET enforced in-handler
   if (pathname === '/api/errors') return true; // client error reporting (may fire pre-login)
   if (pathname === '/api/health/live') return true; // unauthenticated uptime liveness probe — returns only booleans, no tenant data
+  if (pathname === '/monitoring-tunnel') return true; // Sentry tunnel — the browser SDK posts events here (forwarded to Sentry ingest); must work pre-login + dodge ad-blockers
   return false;
 }
 
