@@ -50,6 +50,7 @@ function isPublicPath(pathname: string): boolean {
   if (pathname === '/walkthrough.html') return true; // public product-reveal deck (shareable / film aid)
   if (pathname.startsWith('/auth/')) return true; // Supabase OAuth/callback routes
   if (pathname.startsWith('/api/webhook/')) return true; // auth enforced in-handler
+  if (pathname.startsWith('/api/salesops/')) return true; // token-authed in-handler (the extension runs on meet/zoom and can't carry the session cookie)
   if (pathname === '/api/stripe/webhook') return true; // Stripe signature enforced in-handler
   if (CRON_RUNNER_PATHS.has(pathname)) return true; // CRON_SECRET enforced in-handler
   if (pathname === '/api/errors') return true; // client error reporting (may fire pre-login)

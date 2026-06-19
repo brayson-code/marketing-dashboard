@@ -105,6 +105,9 @@ export async function GET() {
     // enforce them server-side regardless.
     movie_clips_enabled: process.env.MOVIE_CLIPS_ENABLED === 'true',
     supercut_enabled: process.env.SUPERCUT_ENABLED === 'true',
+    // SalesOps (PIF AI Sales Co-Pilot re-host) — default off. Gates the nav item and
+    // the page; the admin routes enforce it server-side regardless.
+    salesops_enabled: process.env.SALESOPS_ENABLED === 'true',
   });
   response.headers.set('Cache-Control', 'no-store');
   return response;

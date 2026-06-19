@@ -8,7 +8,7 @@ import {
   Search, BarChart3, LineChart, FileText, Rocket, Clock, List, Settings,
   FolderOpen, MessagesSquare, Activity, Target, Inbox, Network, DollarSign, Bug,
   Waves, TrendingUp, Dna, Timer, Link2, Sparkles, ChevronDown, ChevronRight,
-  FlaskConical, BookOpen, ArrowUpRight, Boxes, ShieldCheck,
+  FlaskConical, BookOpen, ArrowUpRight, Boxes, ShieldCheck, PhoneCall,
 } from 'lucide-react';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { useDashboard } from '@/store';
@@ -25,6 +25,10 @@ interface NavItem {
   // Content hub entry, which fronts several routes (/content, /content-lab,
   // /scripts, /competitors, /engagement) that no longer have their own rail row.
   matchPrefixes?: string[];
+  // When set, the item is hidden unless the named feature flag (from /api/auth/me)
+  // is true. Used by flag-gated surfaces (e.g. SalesOps) so nothing renders until
+  // the operator flips SALESOPS_ENABLED — the routes enforce the flag server-side too.
+  flag?: 'salesops_enabled';
 }
 interface NavGroup { label: string; items: NavItem[]; collapsible?: boolean }
 
@@ -73,6 +77,7 @@ const PRIMARY: NavGroup[] = [
     items: [
       { href: '/crm', label: 'CRM', icon: Contact, countKey: 'new_leads' },
       { href: '/roi', label: 'ROI', icon: Timer },
+      { href: '/salesops', label: 'SalesOps', icon: PhoneCall, flag: 'salesops_enabled' },
     ],
   },
   {
@@ -118,8 +123,15 @@ export function NavRail() {
   // it server-side too. Default false so they're hidden until proven HQ.
   const HQ_ONLY = new Set(['/issues', '/security']);
   const [isHq, setIsHq] = useState(false);
+  // Feature flags that hide/show nav items. Keyed by the NavItem.flag value. Default
+  // all-off so a flag-gated item (SalesOps) stays hidden until /api/auth/me reports it
+  // enabled — the routes enforce the flag server-side regardless.
+  const [flags, setFlags] = useState<Record<string, boolean>>({});
   useEffect(() => {
-    fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)).then((j) => setIsHq(!!j?.is_hq)).catch(() => {});
+    fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)).then((j) => {
+      setIsHq(!!j?.is_hq);
+      setFlags({ salesops_enabled: !!j?.salesops_enabled });
+    }).catch(() => {});
   }, []);
   const opsItems = OPS.items.filter((i) => !HQ_ONLY.has(i.href) || isHq);
 
@@ -142,6 +154,7 @@ export function NavRail() {
             group={group}
             counts={counts ?? null}
             pathname={pathname}
+            flags={flags}
             className={idx > 0 ? 'mt-3 pt-3 border-t border-border/40' : ''}
           />
         ))}
@@ -188,13 +201,17 @@ function isItemActive(item: NavItem, pathname: string): boolean {
   return item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
 }
 
-function NavGroupBlock({ group, counts, pathname, className }:
-  { group: NavGroup; counts: NavCounts | null; pathname: string; className?: string }) {
+function NavGroupBlock({ group, counts, pathname, className, flags }:
+  { group: NavGroup; counts: NavCounts | null; pathname: string; className?: string; flags?: Record<string, boolean> }) {
+  // Hide flag-gated items whose flag isn't enabled (e.g. SalesOps until SALESOPS_ENABLED).
+  const items = group.items.filter((i) => !i.flag || flags?.[i.flag]);
+  // An all-flagged group with every flag off would render an empty header — skip it.
+  if (items.length === 0) return null;
   return (
     <div className={className}>
       <div className="px-2 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold">{group.label}</div>
       <div className="space-y-0.5">
-        {group.items.map((item) => {
+        {items.map((item) => {
           const active = isItemActive(item, pathname);
           const count = item.countKey && counts ? counts[item.countKey] : 0;
           return <NavLink key={item.href} item={item} active={active} count={count} />;

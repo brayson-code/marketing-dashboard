@@ -1,0 +1,62 @@
+{
+  "manifest_version": 3,
+  "name": "PIF AI Sales Co-Pilot",
+  "version": "1.1.0",
+  "description": "Real-time AI sales coaching overlay for video calls",
+
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuY77BaF8TjYXdEtgIZ0jyGur6xOUESExNioNAJ8mu7tFegHETKGfHIl4ZwpJSXfYcsQJZAgJ91RnwQjnfTDqz6EfqprHAGjMzBknda8LxfDyUmsiu5OKv8W81nFLI5oiPU6QqZ5dX3LhA+caeVLavSKazGUIVCG6fnY4Q6Df7xIu+a8mFurNKhi6TK5JqY4jUAVXwX7wRuHPrHo1Zv+x8p1mlSaVFXdEwrdGNVpICmYaZka/BZ+LBAE0ZF0A4QHeoEAZEWR32KOtn5wEAqbfSTX73D7Eb/jkp6RPOY5Vplyl3CCNCnW7zT6EExqdUXK6WRick6sNkpSy0BhV/JPbRQIDAQAB",
+
+  "permissions": [
+    "tabCapture",
+    "activeTab",
+    "offscreen",
+    "storage"
+  ],
+
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+
+  "host_permissions": [
+    "https://command.keyplayershq.com/*",
+    "http://localhost:3000/*"
+  ],
+
+  "externally_connectable": {
+    "matches": [
+      "https://command.keyplayershq.com/*",
+      "http://localhost:3000/*"
+    ]
+  },
+
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.zoom.us/*",
+        "*://meet.google.com/*",
+        "*://*.teams.microsoft.com/*",
+        "*://*.webex.com/*"
+      ],
+      "js": ["content/content.js"],
+      "css": ["content/overlay.css"],
+      "run_at": "document_idle"
+    }
+  ],
+
+  "options_page": "options.html",
+
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

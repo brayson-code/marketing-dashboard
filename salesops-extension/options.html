@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PIF // SETTINGS TERMINAL</title>
+  <style>
+    :root {
+      --green:  #33ff00;
+      --amber:  #ffb000;
+      --red:    #ff3333;
+      --bg:     #0a0a0a;
+      --bg2:    #0d0d0d;
+      --border: #1f521f;
+      --dim:    #2a6a2a;
+      --muted:  #4a7a4a;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--green);
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 13px;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── Scanline overlay ── */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.07) 2px,
+        rgba(0,0,0,0.07) 4px
+      );
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    /* ── Blink animation ── */
+    @keyframes blink {
+      0%, 49% { opacity: 1; }
+      50%, 100% { opacity: 0; }
+    }
+    .blink { animation: blink 1s step-end infinite; }
+
+    /* ── Glow ── */
+    .glow { text-shadow: 0 0 8px rgba(51,255,0,0.5); }
+
+    /* ── Glitch on hover ── */
+    @keyframes glitch {
+      0%   { transform: translate(0); }
+      20%  { transform: translate(-2px, 1px); clip-path: inset(10% 0 80% 0); }
+      40%  { transform: translate(2px, -1px); clip-path: inset(60% 0 20% 0); }
+      60%  { transform: translate(-1px, 2px); clip-path: inset(30% 0 50% 0); }
+      80%  { transform: translate(1px, -1px); }
+      100% { transform: translate(0); clip-path: none; }
+    }
+
+    /* ─────────────────────────────────────────────
+       LAYOUT
+    ───────────────────────────────────────────── */
+    .terminal {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    /* Title bar */
+    .titlebar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 16px;
+      background: var(--green);
+      color: var(--bg);
+      font-weight: bold;
+      font-size: 12px;
+      letter-spacing: 1px;
+      flex-shrink: 0;
+    }
+    .titlebar-right { display: flex; gap: 16px; }
+    .titlebar-right span { opacity: 0.7; }
+
+    /* Workspace */
+    .workspace {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ─────────────────────────────────────────────
+       SIDEBAR
+    ───────────────────────────────────────────── */
+    .sidebar {
+      width: 240px;
+      flex-shrink: 0;
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      background: var(--bg2);
+      overflow-y: auto;
+    }
+
+    .logo-block {
+      padding: 20px 16px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .ascii-logo {
+      color: var(--green);
+      font-size: 11px;
+      line-height: 1.3;
+      text-shadow: 0 0 10px rgba(51,255,0,0.6);
+      white-space: pre;
+      margin-bottom: 10px;
+    }
+
+    .logo-meta {
+      font-size: 10px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+    .logo-meta .ok { color: var(--green); }
+    .logo-meta .warn { color: var(--amber); }
+
+    /* Nav */
+    .nav-section {
+      padding: 14px 0;
+      flex: 1;
+    }
+
+    .nav-label {
+      font-size: 10px;
+      color: var(--dim);
+      letter-spacing: 1.5px;
+      padding: 0 16px 8px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 4px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 16px;
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 12px;
+      transition: color 0.1s, background 0.1s;
+      border-left: 2px solid transparent;
+      white-space: nowrap;
+    }
+
+    .nav-item:hover { color: var(--green); background: rgba(51,255,0,0.04); }
+
+    .nav-item.active {
+      color: var(--green);
+      border-left-color: var(--green);
+      background: rgba(51,255,0,0.06);
+      text-shadow: 0 0 6px rgba(51,255,0,0.4);
+    }
+
+    .nav-num {
+      color: var(--dim);
+      font-size: 10px;
+      flex-shrink: 0;
+    }
+
+    .nav-item.active .nav-num { color: var(--green); }
+
+    .nav-arrow {
+      margin-left: auto;
+      opacity: 0;
+      font-size: 10px;
+    }
+    .nav-item.active .nav-arrow { opacity: 1; }
+
+    /* Sys info at bottom of sidebar */
+    .sys-info {
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+      font-size: 10px;
+      color: var(--dim);
+      line-height: 1.8;
+    }
+
+    /* ─────────────────────────────────────────────
+       MAIN CONTENT
+    ───────────────────────────────────────────── */
+    .main {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px 28px 100px;
+    }
+
+    /* Pages */
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* Page header */
+    .page-header {
+      margin-bottom: 24px;
+      padding-bottom: 14px;
+      border-bottom: 1px dashed var(--border);
+    }
+
+    .page-cmd {
+      font-size: 10px;
+      color: var(--dim);
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+    }
+
+    .page-title {
+      font-size: 18px;
+      font-weight: bold;
+      color: var(--green);
+      text-shadow: 0 0 10px rgba(51,255,0,0.4);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    .page-desc {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 6px;
+      line-height: 1.6;
+    }
+
+    /* ── Cards ── */
+    .card {
+      border: 1px solid var(--border);
+      background: var(--bg2);
+      margin-bottom: 20px;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 14px;
+      background: rgba(51,255,0,0.05);
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      font-weight: bold;
+      letter-spacing: 1px;
+      color: var(--green);
+      text-transform: uppercase;
+    }
+
+    .card-header-tag {
+      font-size: 10px;
+      color: var(--dim);
+      font-weight: normal;
+    }
+
+    .card-body { padding: 16px 14px; }
+
+    /* ── Fields ── */
+    .field { margin-bottom: 18px; }
+    .field:last-child { margin-bottom: 0; }
+
+    .field-label {
+      font-size: 10px;
+      color: var(--dim);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .field-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    .field-hint {
+      font-size: 10px;
+      color: var(--dim);
+      margin-bottom: 8px;
+      line-height: 1.5;
+    }
+
+    .prompt-wrap {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .prompt-char {
+      color: var(--green);
+      padding-top: 10px;
+      flex-shrink: 0;
+      text-shadow: 0 0 6px rgba(51,255,0,0.5);
+    }
+
+    textarea, input[type="text"], input[type="number"] {
+      flex: 1;
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 0;
+      color: var(--green);
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 12px;
+      padding: 9px 12px;
+      resize: vertical;
+      line-height: 1.6;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    textarea { min-height: 110px; }
+
+    textarea:focus, input:focus {
+      border-color: var(--green);
+      box-shadow: 0 0 0 1px rgba(51,255,0,0.15), inset 0 0 20px rgba(51,255,0,0.03);
+    }
+
+    textarea::placeholder, input::placeholder {
+      color: var(--dim);
+      font-style: normal;
+    }
+
+    /* ── Checkbox terminal style ── */
+    .check-group { display: flex; flex-direction: column; gap: 8px; }
+
+    .check-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--muted);
+      transition: color 0.1s;
+    }
+
+    .check-item:hover { color: var(--green); }
+
+    .check-item input[type="checkbox"] { display: none; }
+
+    .check-box {
+      width: 16px;
+      height: 16px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      flex-shrink: 0;
+      color: var(--green);
+      font-weight: bold;
+    }
+
+    .check-item input:checked ~ .check-label { color: var(--green); text-shadow: 0 0 5px rgba(51,255,0,0.3); }
+    .check-item.checked .check-box { background: var(--green); color: var(--bg); border-color: var(--green); }
+
+    /* ── Toggle ── */
+    .toggle-wrap {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 10px 0;
+    }
+
+    .toggle {
+      width: 48px;
+      height: 22px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      position: relative;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+      flex-shrink: 0;
+    }
+
+    .toggle.on {
+      background: rgba(51,255,0,0.1);
+      border-color: var(--green);
+    }
+
+    .toggle::before {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 16px;
+      height: 16px;
+      background: var(--dim);
+      transition: transform 0.2s, background 0.2s;
+    }
+
+    .toggle.on::before {
+      transform: translateX(26px);
+      background: var(--green);
+      box-shadow: 0 0 6px rgba(51,255,0,0.6);
+    }
+
+    .toggle-label { font-size: 12px; color: var(--muted); }
+    .toggle.on + .toggle-label { color: var(--green); }
+
+    .toggle-status {
+      margin-left: auto;
+      font-size: 10px;
+      letter-spacing: 1px;
+    }
+    .toggle-status.on { color: var(--green); }
+    .toggle-status.off { color: var(--dim); }
+
+    /* ── Inline number input ── */
+    .inline-field {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .inline-field input { max-width: 80px; flex: none; }
+    .inline-unit { font-size: 11px; color: var(--muted); }
+
+    /* ─────────────────────────────────────────────
+       COMMAND BAR (save bar)
+    ───────────────────────────────────────────── */
+    .cmdbar {
+      position: fixed;
+      bottom: 0;
+      left: 240px;
+      right: 0;
+      height: 52px;
+      border-top: 1px solid var(--border);
+      background: var(--bg2);
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      gap: 16px;
+      z-index: 100;
+    }
+
+    .prompt-label {
+      color: var(--dim);
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+
+    .prompt-label span { color: var(--green); }
+
+    .btn-save {
+      background: transparent;
+      border: 1px solid var(--green);
+      color: var(--green);
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 12px;
+      font-weight: bold;
+      letter-spacing: 1px;
+      padding: 7px 20px;
+      cursor: pointer;
+      border-radius: 0;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .btn-save:hover {
+      background: var(--green);
+      color: var(--bg);
+    }
+
+    .btn-save:active { opacity: 0.8; }
+
+    .save-status {
+      font-size: 11px;
+      letter-spacing: 1px;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .save-status.ok   { color: var(--green); opacity: 1; }
+    .save-status.err  { color: var(--red);   opacity: 1; }
+
+    /* sidebar scrollbar */
+    .sidebar::-webkit-scrollbar,
+    .main::-webkit-scrollbar    { width: 4px; }
+    .sidebar::-webkit-scrollbar-track,
+    .main::-webkit-scrollbar-track  { background: transparent; }
+    .sidebar::-webkit-scrollbar-thumb,
+    .main::-webkit-scrollbar-thumb  { background: var(--border); }
+
+    /* amber accent for warnings */
+    .amber { color: var(--amber); }
+    .amber-border { border-color: var(--amber) !important; }
+
+    /* Deal temp pills (for reference display) */
+    .pill {
+      display: inline-block;
+      padding: 1px 8px;
+      font-size: 10px;
+      font-weight: bold;
+      letter-spacing: 1px;
+      border: 1px solid;
+    }
+    .pill-hot  { border-color: var(--red);   color: var(--red);   }
+    .pill-warm { border-color: var(--amber);  color: var(--amber); }
+    .pill-cold { border-color: #3388ff;       color: #3388ff;      }
+  </style>
+</head>
+<body>
+<div class="terminal">
+
+  <!-- Title Bar -->
+  <div class="titlebar">
+    <span>PIF.EXE &nbsp;//&nbsp; SETTINGS TERMINAL &nbsp;//&nbsp; v1.0.0</span>
+    <div class="titlebar-right">
+      <span>MEM: 512K</span>
+      <span>CONN: <span id="conn-status-titlebar" style="color:#0a0a0a;font-weight:bold;">—</span></span>
+      <span class="blink">█</span>
+    </div>
+  </div>
+
+  <div class="workspace">
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="logo-block">
+        <div class="ascii-logo">
+ ____  ___ _____
+|  _ \|_ _|  ___|
+| |_) || || |_
+|  __/ | ||  _|
+|_|   |___|_|
+        </div>
+        <div class="logo-meta">
+          <div>// AI SALES CO-PILOT</div>
+          <div>// command.keyplayershq.com</div>
+          <div style="margin-top:4px;">STATUS: <span class="ok">[OK]</span></div>
+          <div>API: <span id="conn-status" class="warn">[NOT CONNECTED]</span></div>
+        </div>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-label">// CONFIG FILES</div>
+
+        <div class="nav-item active" data-page="connection">
+          <span class="nav-num">[00]</span>
+          <span>connection.cfg</span>
+          <span class="nav-arrow blink">◄</span>
+        </div>
+        <div class="nav-item" data-page="persona">
+          <span class="nav-num">[01]</span>
+          <span>persona.cfg</span>
+          <span class="nav-arrow blink">◄</span>
+        </div>
+        <div class="nav-item" data-page="playbook">
+          <span class="nav-num">[02]</span>
+          <span>playbook.cfg</span>
+          <span class="nav-arrow blink">◄</span>
+        </div>
+        <div class="nav-item" data-page="objections">
+          <span class="nav-num">[03]</span>
+          <span>objections.cfg</span>
+          <span class="nav-arrow blink">◄</span>
+        </div>
+        <div class="nav-item" data-page="company">
+          <span class="nav-num">[04]</span>
+          <span>company.cfg</span>
+          <span class="nav-arrow blink">◄</span>
+        </div>
+        <div class="nav-item" data-page="postcall">
+          <span class="nav-num">[05]</span>
+          <span>post_call.cfg</span>
+          <span class="nav-arrow blink">◄</span>
+        </div>
+        <div class="nav-item" data-page="settings">
+          <span class="nav-num">[06]</span>
+          <span>system.cfg</span>
+          <span class="nav-arrow blink">◄</span>
+        </div>
+      </div>
+
+      <div class="sys-info">
+        <div>// SYSTEM</div>
+        <div>─────────────────</div>
+        <div>PROCESS: pif.exe</div>
+        <div>MODE: config</div>
+        <div>AUTOSAVE: OFF</div>
+        <div>─────────────────</div>
+        <div style="color:var(--green);">press [ SAVE ] to apply</div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main">
+
+      <!-- ═══════════════════════════════════════ -->
+      <!-- PAGE: CONNECTION                        -->
+      <!-- ═══════════════════════════════════════ -->
+      <div class="page active" id="page-connection">
+        <div class="page-header">
+          <div class="page-cmd">root@pif:~$ cat connection.cfg</div>
+          <div class="page-title">CONNECTION.CFG</div>
+          <div class="page-desc">// Link this extension to your Command Center workspace.<br>// Easiest: open the SalesOps page in the Command Center and click "Connect".<br>// Fallback: paste a SalesOps token below.</div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span>WORKSPACE LINK</span>
+            <span class="card-header-tag">// connection.cfg:token</span>
+          </div>
+          <div class="card-body">
+            <div class="field">
+              <div class="field-label">COMMAND CENTER URL</div>
+              <div class="field-hint">// default: https://command.keyplayershq.com — only change for local/dev</div>
+              <div class="prompt-wrap">
+                <span class="prompt-char">&gt;</span>
+                <input type="text" id="api-url" placeholder="https://command.keyplayershq.com">
+              </div>
+            </div>
+            <div class="field">
+              <div class="field-label">SALESOPS TOKEN</div>
+              <div class="field-hint">// generated on the SalesOps page (Connect). Begins with sk_sops_. Stored locally only.</div>
+              <div class="prompt-wrap">
+                <span class="prompt-char">&gt;</span>
+                <input type="text" id="salesops-token" placeholder="sk_sops_...">
+              </div>
+            </div>
+            <div class="toggle-wrap" style="padding-top:4px;">
+              <span class="toggle-label">CONNECTION STATUS:</span>
+              <span class="toggle-status off" id="conn-status-inline">[NOT CONNECTED]</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════ -->
+      <!-- PAGE: PERSONA                           -->
+      <!-- ═══════════════════════════════════════ -->
+      <div class="page" id="page-persona">
+        <div class="page-header">
+          <div class="page-cmd">root@pif:~$ cat persona.cfg</div>
+          <div class="page-title">BUYER_PERSONA.CFG</div>
+          <div class="page-desc">// Describe your ideal customer. Pull from Meta/Google Ads audience data,<br>// CRM exports, or your own sales experience. Specificity = better suggestions.</div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span>TARGET CUSTOMER PROFILE</span>
+            <span class="card-header-tag">// persona.cfg:1</span>
+          </div>
+          <div class="card-body">
+            <div class="field">
+              <div class="field-label">BUYER DESCRIPTION</div>
+              <div class="field-hint">// role, industry, company size, pain points, goals, decision style</div>
+              <div class="prompt-wrap">
+                <span class="prompt-char">&gt;</span>
+                <textarea id="persona" placeholder="// example:
+Target buyer: SMB owners and sales managers
+Industries: SaaS, professional services
+Role/Title: Owner, VP of Sales, Sales Manager
+Company size: 10-100 employees
+Main pain points: Losing deals, reps freeze on objections, long cycles
+Goals: Close more deals, shorten sales cycle
+Common objections: too expensive, need to think, already using something
+Decision style: ROI-focused, needs proof, risk-averse
+Avg deal size: $5k-$20k | Sales cycle: 2-6 weeks"></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════ -->
+      <!-- PAGE: PLAYBOOK                          -->
+      <!-- ═══════════════════════════════════════ -->
+      <div class="page" id="page-playbook">
+        <div class="page-header">
+          <div class="page-cmd">root@pif:~$ cat playbook.cfg</div>
+          <div class="page-title">PLAYBOOK.CFG</div>
+          <div class="page-desc">// Your sales scripts, objection rebuttals, closing techniques.<br>// PIF matches suggestions to your exact process.</div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span>OBJECTION REBUTTALS</span>
+            <span class="card-header-tag">// playbook.cfg:objections</span>
+          </div>
+          <div class="card-body">
+            <div class="field">
+              <div class="field-hint">// how to respond when they push back on price, timing, or competition</div>
+              <div class="prompt-wrap">
+                <span class="prompt-char">&gt;</span>
+                <textarea id="playbook-objections" placeholder="// too expensive:
+'I get it. Most clients recoup the cost in 60 days because [outcome]. Can I show you the math?'
+
+// need to think about it:
+'Totally fair. What specifically would you need to see to feel confident?'
+
+// already using something:
+'What is the one thing you wish your current solution did better?'"></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span>CLOSING TECHNIQUES</span>
+            <span class="card-header-tag">// playbook.cfg:closing</span>
+          </div>
+          <div class="card-body">
+            <div class="field">
+              <div class="field-hint">// your go-to closing moves and questions</div>
+              <div class="prompt-wrap">
+                <span class="prompt-char">&gt;</span>
+                <textarea id="playbook-closing" placeholder="// example closes:
+- 'Based on everything we discussed, does this feel like a fit?'
+- 'If we could start [date], would you be ready to move forward?'
+- 'What would need to happen between now and [date] to say yes?'"></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span>KEY VALUE PROPS</span>
+            <span class="card-header-tag">// playbook.cfg:value</span>
+          </div>
+          <div class="card-body">
+            <div class="field">
+              <div class="field-hint">// top 3-5 differentiators and proof points</div>
+              <div class="prompt-wrap">
+                <span class="prompt-char">&gt;</span>
+                <textarea id="playbook-value" placeholder="// example:
+- Only [product] that does [X]
+- Avg customer sees [result] in [timeframe]
+- [Customer] went from [before] to [after] in [time]
+- Unlike [competitor], we [key differentiator]"></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════ -->
+      <!-- PAGE: OBJECTIONS                        -->
+      <!-- ═══════════════════════════════════════ -->
+      <div class="page" id="page-objections">
+        <div class="page-header">
+          <div class="page-cmd">root@pif:~$ cat objections.cfg</div>
+          <div class="page-title">OBJECTION_TRIGGERS.CFG</div>
+          <div class="page-desc">// When PIF hears any of these phrases, it fires an immediate rebuttal<br>// without waiting for the normal interval. One phrase per line.</div>
+        </div>
+
+        <div class="card amber-border">
+          <div class="card-header" style="color:var(--amber);background:rgba(255,176,0,0.05);border-color:var(--amber);">
+            <span>⚠ TRIGGER PHRASES</span>
+            <span class="card-header-tag" style="color:var(--amber);">// fires immediately on detection</span>
+          </div>
+          <div class="card-body">
+            <div class="field">
+              <div class="field-hint" style="color:var(--amber);">// add exact words your prospects say when pushing back</div>
+              <div class="prompt-wrap">
+                <span class="prompt-char" style="color:var(--amber);">&gt;</span>
+                <textarea id="objection-keywords" style="min-height:240px;border-color:var(--dim);" placeholder="too expensive
+not in budget
+can't afford
+already have
+using something else
+happy with what we have
+need to think
+not sure
+need to talk to
+check with my
+not right now
+bad timing
+too busy
+not a priority
+get back to you
+think about it
+not interested
+send me an email"></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════ -->
+      <!-- PAGE: COMPANY INFO                      -->
+      <!-- ═══════════════════════════════════════ -->
+      <div class="page" id="page-company">
+        <div class="page-header">
+          <div class="page-cmd">root@pif:~$ cat company.cfg</div>
+          <div class="page-title">COMPANY_INFO.CFG</div>
+          <div class="page-desc">// Your company and product details. PIF uses this to give suggestions<br>// that reference your actual product, pricing, and differentiators by name.</div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span>COMPANY PROFILE</span>
+            <span class="card-header-tag">// company.cfg:profile</span>
+          </div>
+          <div class="card-body">
+            <div class="field">
+              <div class="field-label">COMPANY NAME</div>
+              <div class="prompt-wrap">
+                <span class="prompt-char">&gt;</span>
+                <input type="text" id="company-name" placeholder="// e.g. Acme Corp">
+              </div>
+            </div>
+            <div class="field">
+              <div class="field-label">PRODUCT / SERVICE NAME</div>
+              <div class="prompt-wrap">
+                <span class="prompt-char">&gt;</span>
+                <input type="text" id="product-name" placeholder="// e.g. PIF AI Sales Co-Pilot">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span>PRICING</span>
+            <span class="card-header-tag">// company.cfg:pricing</span>
+          </div>
+          <div class="card-body">
+            <div class="field">
+              <div class="field-hint">// your pricing tiers, typical deal sizes, payment terms</div>
+              <div class="prompt-wrap">
+                <span class="prompt-char">&gt;</span>
+                <textarea id="pricing" placeholder="// example:
+Starter: $297/mo — 1 seat, core features
+Pro: $597/mo — 3 seats, full playbook, analytics
+Enterprise: custom — unlimited seats, dedicated support
+Typical contract: $5k-$20k/year | Monthly or annual billing"></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span>KEY DIFFERENTIATORS</span>
+            <span class="card-header-tag">// company.cfg:diff</span>
+          </div>
+          <div class="card-body">
+            <div class="field">
+              <div class="field-hint">// what makes you different from every competitor</div>
+              <div class="prompt-wrap">
+                <span class="prompt-char">&gt;</span>
+                <textarea id="differentiators" placeholder="// example:
+- Only real-time AI coaching that works inside Google Meet natively
+- Avg customer closes 30% more deals within 60 days
+- No training required — works out of the box
+- Unlike Gong/Chorus, we coach LIVE not just post-call
+- 5-minute setup vs weeks of onboarding for competitors"></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════ -->
+      <!-- PAGE: POST-CALL SUMMARY                 -->
+      <!-- ═══════════════════════════════════════ -->
+      <div class="page" id="page-postcall">
+        <div class="page-header">
+          <div class="page-cmd">root@pif:~$ cat post_call.cfg</div>
+          <div class="page-title">POST_CALL_SUMMARY.CFG</div>
+          <div class="page-desc">// When enabled, PIF auto-generates a CRM-ready summary when you<br>// hit Stop Listening. Copy it straight into HubSpot, Salesforce, or Notion.</div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span>ENABLE SUMMARY</span>
+            <span class="card-header-tag">// post_call.cfg:enabled</span>
+          </div>
+          <div class="card-body">
+            <div class="toggle-wrap">
+              <div class="toggle" id="summary-toggle"></div>
+              <span class="toggle-label" id="summary-toggle-label">Auto-generate post-call summary</span>
+              <span class="toggle-status off" id="summary-toggle-status">[DISABLED]</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" id="summary-options-card">
+          <div class="card-header">
+            <span>INCLUDE IN SUMMARY</span>
+            <span class="card-header-tag">// post_call.cfg:fields</span>
+          </div>
+          <div class="card-body">
+            <div class="field">
+              <div class="field-hint">// select what gets included in the generated summary</div>
+              <div class="check-group" style="margin-top:8px;">
+                <label class="check-item" id="chk-deal_temp">
+                  <input type="checkbox" value="deal_temp" checked>
+                  <div class="check-box">X</div>
+                  <span class="check-label">Deal Temperature &nbsp;<span class="pill pill-hot">HOT</span> <span class="pill pill-warm">WARM</span> <span class="pill pill-cold">COLD</span></span>
+                </label>
+                <label class="check-item" id="chk-objections">
+                  <input type="checkbox" value="objections" checked>
+                  <div class="check-box">X</div>
+                  <span class="check-label">Objections raised during the call</span>
+                </label>
+                <label class="check-item" id="chk-pain_points">
+                  <input type="checkbox" value="pain_points" checked>
+                  <div class="check-box">X</div>
+                  <span class="check-label">Prospect pain points mentioned</span>
+                </label>
+                <label class="check-item" id="chk-next_steps">
+                  <input type="checkbox" value="next_steps" checked>
+                  <div class="check-box">X</div>
+                  <span class="check-label">Next steps discussed</span>
+                </label>
+                <label class="check-item" id="chk-action_items">
+                  <input type="checkbox" value="action_items" checked>
+                  <div class="check-box">X</div>
+                  <span class="check-label">Follow-up action items for the rep</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════ -->
+      <!-- PAGE: SYSTEM SETTINGS                   -->
+      <!-- ═══════════════════════════════════════ -->
+      <div class="page" id="page-settings">
+        <div class="page-header">
+          <div class="page-cmd">root@pif:~$ cat system.cfg</div>
+          <div class="page-title">SYSTEM.CFG</div>
+          <div class="page-desc">// Core system settings. Change only if you know what you're doing.</div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span>SUGGESTION ENGINE</span>
+            <span class="card-header-tag">// system.cfg:engine</span>
+          </div>
+          <div class="card-body">
+            <div class="field">
+              <div class="field-label">INTERVAL</div>
+              <div class="field-hint">// seconds between AI suggestion checks. default: 15</div>
+              <div class="inline-field">
+                <span class="prompt-char">&gt;</span>
+                <input type="number" id="suggestion-interval" min="5" max="60" value="15">
+                <span class="inline-unit">seconds</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span>API ENDPOINT</span>
+            <span class="card-header-tag">// system.cfg:api</span>
+          </div>
+          <div class="card-body">
+            <div class="field">
+              <div class="field-hint">// the Command Center URL + token are managed on the [00] connection.cfg page</div>
+              <div class="prompt-wrap">
+                <span class="prompt-char">&gt;</span>
+                <span class="toggle-label" id="api-endpoint-readout">https://command.keyplayershq.com</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /main -->
+  </div><!-- /workspace -->
+
+  <!-- Command Bar -->
+  <div class="cmdbar">
+    <span class="prompt-label">root@pif:~$ <span>./save --config all</span></span>
+    <button class="btn-save" id="saveBtn">[ SAVE CHANGES ]</button>
+    <span class="save-status" id="saveStatus"></span>
+  </div>
+
+</div><!-- /terminal -->
+
+<script src="options.js"></script>
+</body>
+</html>
