@@ -44,6 +44,14 @@ export async function onRequestError(
   if (process.env.SENTRY_DSN) {
     try {
       const Sentry = await import('@sentry/nextjs');
+      // Ensure the server SDK is initialized IN THIS PROCESS before capturing. On
+      // Vercel standalone, register()'s init doesn't reliably reach individual route
+      // function processes (getClient() stays undefined → captures silently no-op).
+      // Lazily load the server config here (runtime-safe: never in edge). Verified:
+      // this is what flips getClient() truthy + makes events actually flush.
+      if (!Sentry.getClient() && process.env.NEXT_RUNTIME !== 'edge') {
+        await import('./sentry.server.config');
+      }
       // Next's onRequestError request/context types are slightly looser than
       // Sentry's RequestInfo/ErrorContext; the runtime shapes are compatible, so
       // we forward via the typed signature with a narrow cast.
