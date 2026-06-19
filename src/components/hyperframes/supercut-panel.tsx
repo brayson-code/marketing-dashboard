@@ -26,8 +26,10 @@ interface SupercutSegment {
 // Pinned to the build that pairs with the installed @ffmpeg/ffmpeg@0.12.x.
 const CORE = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd';
 
-export function SupercutPanel() {
-  const [enabled, setEnabled] = useState<boolean | null>(null);
+// Supercut MODE — rendered inside the Movie Clips panel when its "Supercut" tab is
+// active. The parent ClipFinder owns the panel chrome + the supercut_enabled gate, so
+// this is just the content (no panel wrapper, no flag fetch).
+export function SupercutMode() {
   const [sentence, setSentence] = useState('');
   const [planning, setPlanning] = useState(false);
   const [segments, setSegments] = useState<SupercutSegment[]>([]);
@@ -48,14 +50,6 @@ export function SupercutPanel() {
     return () => {
       if (resultUrlRef.current) URL.revokeObjectURL(resultUrlRef.current);
     };
-  }, []);
-
-  // Gate on the supercut_enabled flag (same pattern as ClipFinder).
-  useEffect(() => {
-    fetch('/api/auth/me')
-      .then((r) => r.json())
-      .then((d) => setEnabled(Boolean(d?.supercut_enabled)))
-      .catch(() => setEnabled(false));
   }, []);
 
   // Swap in a fresh result URL, revoking any prior one first.
@@ -212,18 +206,11 @@ export function SupercutPanel() {
     }
   }, [resultBlob, saving]);
 
-  if (enabled === false) return null; // feature off — render nothing
-
   const busy = planning || building;
 
   return (
-    <div className="panel">
-      <div className="panel-header flex items-center gap-2">
-        <Scissors size={15} className="text-primary" />
-        <h3 className="section-title">Supercut</h3>
-        <span className="text-[11px] text-muted ml-1">type a sentence → stitch it from movie quotes</span>
-      </div>
-      <div className="panel-body space-y-3">
+    <div className="space-y-3">
+      <p className="text-[11px] text-muted">Type a sentence → we find a movie/TV clip for each run of words and stitch them into one video.</p>
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -334,7 +321,6 @@ export function SupercutPanel() {
             )}
           </div>
         )}
-      </div>
     </div>
   );
 }

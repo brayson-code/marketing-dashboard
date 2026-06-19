@@ -1,8 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Search, Loader2, Plus, Check, Film, Volume2 } from 'lucide-react';
+import { Search, Loader2, Plus, Check, Film, Volume2, Scissors } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
+import { SupercutMode } from './supercut-panel';
 
 // Movie-clip finder: type a phrase → see real movie/TV clips → PLAY them inline
 // (streamed straight from PlayPhrase's open S3, no download) → "Add" to import the
@@ -19,6 +20,8 @@ interface MovieClip {
 
 export function ClipFinder({ onImported }: { onImported?: () => void }) {
   const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [supercutEnabled, setSupercutEnabled] = useState(false);
+  const [mode, setMode] = useState<'clips' | 'supercut'>('clips');
   const [phrase, setPhrase] = useState('');
   const [count, setCount] = useState(8);
   const [clips, setClips] = useState<MovieClip[]>([]);
@@ -31,7 +34,10 @@ export function ClipFinder({ onImported }: { onImported?: () => void }) {
   useEffect(() => {
     fetch('/api/auth/me')
       .then((r) => r.json())
-      .then((d) => setEnabled(Boolean(d?.movie_clips_enabled)))
+      .then((d) => {
+        setEnabled(Boolean(d?.movie_clips_enabled));
+        setSupercutEnabled(Boolean(d?.supercut_enabled));
+      })
       .catch(() => setEnabled(false));
   }, []);
 
@@ -88,9 +94,34 @@ export function ClipFinder({ onImported }: { onImported?: () => void }) {
       <div className="panel-header flex items-center gap-2">
         <Film size={15} className="text-primary" />
         <h3 className="section-title">Movie clips</h3>
-        <span className="text-[11px] text-muted ml-1">search a quote → preview → add as b-roll</span>
+        {supercutEnabled ? (
+          // Clips ↔ Supercut tab toggle (only when supercut is enabled). Supercut is a
+          // MODE here, not a separate panel.
+          <div className="ml-auto inline-flex rounded-md border border-default p-0.5 text-[12px]">
+            <button
+              type="button"
+              onClick={() => setMode('clips')}
+              className={`px-2.5 py-1 rounded inline-flex items-center gap-1 ${mode === 'clips' ? 'bg-primary text-white' : 'text-muted'}`}
+            >
+              <Search size={12} /> Clips
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('supercut')}
+              className={`px-2.5 py-1 rounded inline-flex items-center gap-1 ${mode === 'supercut' ? 'bg-primary text-white' : 'text-muted'}`}
+            >
+              <Scissors size={12} /> Supercut
+            </button>
+          </div>
+        ) : (
+          <span className="text-[11px] text-muted ml-1">search a quote → preview → add as b-roll</span>
+        )}
       </div>
       <div className="panel-body space-y-3">
+        {mode === 'supercut' ? (
+          <SupercutMode />
+        ) : (
+          <>
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -147,6 +178,8 @@ export function ClipFinder({ onImported }: { onImported?: () => void }) {
                 />
               ))}
             </div>
+          </>
+        )}
           </>
         )}
       </div>
