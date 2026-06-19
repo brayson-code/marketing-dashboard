@@ -83,6 +83,15 @@ export interface CaptionStyle {
 /** Accent used by caption highlight + infographics when no accent_color is set. */
 export const DEFAULT_ACCENT = '#FACC15';
 
+/** How a scene's background media was AI-generated — lets us re-roll it in place.
+ *  Optional + default-absent: a scene without it renders/serializes exactly as today. */
+export interface SceneGeneration {
+  prompt: string;        // the text prompt handed to the provider
+  model: string;         // media-provider id from the registry, e.g. 'nanobanana' | 'veo'
+  refs?: string[];       // optional reference asset URLs (e.g. an upstream image for img→video)
+  generatedAt?: number;  // epoch ms, stamped when a regenerate completes (provenance; optional)
+}
+
 export interface CompositionScene {
   id: string;
   label?: string;     // "Hook" / "CTA" / undefined for numbered scenes
@@ -97,6 +106,7 @@ export interface CompositionScene {
   punches?: number[];              // punch-in beats (s after scene start): bg scale bump ~6% + fast settle
   overlays?: BrollOverlay[];       // b-roll splices over this scene
   infographics?: Infographic[];    // stat / list / bar components
+  generation?: SceneGeneration;    // present only when the scene's bg media was AI-generated
 }
 
 export interface Composition {
@@ -245,6 +255,22 @@ function normalizeInfographic(v: unknown): Infographic | null {
   return null;
 }
 
+function normalizeGeneration(v: unknown): SceneGeneration | undefined {
+  const g = v as Partial<SceneGeneration> | null;
+  if (!g || typeof g !== 'object') return undefined;
+  if (typeof g.prompt !== 'string' || !g.prompt.trim()) return undefined;
+  if (typeof g.model !== 'string' || !g.model.trim()) return undefined;
+  const refs = Array.isArray(g.refs)
+    ? g.refs.filter((r): r is string => typeof r === 'string' && !!r.trim()).map((r) => r.trim())
+    : undefined;
+  return {
+    prompt: g.prompt.trim(),
+    model: g.model.trim(),
+    ...(refs && refs.length ? { refs } : {}),
+    ...(isFiniteNum(g.generatedAt) && g.generatedAt > 0 ? { generatedAt: g.generatedAt } : {}),
+  };
+}
+
 function normalizeCaptionStyle(v: unknown): CaptionStyle | undefined {
   const c = v as Partial<CaptionStyle> | null;
   if (!c || typeof c !== 'object') return undefined;
@@ -276,6 +302,10 @@ export function normalizeComposition(comp: Composition): Composition {
         const g = (Array.isArray(out.infographics) ? out.infographics : []).map(normalizeInfographic).filter((x): x is Infographic => !!x);
         if (g.length) out.infographics = g; else delete out.infographics;
       }
+      if (out.generation !== undefined) {
+        const gen = normalizeGeneration(out.generation);
+        if (gen) out.generation = gen; else delete out.generation;
+      }
       return out;
     }),
   };
@@ -294,6 +324,7 @@ Scene: { id, label?, startMs, endMs (ms on the reel timeline), background:{ type
   overlays?: [{ kind:"broll", src: asset URL (video preferred; image ok), start, duration (seconds after scene start; clamped to scene),
     fit:"cover", frame:"full"(full-bleed cutaway over the background; text+captions stay on top) | "inset"(rounded PiP ~62% width),
     anchor?: "top"(default)|"bottom" — inset placement }],
+  generation?: { prompt, model: "nanobanana"(image)|"veo"(video), refs?: [asset URL] } — provenance of an AI-generated background; lets the editor re-roll the media in place,
   infographics?: [{ kind:"stat"|"list"|"bar", start, duration? (seconds after scene start; default = rest of scene),
     xPct, yPct (center, 0-100), widthPct (box width % of frame), data }]
     stat data: { value:"83%", label:"short context" } — big accent number pop

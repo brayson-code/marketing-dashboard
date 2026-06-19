@@ -6,13 +6,13 @@ import { useParams } from 'next/navigation';
 import {
   ArrowLeft, Save, Loader2, Plus, Trash2, Type, ChevronUp, ChevronDown,
   AlignLeft, AlignCenter, AlignRight, ExternalLink, Film, Clapperboard, Play, Download, Upload, ImageIcon, Video,
-  X, Hash, ListChecks, BarChart3, Send,
+  X, Hash, ListChecks, BarChart3, Send, Sparkles,
 } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 import { parseStoryboard } from '@/lib/hyperframes-storyboard';
 import {
   compositionFromStoryboard, isComposition, newScene, newTextLayer, formatMs, DEFAULT_ACCENT, SCENE_TRANSITIONS,
-  type BrollOverlay, type CaptionStyle, type Composition, type CompositionScene, type Infographic, type SceneTransition, type TextLayer,
+  type BrollOverlay, type CaptionStyle, type Composition, type CompositionScene, type Infographic, type SceneGeneration, type SceneTransition, type TextLayer,
 } from '@/lib/hyperframes-composition';
 import { Timeline, type TimelineSelection } from '@/components/hyperframes/timeline';
 import type { DraftRow } from '@/lib/drafts';
@@ -67,6 +67,8 @@ export default function HyperframesEditorPage() {
   const [needsSeed, setNeedsSeed] = useState(false);
   const [autobuilding, setAutobuilding] = useState(false);
   const [viewMode, setViewMode] = useState<'simple' | 'timeline'>('simple');
+  const [exportOpen, setExportOpen] = useState(false); // NLE export dropdown
+  const [regenIdx, setRegenIdx] = useState<number | null>(null); // scene index currently regenerating its AI background
 
   // Publish panel state
   const [showPublish, setShowPublish] = useState(false);
@@ -137,6 +139,64 @@ export default function HyperframesEditorPage() {
     setComp((c) => c && { ...c, scenes: c.scenes.map((s, i) => (i === idx ? { ...s, ...patch } : s)) });
     setDirty(true);
   }, []);
+
+  // Regenerate-in-place: re-run a scene's AI generation (its `generation`
+  // provenance) via the SAME provider registry + generation_jobs mechanism the
+  // canvas uses (/api/generation/regenerate-scene → poll /api/generation/jobs/:id).
+  // On completion it swaps the scene's background to the new asset and stamps the
+  // scene's generation (generatedAt). The user clicks Save to persist (patchScene
+  // marks dirty) — identical persistence path to every other scene edit.
+  const regenerateScene = useCallback(async (idx: number, gen: SceneGeneration) => {
+    if (regenIdx !== null) return; // one regen at a time
+    setRegenIdx(idx);
+
+    const apply = (url: string, kind: 'image' | 'video') => {
+      patchScene(idx, {
+        background: { type: kind, value: url },
+        generation: { ...gen, generatedAt: Date.now() },
+      });
+      toast.success('Scene media regenerated — Save to persist.');
+    };
+
+    try {
+      const res = await fetch('/api/generation/regenerate-scene', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ generation: { prompt: gen.prompt, model: gen.model, refs: gen.refs } }),
+      });
+      const j = (await res.json()) as { jobId?: number; status?: string; outputUrl?: string; kind?: 'image' | 'video'; error?: string };
+      if (!res.ok) { toast.error(j.error || 'Regenerate failed'); setRegenIdx(null); return; }
+
+      if (j.status === 'completed' && j.outputUrl) {
+        apply(j.outputUrl, j.kind ?? 'image');
+        setRegenIdx(null);
+        return;
+      }
+
+      // async (Veo): poll the EXISTING jobs route — identical to canvas-board.runNode,
+      // but BOUNDED so a job stuck 'processing' can't poll forever and lock the button.
+      let attempts = 0;
+      const MAX_ATTEMPTS = 90; // ~7.5 min at 5s — comfortably covers Veo video generation
+      const poll = async () => {
+        if (attempts++ >= MAX_ATTEMPTS) {
+          toast.error('Regenerate timed out — try again.');
+          setRegenIdx(null);
+          return;
+        }
+        try {
+          const r = await fetch(`/api/generation/jobs/${j.jobId}`);
+          const s = (await r.json()) as { status?: string; outputUrl?: string; error?: string };
+          if (s.status === 'completed' && s.outputUrl) { apply(s.outputUrl, j.kind ?? 'video'); setRegenIdx(null); return; }
+          if (s.status === 'failed') { toast.error(s.error || 'Regenerate failed'); setRegenIdx(null); return; }
+          setTimeout(poll, 5000);
+        } catch { setTimeout(poll, 6000); }
+      };
+      setTimeout(poll, 4000);
+    } catch (e) {
+      toast.error((e as Error).message);
+      setRegenIdx(null);
+    }
+  }, [regenIdx, patchScene]);
   const patchLayer = useCallback((sIdx: number, layerId: string, patch: Partial<TextLayer>) => {
     setComp((c) => c && {
       ...c,
@@ -444,6 +504,42 @@ export default function HyperframesEditorPage() {
               <Send size={13} /> Publish
             </button>
           )}
+          {/* Export to a real NLE — FCPXML (Premiere & DaVinci & Final Cut) or EDL.
+              The links hit /api/hyperframes/:id/export, which serves the persisted
+              composition with Content-Disposition: attachment (so it downloads). */}
+          <div className="relative">
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setExportOpen((v) => !v)}
+              title="Export for Premiere Pro / DaVinci Resolve / Final Cut"
+            >
+              <Download size={13} /> Export to NLE
+            </button>
+            {exportOpen && (
+              <>
+                <div className="fixed inset-0 z-20" onClick={() => setExportOpen(false)} />
+                <div className="absolute right-0 top-full mt-1 z-30 rounded-md border border-border bg-card shadow-lg p-1 text-xs w-60">
+                  <a
+                    className="block px-2 py-1.5 rounded hover:bg-[color-mix(in_srgb,var(--primary)_10%,transparent)]"
+                    href={`/api/hyperframes/${id}/export?format=fcpxml`}
+                    onClick={() => setExportOpen(false)}
+                  >
+                    Final Cut XML (.fcpxml) <span className="text-muted-foreground">— Premiere &amp; DaVinci</span>
+                  </a>
+                  <a
+                    className="block px-2 py-1.5 rounded hover:bg-[color-mix(in_srgb,var(--primary)_10%,transparent)]"
+                    href={`/api/hyperframes/${id}/export?format=edl`}
+                    onClick={() => setExportOpen(false)}
+                  >
+                    EDL cut list (.edl)
+                  </a>
+                  <p className="px-2 py-1 text-[9px] text-muted-foreground border-t border-border/60 mt-1">
+                    Tip: Save first to export your latest edits.
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
           <button
             className="btn btn-secondary btn-sm"
             onClick={renderNow}
@@ -734,6 +830,8 @@ export default function HyperframesEditorPage() {
                   onSelectLayer={(id) => { setSelectedLayerId(id); setSelectedIg(null); }}
                   onAddIg={addIg}
                   onSelectIg={(k) => { setSelectedIg(k); setSelectedLayerId(null); }}
+                  regenerating={regenIdx === sceneIdx}
+                  onRegenerate={(gen) => regenerateScene(sceneIdx, gen)}
                 />
               )}
             </>
@@ -802,7 +900,7 @@ function SceneThumb({ scene, index, active, onSelect, onUp, onDown, onDelete, ca
   );
 }
 
-function SceneProps({ scene, captionStyle, onChange, onCaptionStyle, onAddText, onSelectLayer, onAddIg, onSelectIg }: {
+function SceneProps({ scene, captionStyle, onChange, onCaptionStyle, onAddText, onSelectLayer, onAddIg, onSelectIg, regenerating, onRegenerate }: {
   scene: CompositionScene;
   captionStyle?: CaptionStyle;
   onChange: (p: Partial<CompositionScene>) => void;
@@ -811,6 +909,8 @@ function SceneProps({ scene, captionStyle, onChange, onCaptionStyle, onAddText, 
   onSelectLayer: (id: string) => void;
   onAddIg: (kind: Infographic['kind']) => void;
   onSelectIg: (igIdx: number) => void;
+  regenerating: boolean;
+  onRegenerate: (gen: SceneGeneration) => void;
 }) {
   const bg = scene.background;
   const overlays = scene.overlays ?? [];
@@ -844,6 +944,54 @@ function SceneProps({ scene, captionStyle, onChange, onCaptionStyle, onAddText, 
         )}
         <AssetPicker onPick={(url, kind) => onChange({ background: { type: kind, value: url } })} />
       </Field>
+
+      {/* AI generation — re-roll the scene's AI-generated background IN PLACE.
+          When the scene carries `generation` provenance, the prompt/model are
+          editable and "Regenerate" re-runs it via the provider registry, swapping
+          the background to the new asset. Default-absent: an "Add" affordance lets
+          the user mark a background AI-generated (seeded from the scene's note/VO). */}
+      <div>
+        <SectionLabel>AI generation</SectionLabel>
+        {scene.generation ? (
+          <div className="space-y-1.5 mt-1">
+            <Field label="Prompt">
+              <textarea
+                value={scene.generation.prompt}
+                rows={2}
+                className="w-full text-xs resize-y"
+                onChange={(e) => onChange({ generation: { ...scene.generation!, prompt: e.target.value } })}
+              />
+            </Field>
+            <Field label="Model">
+              <select
+                value={scene.generation.model}
+                className="w-full text-xs px-2"
+                onChange={(e) => onChange({ generation: { ...scene.generation!, model: e.target.value } })}
+              >
+                <option value="nanobanana">Nano Banana (image)</option>
+                <option value="veo">Veo (video)</option>
+              </select>
+            </Field>
+            <button
+              className="btn btn-secondary btn-sm w-full justify-center"
+              disabled={regenerating}
+              onClick={() => onRegenerate(scene.generation!)}
+            >
+              {regenerating ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} Regenerate in place
+            </button>
+            {scene.generation.generatedAt && (
+              <p className="text-[9px] text-muted-foreground">Last generated {new Date(scene.generation.generatedAt).toLocaleString()}</p>
+            )}
+          </div>
+        ) : (
+          <button
+            className="btn btn-ghost btn-sm w-full justify-center border border-dashed border-border/60 mt-1"
+            onClick={() => onChange({ generation: { prompt: scene.note || scene.voiceover || '', model: 'nanobanana' } })}
+          >
+            <Sparkles size={11} /> Make this background AI-generated
+          </button>
+        )}
+      </div>
 
       <div className="grid grid-cols-2 gap-2">
         <Field label="Start (s)">
