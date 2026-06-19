@@ -22,6 +22,7 @@
 import { NextResponse } from 'next/server';
 import { sql, tenantId } from '@/lib/db/client';
 import { currentUserId } from '@/lib/tenant';
+import { emitSecurityEvent } from '@/lib/security-events';
 import type { WorkspaceRole } from './types';
 
 /**
@@ -63,7 +64,16 @@ const FORBIDDEN_OWNER = NextResponse.json(
  * Independent of AUTHZ_ENFORCE — this is one of the audit's named OWNER-ONLY routes.
  */
 export async function requireOwner(): Promise<NextResponse | null> {
-  return (await isTenantOwner()) ? null : FORBIDDEN_OWNER;
+  const role = await getMemberRole();
+  if (role === 'owner') return null;
+  // Fire-and-forget: do NOT await — the hard gate must stay synchronous-fast. The emit
+  // is best-effort (never throws) and tenant-scoped via emitSecurityEvent's defaults.
+  void emitSecurityEvent({
+    type: 'owner_gate_deny',
+    severity: 'warning',
+    detail: { gate: 'requireOwner', role: role ?? 'none' },
+  });
+  return FORBIDDEN_OWNER;
 }
 
 /**
@@ -74,6 +84,12 @@ export async function requireOwner(): Promise<NextResponse | null> {
 export async function requireOwnerOrMember(): Promise<NextResponse | null> {
   const role = await getMemberRole();
   if (role === 'owner' || role === 'member') return null;
+  // Fire-and-forget (see requireOwner) — VA/non-member denial on an owner-or-member route.
+  void emitSecurityEvent({
+    type: 'owner_gate_deny',
+    severity: 'warning',
+    detail: { gate: 'requireOwnerOrMember', role: role ?? 'none' },
+  });
   return NextResponse.json(
     { error: 'Forbidden', reason: 'autonomy_level_requires_owner_or_member' },
     { status: 403 },

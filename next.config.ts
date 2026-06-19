@@ -1,5 +1,6 @@
 import path from 'path';
 import type { NextConfig } from 'next';
+import { withSentryConfig } from '@sentry/nextjs';
 
 const nextConfig: NextConfig = {
   output: 'standalone',
@@ -50,4 +51,25 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// DSN-GATED Sentry wrapper. Only when SENTRY_DSN is set do we run the Sentry
+// build plugin (which injects the client config, sets up the tunnel, and — only
+// if SENTRY_AUTH_TOKEN is also present — uploads source maps). With no DSN the
+// export is the plain nextConfig untouched, so a build with absent env behaves
+// exactly as before and never invokes the Sentry CLI. All existing nextConfig
+// fields (output:'standalone', serverExternalPackages, outputFileTracingRoot/
+// Includes, headers()) are preserved verbatim by passing nextConfig through.
+export default process.env.SENTRY_DSN
+  ? withSentryConfig(nextConfig, {
+      // Sentry org/project for source-map upload — both optional; upload is
+      // skipped entirely when SENTRY_AUTH_TOKEN is unset.
+      org: process.env.SENTRY_ORG,
+      project: process.env.SENTRY_PROJECT,
+      authToken: process.env.SENTRY_AUTH_TOKEN,
+      // Quiet the plugin in normal builds; let it speak in CI.
+      silent: !process.env.CI,
+      // Route Sentry's browser requests through our own origin to dodge ad-blockers.
+      tunnelRoute: '/monitoring-tunnel',
+      // Don't fail the build if source-map upload errors (e.g. token missing/expired).
+      sourcemaps: { disable: !process.env.SENTRY_AUTH_TOKEN },
+    })
+  : nextConfig;

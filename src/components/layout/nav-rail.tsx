@@ -8,7 +8,7 @@ import {
   Search, BarChart3, LineChart, FileText, Rocket, Clock, List, Settings,
   FolderOpen, MessagesSquare, Activity, Target, Inbox, Network, DollarSign, Bug,
   Waves, TrendingUp, Dna, Timer, Link2, Sparkles, ChevronDown, ChevronRight,
-  FlaskConical, BookOpen, ArrowUpRight, Boxes,
+  FlaskConical, BookOpen, ArrowUpRight, Boxes, ShieldCheck,
 } from 'lucide-react';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { useDashboard } from '@/store';
@@ -95,6 +95,7 @@ const OPS: NavGroup = {
     { href: '/learning', label: 'Learning', icon: TrendingUp },
     { href: '/genes', label: 'Genes', icon: Dna },
     { href: '/issues', label: 'Issues', icon: Bug },
+    { href: '/security', label: 'Security', icon: ShieldCheck },
     { href: '/cron', label: 'Cron', icon: Clock },
     { href: '/activity', label: 'Activity', icon: List },
   ],
@@ -112,13 +113,15 @@ export function NavRail() {
   const pathname = usePathname();
   const realOnly = useDashboard(s => s.realOnly);
   const [opsOpen, setOpsOpen] = useState(false);
-  // KeyWatch / Issues is HQ-only. Hide it from client workspaces (the API enforces
-  // it server-side too). Default false so it's hidden until proven HQ.
+  // KeyWatch / Issues and the Security Console are HQ-only (both read across tenants
+  // and can act on the platform). Hide them from client workspaces — the APIs enforce
+  // it server-side too. Default false so they're hidden until proven HQ.
+  const HQ_ONLY = new Set(['/issues', '/security']);
   const [isHq, setIsHq] = useState(false);
   useEffect(() => {
     fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)).then((j) => setIsHq(!!j?.is_hq)).catch(() => {});
   }, []);
-  const opsItems = OPS.items.filter((i) => i.href !== '/issues' || isHq);
+  const opsItems = OPS.items.filter((i) => !HQ_ONLY.has(i.href) || isHq);
 
   const { data: counts } = useSmartPoll<NavCounts>(
     () => fetch(`/api/counts${realOnly ? '?real=true' : ''}`).then(r => r.json()),

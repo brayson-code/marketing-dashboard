@@ -19,8 +19,30 @@
 
 import { sql, jsonb, tenantId } from '@/lib/db/client';
 import { currentUserId } from '@/lib/tenant';
+import { emitSecurityEvent } from '@/lib/security-events';
 import { encryptSecret, decryptSecret, upsertIntegration, clearIntegration } from '@/lib/integrations-store';
 import { disconnect } from '@/lib/nango';
+
+/**
+ * Emit the two security-stream events that accompany every owner step-up request:
+ *  - secret_step_up (info): marks the VA/member step-up ATTEMPT (high-volume, no alert).
+ *  - pending_approval_created (warning): the new pending row the owner must resolve.
+ * Best-effort — emitSecurityEvent never throws, so it cannot affect the INSERT result.
+ */
+function emitStepUp(action: PendingAction, provider: string): void {
+  void emitSecurityEvent({
+    type: 'secret_step_up',
+    severity: 'info',
+    resourceRef: provider,
+    detail: { action },
+  });
+  void emitSecurityEvent({
+    type: 'pending_approval_created',
+    severity: 'warning',
+    resourceRef: provider,
+    detail: { action },
+  });
+}
 
 export type PendingAction = 'rotate_secret' | 'disconnect' | 'clear';
 
@@ -73,6 +95,7 @@ export async function createRotateSecretApproval(input: {
     )
     RETURNING id
   `) as unknown as Array<{ id: string }>;
+  emitStepUp('rotate_secret', input.provider);
   return rows[0].id;
 }
 
@@ -89,6 +112,7 @@ export async function createDisconnectApproval(provider: string): Promise<string
     )
     RETURNING id
   `) as unknown as Array<{ id: string }>;
+  emitStepUp('disconnect', provider);
   return rows[0].id;
 }
 
@@ -106,6 +130,7 @@ export async function createClearApproval(provider: string): Promise<string> {
     )
     RETURNING id
   `) as unknown as Array<{ id: string }>;
+  emitStepUp('clear', provider);
   return rows[0].id;
 }
 

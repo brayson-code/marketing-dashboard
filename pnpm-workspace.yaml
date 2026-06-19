@@ -1,4 +1,8 @@
 allowBuilds:
+  # @sentry/cli's postinstall only downloads its CLI binary, used solely for
+  # source-map upload at build time (gated on SENTRY_AUTH_TOKEN). Not needed for
+  # a no-DSN build; left false so install never blocks on it.
+  '@sentry/cli': false
   better-sqlite3: set this to true or false
   esbuild: set this to true or false
   sharp: set this to true or false

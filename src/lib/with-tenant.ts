@@ -17,7 +17,8 @@
 import { headers } from 'next/headers';
 import { createClient } from './supabase/server';
 import { sql } from './db/client';
-import { DEFAULT_TENANT_ID, NO_TENANT_ID, type TenantContext } from './tenant';
+import { DEFAULT_TENANT_ID, NO_TENANT_ID, enterTenant, type TenantContext } from './tenant';
+import { primeSubject } from './authz';
 
 // Re-exported so call sites import both from one place: enterTenant(await resolveTenant()).
 export { enterTenant } from './tenant';
@@ -64,5 +65,37 @@ export async function resolveTenant(): Promise<TenantContext> {
   } catch {
     // Any failure → fail closed, never HQ.
     return { tenantId: NO_TENANT_ID, userId: null };
+  }
+}
+
+/**
+ * Enter the tenant context AND eagerly prime the per-request ABAC subject — the core
+ * Phase-3 wiring. Use at the top of a handler that wants the synchronous api-auth.ts
+ * teeth, exactly like enterTenant but priming as well:
+ *
+ *     await enterTenantPrimed(await resolveTenant());
+ *
+ * WHY this gives the broad layer teeth without touching 56 routes:
+ *   primeSubject() runs getSubject() once, which memoizes the resolved subject on the
+ *   per-request ALS store object (subject.ts WeakMap). Afterwards peekSubject() — the
+ *   SYNCHRONOUS read api-auth.ts already calls — returns a populated subject instead of
+ *   null, so the coarse role gate can actually evaluate under AUTHZ_ENFORCE shadow/on.
+ *   Without priming, peekSubject() is null and api-auth.ts fails OPEN (non-breaking).
+ *
+ * COST: exactly ONE indexed, tenant-scoped workspace_members read per request — the same
+ * lookup getSubject()/the kill-switch/the hard owner gates would do anyway, now shared via
+ * the request memo (so it is not an EXTRA query, it just moves earlier and is reused).
+ *
+ * NON-BREAKING: priming only POPULATES the cache; it does NOT flip AUTHZ_ENFORCE (still
+ * default-off) and never changes resolveTenant()/enterTenant() semantics. The prime is
+ * best-effort — a failure is swallowed so a membership-read hiccup can never break the
+ * request (getSubject() already fails closed to least-privilege internally).
+ */
+export async function enterTenantPrimed(ctx: TenantContext): Promise<void> {
+  enterTenant(ctx);
+  try {
+    await primeSubject();
+  } catch {
+    // Best-effort prime — never block the handler on the subject load.
   }
 }

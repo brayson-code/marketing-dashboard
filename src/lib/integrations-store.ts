@@ -1,5 +1,6 @@
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
 import { sql, jsonb, tenantId } from './db/client';
+import { emitSecurityEvent } from './security-events';
 
 /**
  * Per-client integration credentials. Secrets are encrypted at rest with
@@ -228,7 +229,17 @@ export async function getDecryptedSecret(provider: string): Promise<Record<strin
   const secret = rows[0]?.secret_encrypted;
   if (!secret) return null;
   try {
-    return JSON.parse(decrypt(secret));
+    const parsed = JSON.parse(decrypt(secret)) as Record<string, string>;
+    // Audit the credential ACCESS, not the credential. resourceRef is only the provider
+    // key (e.g. 'twilio') — NEVER the decrypted material. High-volume → severity 'info'
+    // so it streams to the security console without paging. Fire-and-forget; emit never
+    // throws and self-scopes to tenantId(). (Skip if decrypt yielded nothing usable.)
+    void emitSecurityEvent({
+      type: 'integration_secret_access',
+      severity: 'info',
+      resourceRef: provider,
+    });
+    return parsed;
   } catch {
     return null;
   }

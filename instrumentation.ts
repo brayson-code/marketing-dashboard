@@ -9,6 +9,10 @@
 // KeyWatch server-side capture: Next.js calls this for any error thrown in a
 // Server Component, route handler, or middleware. We feed it into the same
 // dedupe/alert pipeline as client errors.
+//
+// Sentry is wired in ADDITIVELY here (DSN-gated): when SENTRY_DSN is set we ALSO
+// forward the error to Sentry via captureRequestError. KeyWatch capture always
+// runs first and is unaffected; with no DSN the Sentry branch is a complete no-op.
 export async function onRequestError(
   error: unknown,
   request: { path?: string; method?: string; headers?: Record<string, string | string[] | undefined> },
@@ -32,9 +36,41 @@ export async function onRequestError(
   } catch (e) {
     console.error('[keywatch] onRequestError capture failed:', (e as Error).message);
   }
+
+  // Additive Sentry forward — only when a DSN is configured. Sentry's own
+  // captureRequestError expects the same (error, request, context) triple Next
+  // passes us, so we hand them through verbatim. Guarded so absent-DSN is a no-op
+  // and a Sentry failure never masks the KeyWatch capture above.
+  if (process.env.SENTRY_DSN) {
+    try {
+      const Sentry = await import('@sentry/nextjs');
+      // Next's onRequestError request/context types are slightly looser than
+      // Sentry's RequestInfo/ErrorContext; the runtime shapes are compatible, so
+      // we forward via the typed signature with a narrow cast.
+      const capture = Sentry.captureRequestError as
+        | ((e: unknown, r: typeof request, c: typeof context) => unknown)
+        | undefined;
+      await capture?.(error, request, context);
+    } catch (e) {
+      console.error('[sentry] captureRequestError failed:', (e as Error).message);
+    }
+  }
 }
 
 export async function register() {
+  // Sentry init — DSN-gated, runtime-split (nodejs vs edge). Loaded BEFORE the
+  // nodejs-only early-return below so the edge runtime gets its Sentry init too.
+  // With SENTRY_DSN unset, both config modules are no-ops (their Sentry.init is
+  // itself DSN-guarded), so this whole block costs nothing.
+  if (process.env.SENTRY_DSN) {
+    if (process.env.NEXT_RUNTIME === 'nodejs') {
+      await import('./sentry.server.config');
+    } else if (process.env.NEXT_RUNTIME === 'edge') {
+      await import('./sentry.edge.config');
+    }
+  }
+
+  // The KeyPlayers background schedulers only run on the nodejs runtime.
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
 
   schedule({

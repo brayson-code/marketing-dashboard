@@ -23,17 +23,25 @@ export interface HealthAlert {
   detail?: string;
   href?: string;
 }
+export type LivenessState = 'ok' | 'down';
+export type BlobLivenessState = LivenessState | 'unconfigured';
 export interface HealthPayload {
   score: number;
   status: 'healthy' | 'degraded' | 'down';
   alerts: HealthAlert[];
   trend: number[];        // 14-day daily success-rate %, oldest → newest
   activity24h: number;    // agent runs in the last 24h (0 = idle)
+  // Infra liveness probes (additive — the nav-rail consumer ignores them and
+  // keeps reading score/status/alerts). db = a trivial SELECT 1; blob = whether
+  // the Vercel Blob store is reachable ('unconfigured' when no token on this env).
+  db: LivenessState;
+  blob: BlobLivenessState;
   checkedAt: string;
 }
 
 const SAFE: HealthPayload = {
-  score: 100, status: 'healthy', alerts: [], trend: [], activity24h: 0, checkedAt: '',
+  score: 100, status: 'healthy', alerts: [], trend: [], activity24h: 0,
+  db: 'ok', blob: 'unconfigured', checkedAt: '',
 };
 
 export async function GET(req: NextRequest) {
@@ -49,11 +57,51 @@ export async function GET(req: NextRequest) {
   }
 }
 
+// NOTE: these probe helpers are intentionally NOT exported. A Next.js route
+// module may only export the HTTP-verb handlers + route config — exporting a
+// helper trips the generated route-type check. The reusable copies live in
+// src/lib/uptime.ts for the cron path.
+
+/** DB liveness — a trivial round-trip. 'down' on any error (connection, pooler,
+ *  auth). Tenant-agnostic by design: it only proves the database answers. */
+async function probeDb(): Promise<LivenessState> {
+  try {
+    await sql()`SELECT 1`;
+    return 'ok';
+  } catch {
+    return 'down';
+  }
+}
+
+/** Blob-store liveness. 'unconfigured' when no token on this env (normal in local
+ *  dev). Otherwise we HEAD a path we expect to NOT exist: a BlobNotFoundError means
+ *  the store answered (reachable → 'ok'); any other failure (network/auth) → 'down'. */
+async function probeBlob(): Promise<BlobLivenessState> {
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  if (!token) return 'unconfigured';
+  try {
+    const { head, BlobNotFoundError } = await import('@vercel/blob');
+    try {
+      await head(`__healthcheck__/does-not-exist-${Date.now()}`, { token });
+      // Unexpected success still proves reachability.
+      return 'ok';
+    } catch (err) {
+      // A "not found" is the expected, healthy answer — the store responded.
+      if (err instanceof BlobNotFoundError) return 'ok';
+      // Anything else (auth/network) means the store itself is unreachable.
+      return 'down';
+    }
+  } catch {
+    // SDK import or unexpected failure — treat as down rather than crash health.
+    return 'down';
+  }
+}
+
 async function computeHealth(): Promise<HealthPayload> {
   const s = sql();
   const tid = tenantId();
 
-  const [taskAgg, stuckRows, cronRows, trendRows] = await Promise.all([
+  const [taskAgg, stuckRows, cronRows, trendRows, dbState, blobState] = await Promise.all([
     s`SELECT count(*)::int AS total,
              count(*) FILTER (WHERE status = 'error')::int AS errors
       FROM agent_tasks
@@ -69,6 +117,11 @@ async function computeHealth(): Promise<HealthPayload> {
       FROM agent_tasks
       WHERE tenant_id = ${tid} AND started_at > now() - interval '14 days'
       GROUP BY 1`,
+    // Infra liveness — run alongside the tenant queries (the SELECT 1 here would
+    // have thrown the outer query anyway if the DB were down, but it normalizes
+    // the signal into the payload and lets us surface an explicit alert).
+    probeDb(),
+    probeBlob(),
   ]);
 
   const total = Number(taskAgg[0]?.total ?? 0);
@@ -135,6 +188,20 @@ async function computeHealth(): Promise<HealthPayload> {
     }
   } catch { /* nango not configured — ignore */ }
 
+  // 5) infra liveness — blob store unreachable while configured is a real outage
+  //    (renders can't be persisted). DB-down doesn't get an alert here because the
+  //    tenant queries above would already have thrown into the SAFE fallback.
+  if (blobState === 'down') {
+    score -= 15;
+    alerts.push({
+      id: 'blob-store',
+      severity: 'warning',
+      title: 'Blob storage unreachable',
+      detail: 'Vercel Blob is configured but not responding — video/render persistence will fail',
+      href: '/connections',
+    });
+  }
+
   score = Math.max(0, Math.min(100, score));
   const status: HealthPayload['status'] = score >= 90 ? 'healthy' : score >= 60 ? 'degraded' : 'down';
 
@@ -153,5 +220,5 @@ async function computeHealth(): Promise<HealthPayload> {
     trend.push(byDay.get(key) ?? 100);
   }
 
-  return { score, status, alerts, trend, activity24h: total, checkedAt: new Date().toISOString() };
+  return { score, status, alerts, trend, activity24h: total, db: dbState, blob: blobState, checkedAt: new Date().toISOString() };
 }

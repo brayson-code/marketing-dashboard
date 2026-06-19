@@ -16,6 +16,7 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db/client';
 import { tenantId, currentUserId } from '@/lib/tenant';
+import { emitSecurityEvent } from '@/lib/security-events';
 import { authorize } from './authorize';
 import { getSubject } from './subject';
 import { authzMode, type Action, type Resource, type ResourceType, type Env } from './types';
@@ -52,6 +53,17 @@ async function auditAuthz(
   } catch {
     // Never let an audit-write failure block (or falsely allow) the request.
   }
+
+  // DUAL-WRITE: audit_log above is the compliance trail; security_events here is the
+  // ops/alerts stream the HQ console consumes. Both shadow_deny and deny emit so denials
+  // are visible under AUTHZ_ENFORCE=shadow BEFORE any user ever sees a 403. Best-effort —
+  // emitSecurityEvent never throws, so it cannot block (or falsely allow) the request.
+  await emitSecurityEvent({
+    type: 'authz_deny',
+    severity: 'warning',
+    resourceRef: resourceType,
+    detail: { ...detail, mode: authzAction },
+  });
 }
 
 /**

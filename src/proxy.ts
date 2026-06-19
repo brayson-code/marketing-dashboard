@@ -40,6 +40,7 @@ const CRON_RUNNER_PATHS = new Set([
   '/api/cron/compact',
   '/api/cron/triage',
   '/api/cron/advance',
+  '/api/cron/uptime',
 ]);
 
 // Paths that never require an authenticated Supabase user.
@@ -52,6 +53,7 @@ function isPublicPath(pathname: string): boolean {
   if (pathname === '/api/stripe/webhook') return true; // Stripe signature enforced in-handler
   if (CRON_RUNNER_PATHS.has(pathname)) return true; // CRON_SECRET enforced in-handler
   if (pathname === '/api/errors') return true; // client error reporting (may fire pre-login)
+  if (pathname === '/api/health/live') return true; // unauthenticated uptime liveness probe — returns only booleans, no tenant data
   return false;
 }
 

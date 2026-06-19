@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { tenantId, DEFAULT_TENANT_ID, NO_TENANT_ID, hasWorkspace } from '@/lib/tenant';
 import { getSubject, ROLE_TO_RBAC } from '@/lib/authz';
 import { redeemPendingEntitlement } from '@/lib/stripe';
+import { emitSecurityEvent } from '@/lib/security-events';
 
 // Returns the current Supabase-authenticated user, with the REAL intra-workspace role
 // (owner | member | va) read from workspace_members (via getSubject()). This lets the
@@ -17,6 +18,10 @@ export async function GET() {
   } = await supabase.auth.getUser();
 
   if (!user) {
+    // Unauthenticated hit on the session endpoint. Low-signal on its own (the app polls
+    // /api/auth/me), but a burst from one source is escalated to an alert by the spike
+    // detector. Fire-and-forget; actorUserId:null marks it anon/system.
+    void emitSecurityEvent({ type: 'auth_fail', severity: 'info', actorUserId: null });
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
@@ -66,6 +71,16 @@ export async function GET() {
     realTenant &&
     !subject.isMember
   ) {
+    // A user holding a valid session whose tenant claim points at a workspace they are
+    // NO LONGER a member of — a removed member presenting a stale claim into a tenant
+    // they don't belong to. This is the canonical cross-tenant attempt → critical, so the
+    // HQ owner is paged (deduped). actorUserId defaults to currentUserId(); record only
+    // the reason (no secrets). Fire-and-forget so the 401 returns immediately.
+    void emitSecurityEvent({
+      type: 'cross_tenant_attempt',
+      severity: 'critical',
+      detail: { reason: 'membership_revoked', tenant_id: tid },
+    });
     const gone = NextResponse.json(
       { error: 'Membership revoked', code: 'membership_revoked' },
       { status: 401 },
