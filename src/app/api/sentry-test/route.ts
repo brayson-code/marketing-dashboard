@@ -9,11 +9,14 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
+  // Diagnostics: is the server SDK actually initialized at runtime?
+  const hasDsn = !!process.env.SENTRY_DSN;
+  const hasClient = !!Sentry.getClient();
   const err = new Error(
     '🔔 KeyPlayers Command Center — Sentry test error (manual verification). Safe to resolve.',
   );
   const eventId = Sentry.captureException(err);
-  // Guarantee delivery on serverless: wait up to 2s for the event to ship.
-  const flushed = await Sentry.flush(2000).catch(() => false);
-  return NextResponse.json({ ok: true, sentry_event_id: eventId ?? null, flushed });
+  // Guarantee delivery on serverless: wait up to 5s for the event to ship.
+  const flushed = await Sentry.flush(5000).catch(() => false);
+  return NextResponse.json({ ok: true, hasDsn, hasClient, sentry_event_id: eventId ?? null, flushed });
 }
