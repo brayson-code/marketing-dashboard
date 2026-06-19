@@ -176,12 +176,12 @@ export async function maybeAlert(event: SecurityEventInput & { created_at?: stri
       tasks.push(
         (async () => {
           try {
-            // Dynamic import keeps security-alerts a light leaf and avoids any chance of a
-            // load cycle through the messaging stack at module-init time.
-            const { sendIMessage } = await import('./loopmessage');
-            // Explicit recipient = the HQ owner cell. sendIMessage no-ops gracefully when
-            // LoopMessage isn't connected for the active tenant (returns {ok:false}).
-            const res = await sendIMessage(text, { recipient: phone, agent: 'security' });
+            // Dynamic import keeps security-alerts a light leaf and avoids any cycle.
+            // PLATFORM send: always uses the HQ env LoopMessage account → the operator's
+            // phone, regardless of which tenant's context the event fired in (a client-
+            // workspace event would otherwise try that client's LoopMessage and miss us).
+            const { sendPlatformAlertIMessage } = await import('./loopmessage');
+            const res = await sendPlatformAlertIMessage(text);
             if (!res.ok) console.warn(`[security-alert] iMessage not sent: ${res.error}`);
           } catch (e) {
             console.warn('[security-alert] iMessage channel failed:', (e as Error).message);

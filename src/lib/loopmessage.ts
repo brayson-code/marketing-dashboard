@@ -114,6 +114,43 @@ export async function sendIMessage(rawText: string, opts: SendIMessageOptions = 
   return { ok: true, messageId, status };
 }
 
+/**
+ * PLATFORM security-alert iMessage. Unlike sendIMessage() (tenant-scoped), this ALWAYS
+ * uses the HQ env LoopMessage account (LOOPMESSAGE_AUTH_KEY) to text the platform owner
+ * (KEYPLAYERS_OWNER_PHONE), independent of the current tenant. Security events fire in
+ * the OFFENDING tenant's request context, but the alert must reach the OPERATOR no
+ * matter which workspace it came from — so this bypasses getLoopMessageConfig()/the
+ * per-tenant recipient. Best-effort (caller swallows); no boardroom_messages write
+ * (alerts aren't a tenant's boardroom lane).
+ */
+export async function sendPlatformAlertIMessage(rawText: string): Promise<SendIMessageResult> {
+  const authKey = process.env.LOOPMESSAGE_AUTH_KEY?.trim();
+  const recipient = process.env.KEYPLAYERS_OWNER_PHONE?.trim();
+  if (!authKey) return { ok: false, error: 'platform LoopMessage not configured (LOOPMESSAGE_AUTH_KEY)' };
+  if (!recipient) return { ok: false, error: 'no platform owner phone (KEYPLAYERS_OWNER_PHONE)' };
+
+  const body: Record<string, unknown> = { contact: recipient, text: mdToPlainText(rawText) };
+  const senderName = process.env.LOOPMESSAGE_SENDER_NAME?.trim();
+  if (senderName) body.sender_name = senderName;
+
+  try {
+    const res = await fetch(SEND_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: authKey },
+      body: JSON.stringify(body),
+    });
+    const respText = await res.text();
+    let parsed: Record<string, unknown> = {};
+    try { parsed = JSON.parse(respText); } catch { /* keep empty */ }
+    if (!res.ok) {
+      return { ok: false, error: (parsed.message as string) || respText.slice(0, 200) || `HTTP ${res.status}`, status: res.status };
+    }
+    return { ok: true, messageId: (parsed.message_id as string) || (parsed.id as string) || `loop-${Date.now()}`, status: parsed.status as string | undefined };
+  } catch (err) {
+    return { ok: false, error: `network: ${(err as Error).message}` };
+  }
+}
+
 // ─── Per-tenant connection + contact messaging ────────────────────────────────
 // The above sendIMessage() is the owner↔agent Boardroom lane (env-keyed, HQ).
 // The below is the CONTACT-messaging lane used by the provider router
