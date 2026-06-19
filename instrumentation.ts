@@ -63,10 +63,14 @@ export async function register() {
   // With SENTRY_DSN unset, both config modules are no-ops (their Sentry.init is
   // itself DSN-guarded), so this whole block costs nothing.
   if (process.env.SENTRY_DSN) {
-    if (process.env.NEXT_RUNTIME === 'nodejs') {
-      await import('./sentry.server.config');
-    } else if (process.env.NEXT_RUNTIME === 'edge') {
+    if (process.env.NEXT_RUNTIME === 'edge') {
       await import('./sentry.edge.config');
+    } else {
+      // nodejs runtime — OR NEXT_RUNTIME unset, which Vercel's Node functions can be
+      // at register() time. Gating strictly on === 'nodejs' left the server SDK
+      // uninitialized (getClient() === undefined) whenever the var was absent, so
+      // captured events minted an id but never shipped. Default to the server init.
+      await import('./sentry.server.config');
     }
   }
 
