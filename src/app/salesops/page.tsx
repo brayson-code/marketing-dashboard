@@ -5,7 +5,8 @@ import Link from 'next/link';
 import {
   PhoneCall, Download, Plug, Settings2, History, Copy, Check, Trash2,
   KeyRound, ExternalLink, AlertCircle, Sparkles, Wand2, ArrowLeft, Plus, X,
-  BookOpen, CheckCircle2, PenLine,
+  BookOpen, CheckCircle2, PenLine, FlaskConical, Instagram, Youtube, FileText,
+  Loader2, Quote, ArrowRight, RefreshCw, Clock,
 } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 
@@ -107,6 +108,58 @@ interface PlaybookListItem {
   created_at: string;
 }
 
+// ── Reanalyze (Playbook Phase 2) types — mirror src/lib/salesops/{sources,reanalyze}.ts ──
+// Declared locally (the page is a client component; don't import server-only modules).
+type SourceKind = 'won_call' | 'instagram' | 'youtube' | 'manual';
+type SourceStatus = 'pending' | 'extracted' | 'error';
+
+// A row of salesops_playbook_sources as GET /sources returns it.
+interface SourceRecord {
+  id: string;
+  kind: SourceKind;
+  label: string | null;
+  ref: string | null;
+  niche: string | null;
+  status: SourceStatus;
+  content: string | null;
+  error: string | null;
+  created_at: string;
+}
+
+type ChangeOp = 'replace' | 'append';
+type ChangeConfidence = 'high' | 'medium' | 'low';
+
+interface ChangeCitation {
+  source_id: string;
+  source_label: string;
+  quote: string;
+}
+
+// One proposed change to a single PlaybookContent field. proposed_value's runtime type
+// matches that field's kind (string | string[] | ObjectionScript[]).
+interface ChangeItem {
+  field: keyof PlaybookContent;
+  op: ChangeOp;
+  current_excerpt: string;
+  proposed_value: string | string[] | ObjectionScript[];
+  rationale: string;
+  confidence: ChangeConfidence;
+  pattern_support: string;
+  citations: ChangeCitation[];
+}
+
+// A salesops_playbook_changesets row as reanalyze POST / changeset GET return it.
+interface ChangeSetRecord {
+  id: string;
+  status: 'pending' | 'applied' | 'discarded';
+  summary: string;
+  changes: ChangeItem[];
+  sources_used: string[];
+  base_playbook_id: string | null;
+  applied_playbook_id: string | null;
+  created_at: string;
+}
+
 // chrome.runtime.sendMessage is only present inside an extension page; on a normal web
 // page Chrome injects a (very small) chrome.runtime when the page is externally_connectable
 // to an installed extension. We feature-detect it and fall back to copy/paste otherwise.
@@ -126,6 +179,17 @@ declare global {
 }
 
 export default function SalesOpsPage() {
+  // The Reanalyze surface is gated behind PLAYBOOK_REANALYZE (a SalesOps sub-flag).
+  // The page itself is already SALESOPS_ENABLED-gated at the nav level; here we just
+  // read the sub-flag off /api/auth/me to hide/show the surface. The routes enforce it.
+  const [reanalyzeEnabled, setReanalyzeEnabled] = useState(false);
+  useEffect(() => {
+    fetch('/api/auth/me', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => setReanalyzeEnabled(!!j?.playbook_reanalyze_enabled))
+      .catch(() => setReanalyzeEnabled(false));
+  }, []);
+
   return (
     <div className="space-y-8 animate-in">
       <div className="space-y-1">
@@ -141,6 +205,7 @@ export default function SalesOpsPage() {
       </div>
 
       <PlaybookStudioSection />
+      {reanalyzeEnabled && <ReanalyzeSection />}
       <InstallSection />
       <ConnectSection />
       <CallSettingsSection />
@@ -748,6 +813,707 @@ function suggestPlaybookName(answers: PlaybookAnswers, methodology: string): str
   const base = methodology?.trim() || answers.product_name?.trim() || 'Playbook';
   const stamp = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   return `${base} · ${stamp}`.slice(0, 120);
+}
+
+// ── Reanalyze (Playbook Phase 2) ─────────────────────────────────────────────────
+// The MANUAL "re-derive the active playbook from evidence" surface. Three pieces on one
+// section, gated behind PLAYBOOK_REANALYZE:
+//   • Sources manager — add own won calls (pick from recent), creator IG handles/URLs, or
+//                       pasted YouTube transcripts / freeform notes; list + remove; show status.
+//   • Reanalyze button — POST /reanalyze → stages a pending change-set (disabled with no active
+//                        playbook or no extracted sources). Nothing is applied automatically.
+//   • Change-set review — per proposed change: field, current→proposed, rationale, confidence,
+//                         pattern_support, citations; per-change accept/reject (default accept
+//                         high/medium, reject low); a name; "Apply selected" → new active version;
+//                         "Discard".
+// EVERYTHING is non-destructive and manual: a change-set is only created on an explicit click,
+// and applying it goes through the same non-destructive new-version path as playbook/apply.
+
+const SOURCE_KIND_META: Record<SourceKind, { label: string; icon: typeof Instagram }> = {
+  won_call: { label: 'Won call', icon: PhoneCall },
+  instagram: { label: 'Instagram', icon: Instagram },
+  youtube: { label: 'YouTube', icon: Youtube },
+  manual: { label: 'Notes', icon: FileText },
+};
+
+// Human label for a PlaybookContent field (what the change targets).
+const FIELD_LABELS: Record<keyof PlaybookContent, string> = {
+  persona: 'Buyer persona',
+  company_name: 'Company name',
+  product_name: 'Product / service',
+  pricing: 'Pricing',
+  differentiators: 'Differentiators',
+  objection_keywords: 'Objection keywords',
+  opener: 'Opener',
+  discovery_questions: 'Discovery questions',
+  value_props: 'Value props',
+  objection_handling: 'Objection handling',
+  closing: 'Closing',
+  playbook_narrative: 'Playbook narrative',
+};
+
+function ReanalyzeSection() {
+  // Sources
+  const [sources, setSources] = useState<SourceRecord[]>([]);
+  const [sourcesLoading, setSourcesLoading] = useState(true);
+
+  // Whether there's an active playbook (drives whether Reanalyze can run).
+  const [hasActivePlaybook, setHasActivePlaybook] = useState(false);
+
+  // Change-set lifecycle
+  const [changeset, setChangeset] = useState<ChangeSetRecord | null>(null);
+  const [reanalyzing, setReanalyzing] = useState(false);
+
+  const loadSources = useCallback(async () => {
+    setSourcesLoading(true);
+    try {
+      const res = await fetch('/api/salesops-admin/sources', { cache: 'no-store' });
+      if (res.ok) {
+        const json = await res.json();
+        setSources(json.sources ?? []);
+      }
+    } finally {
+      setSourcesLoading(false);
+    }
+  }, []);
+
+  // Is there an active playbook? (Reuse the playbook list endpoint.)
+  const loadActive = useCallback(async () => {
+    try {
+      const res = await fetch('/api/salesops-admin/playbook', { cache: 'no-store' });
+      if (res.ok) {
+        const json = await res.json();
+        setHasActivePlaybook(((json.playbooks ?? []) as PlaybookListItem[]).some((p) => p.is_active));
+      }
+    } catch { /* non-fatal */ }
+  }, []);
+
+  // Surface any already-pending change-set so a refresh doesn't lose it.
+  const loadPending = useCallback(async () => {
+    try {
+      const res = await fetch('/api/salesops-admin/changeset?status=pending', { cache: 'no-store' });
+      if (res.ok) {
+        const json = await res.json();
+        const list = (json.changesets ?? []) as ChangeSetRecord[];
+        if (list.length > 0) setChangeset(list[0]);
+      }
+    } catch { /* non-fatal */ }
+  }, []);
+
+  useEffect(() => { loadSources(); loadActive(); loadPending(); }, [loadSources, loadActive, loadPending]);
+
+  const extractedCount = sources.filter((s) => s.status === 'extracted').length;
+  const canReanalyze = hasActivePlaybook && extractedCount > 0 && !reanalyzing;
+
+  async function runReanalyze() {
+    if (!canReanalyze) return;
+    setReanalyzing(true);
+    try {
+      const res = await fetch('/api/salesops-admin/reanalyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}), // default: all extracted sources
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (json.error === 'connect_anthropic') {
+          toast.error('Connect your Anthropic key in Connections → Anthropic to reanalyze.');
+        } else if (json.error === 'no_active_playbook') {
+          toast.error('Create an active playbook first.');
+        } else if (json.error === 'no_sources') {
+          toast.error('Add at least one extracted source first.');
+        } else {
+          toast.error('Reanalyze failed. Try again.');
+        }
+        return;
+      }
+      const cs: ChangeSetRecord = json.changeset;
+      setChangeset(cs);
+      if ((cs.changes?.length ?? 0) === 0) {
+        toast.info('The evidence supports no changes right now.');
+      } else {
+        toast.success(`${cs.changes.length} proposed change${cs.changes.length === 1 ? '' : 's'} ready to review`);
+      }
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setReanalyzing(false);
+    }
+  }
+
+  // After apply/discard, clear the panel + refresh active state.
+  function onChangesetResolved() {
+    setChangeset(null);
+    loadActive();
+  }
+
+  return (
+    <section className="space-y-3">
+      <div className="space-y-1">
+        <div className="section-title flex items-center gap-1.5">
+          <FlaskConical size={14} className="text-primary" /> Reanalyze playbook
+          <span className="text-[8px] font-bold uppercase tracking-wider text-primary bg-primary/10 rounded-full px-1.5 py-0.5">
+            Beta
+          </span>
+        </div>
+        <p className="text-xs text-muted-foreground max-w-2xl">
+          Improve your active playbook from real evidence &mdash; your own closed-won calls, top creators in your niche,
+          or pasted notes. We propose specific, cited changes for you to accept or reject. Nothing changes automatically.
+        </p>
+      </div>
+
+      <SourcesManager
+        sources={sources}
+        loading={sourcesLoading}
+        onChanged={loadSources}
+      />
+
+      {/* Reanalyze trigger */}
+      <div className="rounded-xl border border-border bg-[color-mix(in_srgb,var(--surface-2)_55%,transparent)] p-4 space-y-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            className="btn btn-primary btn-sm inline-flex items-center gap-1.5"
+            disabled={!canReanalyze}
+            onClick={runReanalyze}
+          >
+            {reanalyzing
+              ? <><Loader2 size={13} className="animate-spin" /> Reanalyzing…</>
+              : <><RefreshCw size={13} /> Reanalyze playbook</>}
+          </button>
+          <span className="text-[11px] text-muted-foreground">
+            {extractedCount} ready source{extractedCount === 1 ? '' : 's'}
+          </span>
+        </div>
+        {!hasActivePlaybook && (
+          <p className="text-[10px] text-warning inline-flex items-center gap-1">
+            <AlertCircle size={11} /> Create an active playbook above before reanalyzing.
+          </p>
+        )}
+        {hasActivePlaybook && extractedCount === 0 && (
+          <p className="text-[10px] text-muted-foreground">
+            Add at least one source (and let it finish extracting) to enable reanalyze.
+          </p>
+        )}
+        <p className="text-[10px] text-muted-foreground">
+          Uses your own Anthropic key. This drafts a change-set for review &mdash; your active playbook is never changed
+          until you apply selected changes.
+        </p>
+      </div>
+
+      {/* Change-set review */}
+      {changeset && (
+        <ChangesetReview
+          changeset={changeset}
+          sources={sources}
+          onResolved={onChangesetResolved}
+        />
+      )}
+    </section>
+  );
+}
+
+/** Sources manager — add own won calls (picker), creator handles/URLs, or pasted notes; list + remove. */
+function SourcesManager({
+  sources, loading, onChanged,
+}: {
+  sources: SourceRecord[];
+  loading: boolean;
+  onChanged: () => void;
+}) {
+  const [adder, setAdder] = useState<null | SourceKind>(null);
+
+  async function remove(id: string) {
+    if (!confirm('Remove this source?')) return;
+    const res = await fetch('/api/salesops-admin/sources', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    if (res.ok) { toast.success('Source removed'); onChanged(); }
+    else toast.error('Could not remove the source.');
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-[color-mix(in_srgb,var(--surface-2)_55%,transparent)] p-4 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[11px] font-medium flex items-center gap-1.5 text-muted-foreground">
+          <BookOpen size={12} /> Evidence sources
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+          <button className="btn btn-ghost btn-sm inline-flex items-center gap-1" onClick={() => setAdder('won_call')}>
+            <PhoneCall size={11} /> Won call
+          </button>
+          <button className="btn btn-ghost btn-sm inline-flex items-center gap-1" onClick={() => setAdder('instagram')}>
+            <Instagram size={11} /> Instagram
+          </button>
+          <button className="btn btn-ghost btn-sm inline-flex items-center gap-1" onClick={() => setAdder('youtube')}>
+            <Youtube size={11} /> YouTube
+          </button>
+          <button className="btn btn-ghost btn-sm inline-flex items-center gap-1" onClick={() => setAdder('manual')}>
+            <FileText size={11} /> Notes
+          </button>
+        </div>
+      </div>
+
+      {adder && (
+        <AddSourceForm
+          kind={adder}
+          onCancel={() => setAdder(null)}
+          onAdded={() => { setAdder(null); onChanged(); }}
+        />
+      )}
+
+      {/* Source list */}
+      {loading ? (
+        <p className="text-xs text-muted-foreground">Loading sources…</p>
+      ) : sources.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          No sources yet. Add a won call, a creator&rsquo;s Instagram, or paste notes to give the reanalysis evidence.
+        </p>
+      ) : (
+        <div className="space-y-1">
+          {sources.map((s) => <SourceRow key={s.id} source={s} onRemove={() => remove(s.id)} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** One source row: kind icon + label + status pill + remove. */
+function SourceRow({ source, onRemove }: { source: SourceRecord; onRemove: () => void }) {
+  const meta = SOURCE_KIND_META[source.kind];
+  const Icon = meta.icon;
+  const display = source.label || source.ref || meta.label;
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-border/50 px-2.5 py-1.5">
+      <span className="rounded bg-muted-foreground/12 p-1 shrink-0">
+        <Icon size={12} className="text-muted-foreground" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="text-[11px] font-medium truncate">{display}</div>
+        <div className="text-[10px] text-muted-foreground truncate">
+          {meta.label}
+          {source.niche ? ` · ${source.niche}` : ''}
+          {' · '}{fmtDate(source.created_at)}
+          {source.status === 'error' && source.error ? ` · ${source.error}` : ''}
+        </div>
+      </div>
+      <SourceStatusPill status={source.status} />
+      <button className="btn btn-ghost btn-sm shrink-0" title="Remove" onClick={onRemove}>
+        <Trash2 size={11} />
+      </button>
+    </div>
+  );
+}
+
+function SourceStatusPill({ status }: { status: SourceStatus }) {
+  const map: Record<SourceStatus, { cls: string; label: string; icon: typeof Check }> = {
+    extracted: { cls: 'bg-success/15 text-success border-success/30', label: 'Ready', icon: Check },
+    pending: { cls: 'bg-warning/15 text-warning border-warning/30', label: 'Pending', icon: Clock },
+    error: { cls: 'bg-destructive/15 text-destructive border-destructive/30', label: 'Error', icon: AlertCircle },
+  };
+  const { cls, label, icon: Icon } = map[status];
+  return (
+    <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border inline-flex items-center gap-0.5 shrink-0 ${cls}`}>
+      <Icon size={9} /> {label}
+    </span>
+  );
+}
+
+/** The add-a-source form. Shape depends on kind:
+ *  - won_call : pick from recent sales_calls
+ *  - instagram: a handle OR a reel/post URL (+ optional niche/label)
+ *  - youtube  : paste a transcript (+ optional label/niche) — native fetch is DEFERRED
+ *  - manual   : paste freeform notes (+ optional label/niche)
+ */
+function AddSourceForm({
+  kind, onCancel, onAdded,
+}: {
+  kind: SourceKind;
+  onCancel: () => void;
+  onAdded: () => void;
+}) {
+  const meta = SOURCE_KIND_META[kind];
+  const [ref, setRef] = useState('');
+  const [label, setLabel] = useState('');
+  const [niche, setNiche] = useState('');
+  const [text, setText] = useState('');
+  const [pickedCallId, setPickedCallId] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  // won_call picker data
+  const [calls, setCalls] = useState<SalesCall[]>([]);
+  const [callsLoading, setCallsLoading] = useState(kind === 'won_call');
+
+  useEffect(() => {
+    if (kind !== 'won_call') return;
+    setCallsLoading(true);
+    fetch('/api/salesops-admin/calls', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : { calls: [] }))
+      .then((j) => setCalls(j.calls ?? []))
+      .catch(() => {})
+      .finally(() => setCallsLoading(false));
+  }, [kind]);
+
+  function validate(): { ref?: string | null; text?: string | null } | null {
+    if (kind === 'won_call') {
+      if (!pickedCallId) { toast.error('Pick a call to add.'); return null; }
+      return { ref: pickedCallId };
+    }
+    if (kind === 'instagram') {
+      if (!ref.trim()) { toast.error('Enter a handle or a reel URL.'); return null; }
+      return { ref: ref.trim() };
+    }
+    // youtube | manual — pasted text
+    if (!text.trim()) { toast.error('Paste some text to add as a source.'); return null; }
+    return { text: text.trim() };
+  }
+
+  async function add() {
+    const v = validate();
+    if (!v) return;
+    setSaving(true);
+    try {
+      const res = await fetch('/api/salesops-admin/sources', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind,
+          ref: v.ref ?? null,
+          label: label.trim() || null,
+          niche: niche.trim() || null,
+          text: v.text ?? null,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (json.error === 'connect_apify') {
+          toast.error('Connect your Apify key in Connections → Apify to scrape Instagram.');
+        } else {
+          toast.error('Could not add the source. Try again.');
+        }
+        return;
+      }
+      const s: SourceRecord | undefined = json.source;
+      if (s?.status === 'error') {
+        toast.error(`Added, but extraction failed${s.error ? `: ${s.error}` : ''}.`);
+      } else {
+        toast.success('Source added');
+      }
+      onAdded();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-primary/30 bg-[color-mix(in_srgb,var(--surface-2)_60%,transparent)] p-3 space-y-2.5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5 text-[11px] font-medium text-primary">
+          <meta.icon size={12} /> Add {meta.label.toLowerCase()} source
+        </div>
+        <button className="btn btn-ghost btn-sm shrink-0" title="Cancel" onClick={onCancel} disabled={saving}>
+          <X size={11} />
+        </button>
+      </div>
+
+      {kind === 'won_call' && (
+        <Field label="Pick a recorded call" hint="We read its transcript + summary as evidence.">
+          {callsLoading ? (
+            <p className="text-[11px] text-muted-foreground">Loading calls…</p>
+          ) : calls.length === 0 ? (
+            <p className="text-[11px] text-muted-foreground">No recorded calls yet.</p>
+          ) : (
+            <select value={pickedCallId} onChange={(e) => setPickedCallId(e.target.value)} style={{ width: '100%' }}>
+              <option value="">Select a call…</option>
+              {calls.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {(c.contact_name || c.contact_email || 'Unknown contact')}
+                  {c.deal_temp ? ` · ${c.deal_temp}` : ''} · {fmtDate(c.started_at)}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
+      )}
+
+      {kind === 'instagram' && (
+        <Field label="Handle or reel URL" hint="e.g. @topcreator (recent reels) or a single reel/post URL.">
+          <input value={ref} onChange={(e) => setRef(e.target.value)} style={{ width: '100%' }} placeholder="@creator or https://instagram.com/reel/…" />
+        </Field>
+      )}
+
+      {(kind === 'youtube' || kind === 'manual') && (
+        <Field
+          label={kind === 'youtube' ? 'Paste the transcript' : 'Paste your notes'}
+          hint={kind === 'youtube'
+            ? 'Paste a YouTube transcript or talk track. Automatic fetch is coming soon.'
+            : 'Any freeform notes, scripts, or observations to mine.'}
+        >
+          <textarea value={text} onChange={(e) => setText(e.target.value)} style={{ width: '100%' }} rows={5} placeholder="Paste text here…" />
+        </Field>
+      )}
+
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="Label" hint="Optional — to recognize it later.">
+          <input value={label} onChange={(e) => setLabel(e.target.value)} style={{ width: '100%' }} placeholder="e.g. Best discovery call" />
+        </Field>
+        <Field label="Niche" hint="Optional — the niche/context.">
+          <input value={niche} onChange={(e) => setNiche(e.target.value)} style={{ width: '100%' }} placeholder="e.g. dental SaaS" />
+        </Field>
+      </div>
+
+      <div className="flex items-center gap-2 pt-1">
+        <button className="btn btn-primary btn-sm inline-flex items-center gap-1.5" disabled={saving} onClick={add}>
+          {saving ? <><Loader2 size={12} className="animate-spin" /> Adding…</> : <><Plus size={12} /> Add source</>}
+        </button>
+        <button className="btn btn-ghost btn-sm" disabled={saving} onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+/** Change-set review panel: per-change accept/reject, citations, name, Apply selected, Discard. */
+function ChangesetReview({
+  changeset, sources, onResolved,
+}: {
+  changeset: ChangeSetRecord;
+  sources: SourceRecord[];
+  onResolved: () => void;
+}) {
+  // Default accept high/medium, reject low. Keyed by change index.
+  const [accepted, setAccepted] = useState<boolean[]>(() =>
+    changeset.changes.map((c) => c.confidence !== 'low'));
+  const [name, setName] = useState('');
+  const [applying, setApplying] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
+
+  const acceptedCount = accepted.filter(Boolean).length;
+
+  function toggle(i: number) {
+    setAccepted((a) => a.map((x, idx) => (idx === i ? !x : x)));
+  }
+
+  async function apply() {
+    const trimmed = name.trim();
+    if (!trimmed) { toast.error('Name this new playbook version.'); return; }
+    const accepted_indexes = accepted.flatMap((ok, i) => (ok ? [i] : []));
+    if (accepted_indexes.length === 0) { toast.error('Select at least one change to apply.'); return; }
+    setApplying(true);
+    try {
+      const res = await fetch('/api/salesops-admin/changeset/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ changeset_id: changeset.id, accepted_indexes, name: trimmed }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (json.error === 'empty_playbook') toast.error('The resulting playbook narrative is empty.');
+        else toast.error('Could not apply the change-set. Try again.');
+        return;
+      }
+      toast.success(`“${trimmed}” is now your active playbook`);
+      onResolved();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  async function discard() {
+    if (!confirm('Discard this change-set? The proposed changes will be dropped.')) return;
+    setDiscarding(true);
+    try {
+      const res = await fetch('/api/salesops-admin/changeset/discard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ changeset_id: changeset.id }),
+      });
+      if (res.ok) { toast.success('Change-set discarded'); onResolved(); }
+      else toast.error('Could not discard the change-set.');
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setDiscarding(false);
+    }
+  }
+
+  const busy = applying || discarding;
+
+  if (changeset.changes.length === 0) {
+    return (
+      <div className="rounded-xl border border-border bg-[color-mix(in_srgb,var(--surface-2)_55%,transparent)] p-4 space-y-2">
+        <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+          <FlaskConical size={12} className="text-primary" /> Reanalysis complete
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {changeset.summary || 'The evidence supports no changes to your active playbook right now.'}
+        </p>
+        <button className="btn btn-ghost btn-sm inline-flex items-center gap-1.5" disabled={discarding} onClick={discard}>
+          {discarding ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />} Dismiss
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-primary/30 bg-[color-mix(in_srgb,var(--surface-2)_55%,transparent)] p-4 space-y-3">
+      <div className="flex items-center gap-1.5 text-[11px] font-medium text-primary">
+        <FlaskConical size={12} /> Proposed changes
+        <span className="text-[10px] text-muted-foreground font-normal ml-1">
+          {acceptedCount} of {changeset.changes.length} selected
+        </span>
+      </div>
+
+      {changeset.summary && (
+        <div className="rounded-lg border border-info/30 bg-info/10 p-2.5 text-[11px] text-muted-foreground">
+          {changeset.summary}
+        </div>
+      )}
+
+      <div className="space-y-2.5">
+        {changeset.changes.map((c, i) => (
+          <ChangeCard key={i} change={c} accepted={accepted[i]} onToggle={() => toggle(i)} />
+        ))}
+      </div>
+
+      {/* Apply / discard */}
+      <div className="pt-1 border-t border-border/40 space-y-2">
+        <Field label="New playbook name" hint="Applying creates a new active version — your current playbook is kept.">
+          <input value={name} onChange={(e) => setName(e.target.value)} style={{ width: '100%' }} maxLength={120} placeholder="e.g. Reanalyzed · evidence v1" />
+        </Field>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button className="btn btn-primary btn-sm inline-flex items-center gap-1.5" disabled={busy || acceptedCount === 0} onClick={apply}>
+            {applying ? <><Loader2 size={13} className="animate-spin" /> Applying…</> : <><CheckCircle2 size={13} /> Apply selected ({acceptedCount})</>}
+          </button>
+          <button className="btn btn-ghost btn-sm inline-flex items-center gap-1.5" disabled={busy} onClick={discard}>
+            {discarding ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />} Discard
+          </button>
+        </div>
+        <p className="text-[10px] text-muted-foreground">
+          Applying mirrors the new playbook to your live co-pilot immediately. It never overwrites a previous version.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/** A single proposed change: header (field + op + confidence), current→proposed diff,
+ *  rationale, pattern_support, citations, and an accept/reject checkbox. */
+function ChangeCard({
+  change, accepted, onToggle,
+}: {
+  change: ChangeItem;
+  accepted: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div className={`rounded-xl border p-3 space-y-2 transition-[border-color,background-color] duration-150 ${
+      accepted
+        ? 'border-primary/40 bg-[color-mix(in_srgb,var(--primary)_5%,transparent)]'
+        : 'border-border/60 bg-[color-mix(in_srgb,var(--surface-2)_40%,transparent)] opacity-75'
+    }`}>
+      <div className="flex items-start gap-2">
+        <label className="flex items-center gap-1.5 cursor-pointer pt-0.5 shrink-0">
+          <input type="checkbox" checked={accepted} onChange={onToggle} />
+        </label>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[12px] font-semibold">{FIELD_LABELS[change.field]}</span>
+            <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border bg-surface-2 text-muted-foreground border-border">
+              {change.op}
+            </span>
+            <ConfidenceBadge confidence={change.confidence} />
+          </div>
+          {change.pattern_support && (
+            <p className="text-[10px] text-muted-foreground mt-0.5">{change.pattern_support}</p>
+          )}
+        </div>
+      </div>
+
+      {/* current → proposed */}
+      <div className="grid sm:grid-cols-[1fr_auto_1fr] gap-1.5 items-start">
+        <div className="rounded-lg border border-border/50 bg-[color-mix(in_srgb,var(--surface-2)_35%,transparent)] p-2 min-w-0">
+          <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/80 mb-0.5">Now</div>
+          <div className="text-[11px] text-muted-foreground whitespace-pre-wrap break-words">
+            {change.current_excerpt || <span className="opacity-60">(empty)</span>}
+          </div>
+        </div>
+        <div className="hidden sm:flex items-center justify-center pt-5 text-muted-foreground">
+          <ArrowRight size={12} />
+        </div>
+        <div className="rounded-lg border border-primary/30 bg-[color-mix(in_srgb,var(--primary)_6%,transparent)] p-2 min-w-0">
+          <div className="text-[9px] font-semibold uppercase tracking-wider text-primary/80 mb-0.5">Proposed</div>
+          <ProposedValue field={change.field} value={change.proposed_value} />
+        </div>
+      </div>
+
+      {change.rationale && (
+        <p className="text-[11px] text-muted-foreground">{change.rationale}</p>
+      )}
+
+      {change.citations.length > 0 && (
+        <div className="space-y-1 pt-1 border-t border-border/40">
+          <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+            Evidence ({change.citations.length})
+          </div>
+          {change.citations.map((cit, i) => (
+            <div key={i} className="flex items-start gap-1.5">
+              <Quote size={11} className="text-muted-foreground/60 shrink-0 mt-0.5" />
+              <div className="min-w-0 text-[10px] text-muted-foreground">
+                <span className="italic">&ldquo;{cit.quote}&rdquo;</span>
+                <span className="text-muted-foreground/70"> &mdash; {cit.source_label}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Render a proposed value per its field kind: text, string list, or objection pairs. */
+function ProposedValue({ field, value }: { field: keyof PlaybookContent; value: ChangeItem['proposed_value'] }) {
+  // Objection handling — array of {objection, response}.
+  if (field === 'objection_handling' && Array.isArray(value)) {
+    const pairs = value as ObjectionScript[];
+    return (
+      <div className="space-y-1.5">
+        {pairs.map((p, i) => (
+          <div key={i} className="text-[11px]">
+            <div className="font-medium">{p.objection}</div>
+            <div className="text-muted-foreground whitespace-pre-wrap break-words">{p.response}</div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  // List fields — string[].
+  if (Array.isArray(value)) {
+    return (
+      <ul className="text-[11px] space-y-0.5 list-disc pl-4">
+        {(value as string[]).map((v, i) => <li key={i} className="break-words">{v}</li>)}
+      </ul>
+    );
+  }
+  // Text fields — string.
+  return <div className="text-[11px] whitespace-pre-wrap break-words">{String(value)}</div>;
+}
+
+function ConfidenceBadge({ confidence }: { confidence: ChangeConfidence }) {
+  const map: Record<ChangeConfidence, string> = {
+    high: 'bg-success/15 text-success border-success/30',
+    medium: 'bg-warning/15 text-warning border-warning/30',
+    low: 'bg-info/15 text-info border-info/30',
+  };
+  return (
+    <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${map[confidence]}`}>
+      {confidence}
+    </span>
+  );
 }
 
 // ── Install ────────────────────────────────────────────────────────────────────
