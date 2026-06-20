@@ -3,6 +3,7 @@ import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { sql, tenantId } from '@/lib/db/client';
 import { currentUserId, DEFAULT_TENANT_ID, NO_TENANT_ID } from '@/lib/tenant';
 import { supabaseAdmin, findUserByEmail } from '@/lib/supabase/admin';
+import { revokeUserSessions } from '@/lib/members';
 import { createWorkspace } from '@/lib/workspace';
 import { sendTransactionalEmail, renderInviteEmail } from '@/lib/transactional-email';
 
@@ -168,5 +169,94 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('[clients POST]', error);
     return NextResponse.json({ error: (error as Error).message || 'Provisioning failed' }, { status: 500 });
+  }
+}
+
+/** Best-effort HQ audit row (logged against the HQ tenant so it survives a client delete). */
+async function auditClient(action: string, target: string, detail: Record<string, unknown>) {
+  try {
+    await sql()`
+      INSERT INTO audit_log (tenant_id, actor_id, actor_username, action, target, detail)
+      VALUES (${DEFAULT_TENANT_ID}, ${currentUserId()}, ${'HQ operator'}, ${action}, ${target}, ${JSON.stringify(detail)})
+    `;
+  } catch {
+    /* audit is best-effort; never block a decommission on a log failure */
+  }
+}
+
+// DELETE /api/clients { tenantId, mode: 'revoke' | 'delete' } — HQ-owner-only client
+// decommission. This is the operator action that the per-workspace member UI can't do
+// (it's scoped to the acting owner's own workspace); here HQ acts CROSS-tenant.
+//   revoke → ban every member's login + global-sign-out their sessions. Data is KEPT;
+//            reversible (unban). Use to cut off access immediately.
+//   delete → remove the client tenant and CASCADE all its data, and hard-delete the auth
+//            accounts of members whose ONLY workspace was this one. Irreversible.
+// HQ (DEFAULT_TENANT_ID) can never be the target. Every action is audited.
+export async function DELETE(request: Request) {
+  enterTenant(await resolveTenant());
+  if (!(await isHqOwner())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+  let body: { tenantId?: string; mode?: string };
+  try { body = (await request.json()) as { tenantId?: string; mode?: string }; }
+  catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
+
+  const target = (body.tenantId ?? '').trim();
+  const mode = body.mode === 'delete' ? 'delete' : 'revoke';
+  if (!target) return NextResponse.json({ error: 'tenantId is required' }, { status: 400 });
+  // Hard guard: never decommission the HQ/platform workspace.
+  if (target === DEFAULT_TENANT_ID) {
+    return NextResponse.json({ error: 'Refusing to decommission the HQ workspace' }, { status: 400 });
+  }
+
+  // Confirm it's a real client tenant (not HQ, exists).
+  const t = (await sql()`
+    SELECT id::text AS id, name FROM public.tenants
+    WHERE id = ${target} AND id <> ${DEFAULT_TENANT_ID} LIMIT 1
+  `) as unknown as Array<{ id: string; name: string }>;
+  if (!t[0]) return NextResponse.json({ error: 'Client workspace not found' }, { status: 404 });
+
+  const members = (await sql()`
+    SELECT user_id::text AS user_id FROM public.workspace_members WHERE workspace_id = ${target}
+  `) as unknown as Array<{ user_id: string }>;
+  const admin = supabaseAdmin();
+
+  try {
+    if (mode === 'revoke') {
+      // Ban login (blocks new sessions + token refresh) + global sign-out (kills refresh
+      // tokens now). Data and memberships are untouched — fully reversible (unban). Track ban
+      // failures so we never report "done" while a member is still only soft-blocked.
+      let revoked = 0;
+      let banFailed = 0;
+      for (const m of members) {
+        try { await admin.auth.admin.updateUserById(m.user_id, { ban_duration: '876000h' }); }
+        catch { banFailed++; }
+        if (await revokeUserSessions(m.user_id)) revoked++;
+      }
+      await auditClient('client.revoke', target, {
+        name: t[0].name, members: members.length, sessions_revoked: revoked, ban_failed: banFailed,
+      });
+      return NextResponse.json({ ok: true, mode, members: members.length, ban_failed: banFailed });
+    }
+
+    // mode === 'delete': hard-delete the auth account of any member whose ONLY workspace is
+    // this one (don't nuke a user who belongs elsewhere), then delete the tenant — its
+    // on-delete-cascade FKs remove workspace_members + every tenant-scoped row.
+    let deletedUsers = 0;
+    for (const m of members) {
+      const others = (await sql()`
+        SELECT 1 FROM public.workspace_members
+        WHERE user_id = ${m.user_id} AND workspace_id <> ${target} LIMIT 1
+      `) as unknown as unknown[];
+      if (others.length === 0) {
+        try { await admin.auth.admin.deleteUser(m.user_id); deletedUsers++; }
+        catch { /* continue; the tenant cascade still removes their membership */ }
+      }
+    }
+    await sql()`DELETE FROM public.tenants WHERE id = ${target} AND id <> ${DEFAULT_TENANT_ID}`;
+    await auditClient('client.delete', target, { name: t[0].name, members: members.length, deleted_users: deletedUsers });
+    return NextResponse.json({ ok: true, mode, members: members.length, deletedUsers });
+  } catch (error) {
+    console.error('[clients DELETE]', error);
+    return NextResponse.json({ error: (error as Error).message || 'Decommission failed' }, { status: 500 });
   }
 }

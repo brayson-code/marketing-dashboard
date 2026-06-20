@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Users, UserPlus, Copy, Check, ShieldAlert } from 'lucide-react';
+import { Users, UserPlus, Copy, Check, ShieldAlert, Trash2 } from 'lucide-react';
 
 interface Client {
   id: string;
@@ -22,6 +22,12 @@ export default function ClientsPage() {
   const [error, setError] = useState('');
   const [invite, setInvite] = useState<{ email: string; link: string | null; emailed: boolean } | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Decommission (revoke / delete) confirm modal state.
+  const [confirmClient, setConfirmClient] = useState<Client | null>(null);
+  const [confirmText, setConfirmText] = useState('');
+  const [decomBusy, setDecomBusy] = useState<'revoke' | 'delete' | null>(null);
+  const [decomError, setDecomError] = useState('');
 
   const load = useCallback(async () => {
     const r = await fetch('/api/clients', { cache: 'no-store' });
@@ -58,6 +64,40 @@ export default function ClientsPage() {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     }).catch(() => { /* ignore */ });
+  }
+
+  function openDecommission(c: Client) {
+    setConfirmClient(c);
+    setConfirmText('');
+    setDecomError('');
+  }
+
+  async function decommission(mode: 'revoke' | 'delete') {
+    if (!confirmClient) return;
+    if (confirmText !== confirmClient.name) { setDecomError('Type the workspace name exactly to confirm.'); return; }
+    setDecomBusy(mode); setDecomError('');
+    try {
+      const r = await fetch('/api/clients', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenantId: confirmClient.id, mode }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { setDecomError(j.error || 'Decommission failed'); return; }
+      if (mode === 'revoke' && j.ban_failed > 0) {
+        // Sessions were revoked, but some accounts couldn't be banned (transient auth error).
+        // Keep the modal open and tell the operator so they can retry.
+        setDecomError(`Sessions revoked, but ${j.ban_failed} account(s) couldn't be banned — click Revoke again to retry.`);
+        await load();
+        return;
+      }
+      setConfirmClient(null); setConfirmText('');
+      await load();
+    } catch (err) {
+      setDecomError((err as Error).message);
+    } finally {
+      setDecomBusy(null);
+    }
   }
 
   if (forbidden) {
@@ -169,6 +209,15 @@ export default function ClientsPage() {
                     <span className={`badge ${c.onboarding_complete ? 'badge-success' : 'badge-neutral'}`}>
                       {c.onboarding_complete ? 'onboarded' : 'pending'}
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => openDecommission(c)}
+                      className="btn btn-ghost btn-sm shrink-0 text-destructive"
+                      title="Decommission this client"
+                      aria-label={`Decommission ${c.name}`}
+                    >
+                      <Trash2 size={13} />
+                    </button>
                   </div>
                 </div>
               ))}
@@ -176,6 +225,63 @@ export default function ClientsPage() {
           )}
         </div>
       </div>
+
+      {confirmClient && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.55)' }}
+          onClick={() => { if (!decomBusy) { setConfirmClient(null); setConfirmText(''); setDecomError(''); } }}
+        >
+          <div className="panel p-5 w-full max-w-md space-y-3" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2">
+              <ShieldAlert size={16} className="text-destructive shrink-0" />
+              <h2 className="text-sm font-semibold">Decommission &ldquo;{confirmClient.name}&rdquo;</h2>
+            </div>
+            <p className="text-[11px] text-muted-foreground">Owner: {confirmClient.owner_email ?? '—'}</p>
+            <div className="rounded-lg border border-destructive/30 p-2.5 text-[11px] text-muted-foreground space-y-1.5" style={{ background: 'color-mix(in srgb, var(--destructive) 8%, transparent)' }}>
+              <p><span className="font-medium text-foreground">Revoke access</span> bans everyone in this workspace and signs them out immediately. Their data is kept — reversible later.</p>
+              <p><span className="font-medium text-foreground">Delete permanently</span> removes the workspace and <span className="font-medium text-foreground">all of its data</span>, and deletes member accounts that have no other workspace. This cannot be undone.</p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] font-medium">Type <span className="font-mono">{confirmClient.name}</span> to confirm</label>
+              <input
+                value={confirmText}
+                onChange={(e) => setConfirmText(e.target.value)}
+                placeholder={confirmClient.name}
+                style={{ width: '100%' }}
+                autoFocus
+              />
+            </div>
+            {decomError && <p className="text-xs text-destructive">{decomError}</p>}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="btn btn-sm btn-ghost"
+                disabled={!!decomBusy || confirmText !== confirmClient.name}
+                onClick={() => decommission('revoke')}
+              >
+                {decomBusy === 'revoke' ? 'Revoking…' : 'Revoke access'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-destructive"
+                disabled={!!decomBusy || confirmText !== confirmClient.name}
+                onClick={() => decommission('delete')}
+              >
+                {decomBusy === 'delete' ? 'Deleting…' : 'Delete permanently'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-ghost ml-auto"
+                disabled={!!decomBusy}
+                onClick={() => { setConfirmClient(null); setConfirmText(''); setDecomError(''); }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
