@@ -237,6 +237,32 @@ const EMPTY_CONTENT: PlaybookContent = {
   objection_handling: [], closing: '', playbook_narrative: '',
 };
 
+/** Coerce a stored/fetched playbook content into a full PlaybookContent for the editor
+ *  (fills missing fields + guarantees the array fields are arrays, so the editor can't crash). */
+function normalizeForEdit(c: Partial<PlaybookContent> | null | undefined): PlaybookContent {
+  const r = c ?? {};
+  const arr = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+  return {
+    persona: String(r.persona ?? ''),
+    company_name: String(r.company_name ?? ''),
+    product_name: String(r.product_name ?? ''),
+    pricing: String(r.pricing ?? ''),
+    differentiators: String(r.differentiators ?? ''),
+    objection_keywords: arr(r.objection_keywords),
+    opener: String(r.opener ?? ''),
+    discovery_questions: arr(r.discovery_questions),
+    value_props: arr(r.value_props),
+    objection_handling: Array.isArray(r.objection_handling)
+      ? r.objection_handling
+          .filter((o): o is ObjectionScript => !!o && typeof o === 'object')
+          .map((o) => ({ objection: String(o.objection ?? ''), response: String(o.response ?? '') }))
+      : [],
+    closing: String(r.closing ?? ''),
+    playbook_narrative: String(r.playbook_narrative ?? ''),
+  };
+}
+
 function PlaybookStudioSection() {
   const [mode, setMode] = useState<'home' | 'wizard' | 'review'>('home');
   const [answers, setAnswers] = useState<PlaybookAnswers>(EMPTY_ANSWERS);
@@ -279,6 +305,22 @@ function PlaybookStudioSection() {
     setName('');
     setFromWizard(false);
     setMode('review');
+  }
+
+  // View / edit a saved playbook: load its full content into the editor. Applying edits
+  // creates a NEW version via the same non-destructive apply path (prior versions kept).
+  async function startEdit(id: string) {
+    try {
+      const res = await fetch(`/api/salesops-admin/playbook/${id}`, { cache: 'no-store' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.playbook) { toast.error('Could not load that playbook.'); return; }
+      setDraft(normalizeForEdit(json.playbook.content));
+      setName(json.playbook.name ?? '');
+      setFromWizard(false);
+      setMode('review');
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
   }
 
   async function generate() {
@@ -380,6 +422,7 @@ function PlaybookStudioSection() {
           loading={listLoading}
           onGenerate={startGenerate}
           onManual={startManual}
+          onEdit={startEdit}
         />
       )}
 
@@ -413,13 +456,14 @@ function PlaybookStudioSection() {
 
 /** Home: the active-playbook spotlight + two creation paths + saved versions. */
 function PlaybookHome({
-  activePlaybook, playbooks, loading, onGenerate, onManual,
+  activePlaybook, playbooks, loading, onGenerate, onManual, onEdit,
 }: {
   activePlaybook: PlaybookListItem | null;
   playbooks: PlaybookListItem[];
   loading: boolean;
   onGenerate: () => void;
   onManual: () => void;
+  onEdit: (id: string) => void;
 }) {
   return (
     <div className="space-y-4">
@@ -441,6 +485,13 @@ function PlaybookHome({
                 Coaching your live calls &middot; created {fmtDate(activePlaybook.created_at)}
               </p>
             </div>
+            <button
+              type="button"
+              onClick={() => onEdit(activePlaybook.id)}
+              className="btn btn-ghost btn-sm shrink-0 self-center inline-flex items-center gap-1"
+            >
+              <PenLine size={12} /> View / edit
+            </button>
           </div>
         </div>
       ) : (
@@ -485,7 +536,7 @@ function PlaybookHome({
       </div>
 
       {/* Saved versions */}
-      <PlaybookList playbooks={playbooks} loading={loading} />
+      <PlaybookList playbooks={playbooks} loading={loading} onEdit={onEdit} />
     </div>
   );
 }
@@ -775,7 +826,7 @@ function ObjectionEditor({
 }
 
 /** The list of saved playbooks — history + variants; seeds the future split-test UX. */
-function PlaybookList({ playbooks, loading }: { playbooks: PlaybookListItem[]; loading: boolean }) {
+function PlaybookList({ playbooks, loading, onEdit }: { playbooks: PlaybookListItem[]; loading: boolean; onEdit: (id: string) => void }) {
   // The active one already has the spotlight above; list the rest as history.
   const others = playbooks.filter((p) => !p.is_active);
   if (loading) {
@@ -801,6 +852,15 @@ function PlaybookList({ playbooks, loading }: { playbooks: PlaybookListItem[]; l
             <div className="text-[10px] text-muted-foreground shrink-0 text-right" title="Calls / wins — coming with split-testing">
               — / —
             </div>
+            <button
+              type="button"
+              onClick={() => onEdit(p.id)}
+              className="btn btn-ghost btn-sm shrink-0"
+              title="View / edit this version"
+              aria-label={`View or edit ${p.name}`}
+            >
+              <PenLine size={11} />
+            </button>
           </div>
         ))}
       </div>
