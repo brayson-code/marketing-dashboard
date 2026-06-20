@@ -23,11 +23,15 @@ export default function ClientsPage() {
   const [invite, setInvite] = useState<{ email: string; link: string | null; emailed: boolean } | null>(null);
   const [copied, setCopied] = useState(false);
 
-  // Decommission (revoke / delete) confirm modal state.
+  // Decommission REQUEST modal state. The web app only REQUESTS a decommission (and pages the
+  // operator); the actual revoke/delete runs from scripts/decommission-client.ts on a trusted
+  // machine — never from the browser. reqResult holds the CLI command returned on success.
   const [confirmClient, setConfirmClient] = useState<Client | null>(null);
-  const [confirmText, setConfirmText] = useState('');
+  const [reason, setReason] = useState('');
+  const [reqResult, setReqResult] = useState<{ workspace: string; mode: string; cli: string } | null>(null);
   const [decomBusy, setDecomBusy] = useState<'revoke' | 'delete' | null>(null);
   const [decomError, setDecomError] = useState('');
+  const [cliCopied, setCliCopied] = useState(false);
 
   const load = useCallback(async () => {
     const r = await fetch('/api/clients', { cache: 'no-store' });
@@ -68,36 +72,36 @@ export default function ClientsPage() {
 
   function openDecommission(c: Client) {
     setConfirmClient(c);
-    setConfirmText('');
+    setReason('');
+    setReqResult(null);
     setDecomError('');
   }
 
-  async function decommission(mode: 'revoke' | 'delete') {
+  async function requestDecommission(mode: 'revoke' | 'delete') {
     if (!confirmClient) return;
-    if (confirmText !== confirmClient.name) { setDecomError('Type the workspace name exactly to confirm.'); return; }
     setDecomBusy(mode); setDecomError('');
     try {
-      const r = await fetch('/api/clients', {
-        method: 'DELETE',
+      const r = await fetch('/api/clients/decommission-request', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenantId: confirmClient.id, mode }),
+        body: JSON.stringify({ tenantId: confirmClient.id, mode, reason }),
       });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) { setDecomError(j.error || 'Decommission failed'); return; }
-      if (mode === 'revoke' && j.ban_failed > 0) {
-        // Sessions were revoked, but some accounts couldn't be banned (transient auth error).
-        // Keep the modal open and tell the operator so they can retry.
-        setDecomError(`Sessions revoked, but ${j.ban_failed} account(s) couldn't be banned — click Revoke again to retry.`);
-        await load();
-        return;
-      }
-      setConfirmClient(null); setConfirmText('');
-      await load();
+      if (!r.ok) { setDecomError(j.error || 'Request failed'); return; }
+      // Success: the operator has been paged. Show the exact CLI command to actually run it.
+      setReqResult({ workspace: j.workspace, mode: j.mode, cli: j.cli });
     } catch (err) {
       setDecomError((err as Error).message);
     } finally {
       setDecomBusy(null);
     }
+  }
+
+  function copyCli(cli: string) {
+    navigator.clipboard?.writeText(cli).then(() => {
+      setCliCopied(true);
+      window.setTimeout(() => setCliCopied(false), 1500);
+    }).catch(() => { /* ignore */ });
   }
 
   if (forbidden) {
@@ -212,9 +216,9 @@ export default function ClientsPage() {
                     <button
                       type="button"
                       onClick={() => openDecommission(c)}
-                      className="btn btn-ghost btn-sm shrink-0 text-destructive"
-                      title="Decommission this client"
-                      aria-label={`Decommission ${c.name}`}
+                      className="btn btn-ghost btn-sm shrink-0 text-muted-foreground"
+                      title="Request decommission"
+                      aria-label={`Request decommission of ${c.name}`}
                     >
                       <Trash2 size={13} />
                     </button>
@@ -230,55 +234,53 @@ export default function ClientsPage() {
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ background: 'rgba(0,0,0,0.55)' }}
-          onClick={() => { if (!decomBusy) { setConfirmClient(null); setConfirmText(''); setDecomError(''); } }}
+          onClick={() => { if (!decomBusy) setConfirmClient(null); }}
         >
           <div className="panel p-5 w-full max-w-md space-y-3" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2">
-              <ShieldAlert size={16} className="text-destructive shrink-0" />
-              <h2 className="text-sm font-semibold">Decommission &ldquo;{confirmClient.name}&rdquo;</h2>
+              <ShieldAlert size={16} className="text-[var(--warning,#f59e0b)] shrink-0" />
+              <h2 className="text-sm font-semibold">Request decommission &mdash; &ldquo;{confirmClient.name}&rdquo;</h2>
             </div>
-            <p className="text-[11px] text-muted-foreground">Owner: {confirmClient.owner_email ?? '—'}</p>
-            <div className="rounded-lg border border-destructive/30 p-2.5 text-[11px] text-muted-foreground space-y-1.5" style={{ background: 'color-mix(in srgb, var(--destructive) 8%, transparent)' }}>
-              <p><span className="font-medium text-foreground">Revoke access</span> bans everyone in this workspace and signs them out immediately. Their data is kept — reversible later.</p>
-              <p><span className="font-medium text-foreground">Delete permanently</span> removes the workspace and <span className="font-medium text-foreground">all of its data</span>, and deletes member accounts that have no other workspace. This cannot be undone.</p>
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] font-medium">Type <span className="font-mono">{confirmClient.name}</span> to confirm</label>
-              <input
-                value={confirmText}
-                onChange={(e) => setConfirmText(e.target.value)}
-                placeholder={confirmClient.name}
-                style={{ width: '100%' }}
-                autoFocus
-              />
-            </div>
-            {decomError && <p className="text-xs text-destructive">{decomError}</p>}
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="btn btn-sm btn-ghost"
-                disabled={!!decomBusy || confirmText !== confirmClient.name}
-                onClick={() => decommission('revoke')}
-              >
-                {decomBusy === 'revoke' ? 'Revoking…' : 'Revoke access'}
-              </button>
-              <button
-                type="button"
-                className="btn btn-sm btn-destructive"
-                disabled={!!decomBusy || confirmText !== confirmClient.name}
-                onClick={() => decommission('delete')}
-              >
-                {decomBusy === 'delete' ? 'Deleting…' : 'Delete permanently'}
-              </button>
-              <button
-                type="button"
-                className="btn btn-sm btn-ghost ml-auto"
-                disabled={!!decomBusy}
-                onClick={() => { setConfirmClient(null); setConfirmText(''); setDecomError(''); }}
-              >
-                Cancel
-              </button>
-            </div>
+
+            {reqResult ? (
+              <div className="space-y-2">
+                <div className="rounded-lg border p-2.5 text-[11px]" style={{ background: 'color-mix(in srgb, var(--success) 8%, transparent)', borderColor: 'color-mix(in srgb, var(--success) 25%, transparent)' }}>
+                  <p className="font-medium text-[var(--success)]">Request sent for {reqResult.workspace} ({reqResult.mode}). You&rsquo;ve been paged.</p>
+                  <p className="text-muted-foreground mt-1">Run this on your operator machine to actually {reqResult.mode} it:</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input readOnly value={reqResult.cli} style={{ width: '100%' }} className="text-[10px] font-mono" onFocus={(e) => e.currentTarget.select()} />
+                  <button type="button" onClick={() => copyCli(reqResult.cli)} className="btn btn-ghost btn-sm shrink-0" aria-label="Copy command">
+                    {cliCopied ? <Check size={13} /> : <Copy size={13} />}
+                  </button>
+                </div>
+                <div className="flex justify-end">
+                  <button type="button" className="btn btn-sm btn-ghost" onClick={() => setConfirmClient(null)}>Done</button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <p className="text-[11px] text-muted-foreground">Owner: {confirmClient.owner_email ?? '—'}</p>
+                <div className="rounded-lg border border-border/60 p-2.5 text-[11px] text-muted-foreground space-y-1.5">
+                  <p>This does <span className="font-medium text-foreground">not</span> delete anything. It records the request and <span className="font-medium text-foreground">pages you (iMessage)</span> with the exact command to run &mdash; the action itself happens from the CLI on your trusted machine, never from this page.</p>
+                  <p><span className="font-medium text-foreground">Revoke</span> = ban + sign out everyone (reversible). <span className="font-medium text-foreground">Delete</span> = remove the workspace + all its data (irreversible).</p>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium">Reason (optional)</label>
+                  <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. client offboarded" style={{ width: '100%' }} maxLength={280} />
+                </div>
+                {decomError && <p className="text-xs text-destructive">{decomError}</p>}
+                <div className="flex items-center gap-2">
+                  <button type="button" className="btn btn-sm btn-ghost" disabled={!!decomBusy} onClick={() => requestDecommission('revoke')}>
+                    {decomBusy === 'revoke' ? 'Requesting…' : 'Request revoke'}
+                  </button>
+                  <button type="button" className="btn btn-sm btn-ghost text-destructive" disabled={!!decomBusy} onClick={() => requestDecommission('delete')}>
+                    {decomBusy === 'delete' ? 'Requesting…' : 'Request delete'}
+                  </button>
+                  <button type="button" className="btn btn-sm btn-ghost ml-auto" disabled={!!decomBusy} onClick={() => setConfirmClient(null)}>Cancel</button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

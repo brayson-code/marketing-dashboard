@@ -31,7 +31,8 @@ export type SecurityEventType =
   | 'cross_tenant_attempt'
   | 'secret_step_up'
   | 'pending_approval_created'
-  | 'integration_secret_access';
+  | 'integration_secret_access'
+  | 'decommission_requested';
 
 export type SecuritySeverity = 'info' | 'warning' | 'critical';
 
