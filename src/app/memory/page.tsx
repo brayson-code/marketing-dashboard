@@ -1,8 +1,55 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FileText, Plus, Save, Trash2, Loader2 } from 'lucide-react';
+import { FileText, Plus, Save, Trash2, Loader2, Download, ChevronDown } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+
+// Supported export formats — kept in sync with src/lib/export/markdown-export.ts.
+const EXPORT_FORMATS: Array<{ format: string; label: string }> = [
+  { format: 'md', label: 'Markdown (.md)' },
+  { format: 'html', label: 'HTML (.html)' },
+  { format: 'docx', label: 'Word (.docx)' },
+  { format: 'pdf', label: 'PDF (.pdf)' },
+  { format: 'pptx', label: 'PowerPoint (.pptx)' },
+  { format: 'xlsx', label: 'Excel (.xlsx)' },
+];
+
+// Small "Export ▾" control: each format is a plain anchor download to the
+// tenant-scoped /api/documents/:id/export route, so the browser saves the file.
+function ExportMenu({ baseHref }: { baseHref: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen((o) => !o)} title="Download this report as a client deliverable">
+        <Download size={13} /> Export <ChevronDown size={11} />
+      </button>
+      {open && (
+        <div className="absolute right-0 z-20 mt-1 w-44 rounded-md border border-border bg-background shadow-lg py-1">
+          {EXPORT_FORMATS.map((f) => (
+            <a
+              key={f.format}
+              href={`${baseHref}?format=${f.format}`}
+              download
+              onClick={() => setOpen(false)}
+              className="block px-3 py-1.5 text-xs hover:bg-[var(--surface-2)]"
+            >
+              {f.label}
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 type DocStatus = 'raw' | 'wiki' | 'archived';
 
@@ -208,6 +255,7 @@ export default function MemoryPage() {
                   <option value="wiki">wiki</option>
                   <option value="archived">archived</option>
                 </select>
+                {activeId && <ExportMenu baseHref={`/api/documents/${activeId}/export`} />}
                 <button onClick={save} disabled={saving} className="btn btn-primary btn-sm">
                   {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Save
                 </button>

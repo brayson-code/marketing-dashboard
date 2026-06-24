@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 
 // Official Google "G" mark (brand guidelines require the four-color logo on
@@ -144,6 +145,14 @@ function LoginForm() {
           autoComplete="current-password"
           required
         />
+        <div className="mt-1.5 text-right">
+          <Link
+            href="/auth/reset-password"
+            className="text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
+          >
+            Forgot password?
+          </Link>
+        </div>
       </div>
 
       {error && (

@@ -106,6 +106,9 @@ export const PROVIDERS: IntegrationProviderDef[] = [
   { id: 'deepgram', label: 'Deepgram (speech-to-text)', category: 'other',
     scopesHint: 'Deepgram API key (deepgram.com). Transcribes reel audio when a caption track is absent. $200 free credit to start.',
     fields: [{ name: 'api_key', label: 'API Key', type: 'password', required: true, placeholder: 'Token …' }] },
+  { id: 'firecrawl', label: 'Firecrawl (brand & web scraping)', category: 'other',
+    scopesHint: 'Create a Firecrawl key at firecrawl.dev.',
+    fields: [{ name: 'api_key', label: 'API Key', type: 'password', required: true, placeholder: 'fc-...' }] },
 ];
 
 // ── Crypto ──────────────────────────────────────────────────────────────────

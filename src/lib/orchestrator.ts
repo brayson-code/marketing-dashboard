@@ -11,6 +11,7 @@ import { createDraft, listDrafts, publishContent, sendEmail, confirmMeeting, typ
 import { kgToolDefinitions, handleKgTool } from './kg-tools';
 import { googleToolDefinitions, handleGoogleTool, googleActionsAllowed, GOOGLE_TOOL_NAMES } from './google-tools';
 import { smsToolDefinitions, handleSmsTool, smsAllowed, SMS_TOOL_NAMES } from './sms-tools';
+import { firecrawlToolDefinitions, handleFirecrawlTool, firecrawlAllowed, FIRECRAWL_TOOL_NAMES } from './firecrawl-tools';
 import { parseAttachments, buildUserContent } from './vision';
 import { estimateCostUsd } from './usage';
 import { launchResearchCampaign } from './campaign-intake';
@@ -112,7 +113,7 @@ async function loadRecentHistory(limit = HISTORY_LIMIT): Promise<Anthropic.Messa
   return out;
 }
 
-async function buildTools(gwAllowedArg?: boolean, smsOnArg?: boolean): Promise<Anthropic.Messages.ToolUnion[]> {
+async function buildTools(gwAllowedArg?: boolean, smsOnArg?: boolean, fcOnArg?: boolean): Promise<Anthropic.Messages.ToolUnion[]> {
   // Roster from the live DB (Agent Studio) so newly-created specialists become
   // spawnable by KeyPlayer; fall back to the hardcoded registry if unseeded.
   let specs = await listSpawnableSpecs().catch(() => [] as Array<{ id: string; description: string }>);
@@ -126,6 +127,7 @@ async function buildTools(gwAllowedArg?: boolean, smsOnArg?: boolean): Promise<A
   // Reuse the caller's precomputed flag when given (avoids a duplicate DB read).
   const gwAllowed = gwAllowedArg ?? await googleActionsAllowed();
   const smsOn = smsOnArg ?? await smsAllowed();
+  const fcOn = fcOnArg ?? await firecrawlAllowed();
 
   return [
     { type: 'web_search_20250305', name: 'web_search' },
@@ -247,6 +249,9 @@ async function buildTools(gwAllowedArg?: boolean, smsOnArg?: boolean): Promise<A
     // ── SMS (Twilio) — only when Twilio is connected. ────────────────────────
     ...(smsOn ? smsToolDefinitions() : []),
 
+    // ── Firecrawl brand scraping — only when a Firecrawl key is connected. ────
+    ...(fcOn ? await firecrawlToolDefinitions() : []),
+
     {
       name: 'spawn_subagent',
       description:
@@ -346,7 +351,22 @@ async function callClaude(
         'someone or for a genuine time-sensitive alert. Every send is audit-logged.',
     });
   }
-  const tools = await buildTools(gwAllowed, smsOn);
+  // Firecrawl capability note — only when a key is connected (same
+  // prompt-awareness reason as Google/SMS: the base skills list doesn't mention it).
+  const fcOn = await firecrawlAllowed().catch(() => false);
+  if (fcOn) {
+    systemBlocks.push({
+      type: 'text',
+      text:
+        '# Brand scraping is connected\n' +
+        'You can scrape ANY public website with the `scrape_brand` tool — pass a `url` and it ' +
+        'returns the brand identity (name, tagline, colors, fonts, logo, social links) plus ' +
+        'clean markdown of the page. Use it to ground brand, design, or competitive work in the ' +
+        'real source — a competitor’s site, a prospect’s homepage, or the workspace’s own page — ' +
+        'instead of guessing. Do NOT claim you cannot read websites when this tool is available.',
+    });
+  }
+  const tools = await buildTools(gwAllowed, smsOn, fcOn);
 
   // MCP HUB — when the tenant has >=1 enabled MCP server, add mcp_servers + the
   // mcp_toolset entries + the connector beta header so KeyPlayer can call those
@@ -400,6 +420,8 @@ const CLIENT_TOOL_NAMES = new Set<string>([
   ...GOOGLE_TOOL_NAMES,
   // SMS (Twilio) — same requirement: recognize the name or the loop bails.
   ...SMS_TOOL_NAMES,
+  // Firecrawl brand scraping — same requirement: recognize the name or the loop bails.
+  ...FIRECRAWL_TOOL_NAMES,
 ]);
 
 async function handleClientToolUse(
@@ -531,6 +553,11 @@ async function handleClientToolUse(
   // ── SMS (Twilio) tool (only present when connected; shared handler) ──────────
   if ((SMS_TOOL_NAMES as readonly string[]).includes(toolUse.name)) {
     return handleSmsTool(toolUse, 'keyplayer');
+  }
+
+  // ── Firecrawl brand scraping (only present when connected; shared handler) ───
+  if (FIRECRAWL_TOOL_NAMES.has(toolUse.name)) {
+    return handleFirecrawlTool(toolUse);
   }
 
   // ── Drafts tools ─────────────────────────────────────────────────────────

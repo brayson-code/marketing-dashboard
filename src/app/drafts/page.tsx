@@ -1,9 +1,61 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { Inbox, FileText, Mail, Calendar, Megaphone, Check, X, AlertCircle, Send, CheckCircle2, ScanSearch, Loader2, Sparkles } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Inbox, FileText, Mail, Calendar, Megaphone, Check, X, AlertCircle, Send, CheckCircle2, ScanSearch, Loader2, Sparkles, Download, ChevronDown } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Explainer } from '@/components/ui/explainer';
+
+// Supported export formats — kept in sync with src/lib/export/markdown-export.ts.
+const EXPORT_FORMATS: Array<{ format: string; label: string }> = [
+  { format: 'md', label: 'Markdown (.md)' },
+  { format: 'html', label: 'HTML (.html)' },
+  { format: 'docx', label: 'Word (.docx)' },
+  { format: 'pdf', label: 'PDF (.pdf)' },
+  { format: 'pptx', label: 'PowerPoint (.pptx)' },
+  { format: 'xlsx', label: 'Excel (.xlsx)' },
+];
+
+// Small "Export ▾" control: each format is a plain anchor download to the
+// tenant-scoped export route, so the browser handles the file save.
+function ExportMenu({ baseHref }: { baseHref: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm"
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        title="Download this as a client deliverable"
+      >
+        <Download size={11} /> Export <ChevronDown size={10} />
+      </button>
+      {open && (
+        <div className="absolute right-0 z-20 mt-1 w-44 rounded-md border border-border bg-background shadow-lg py-1">
+          {EXPORT_FORMATS.map((f) => (
+            <a
+              key={f.format}
+              href={`${baseHref}?format=${f.format}`}
+              download
+              onClick={(e) => { e.stopPropagation(); setOpen(false); }}
+              className="block px-3 py-1.5 text-xs hover:bg-[var(--surface-2)]"
+            >
+              {f.label}
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 type DraftType = 'content_post' | 'email' | 'meeting' | 'campaign' | 'other';
 type DraftStatus = 'pending' | 'approved' | 'rejected' | 'published' | 'sent' | 'confirmed' | 'expired';
@@ -222,6 +274,7 @@ export default function DraftsPage() {
                     {flagged && <span className="badge badge-warning">needs review</span>}
                     <span className="text-muted-foreground">· {formatTs(d.created_at)}</span>
                     <span className="ml-auto flex gap-1">
+                      <ExportMenu baseHref={`/api/drafts/${d.id}/export`} />
                       {isOpen && (
                         <button className="btn btn-ghost btn-sm" disabled={busyId === d.id} onClick={() => revalidate(d.id)} title="Re-check whether this draft is still worth acting on">
                           {busyId === d.id ? <Loader2 size={11} className="animate-spin" /> : <ScanSearch size={11} />} Still needed?

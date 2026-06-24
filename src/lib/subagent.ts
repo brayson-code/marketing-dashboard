@@ -8,6 +8,7 @@ import { kgToolDefinitions, handleKgTool } from './kg-tools';
 import { skillRecallToolDefinitions, handleSkillRecallTool } from './skill-recall';
 import { googleToolDefinitions, handleGoogleTool, googleActionsAllowed, GOOGLE_TOOL_NAMES } from './google-tools';
 import { smsToolDefinitions, handleSmsTool, smsAllowed, SMS_TOOL_NAMES } from './sms-tools';
+import { firecrawlToolDefinitions, handleFirecrawlTool, firecrawlAllowed, FIRECRAWL_TOOL_NAMES } from './firecrawl-tools';
 import { fetchToolDefinitions, handleFetchTool, FETCH_TOOL_NAMES } from './fetch-tools';
 import { clipToolDefinitions, handleClipTool, CLIP_TOOL_NAMES } from './clip-tools';
 import { chooseVariant } from './selection';
@@ -488,6 +489,8 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
   // shipped — the model never sees the tools so it can never call them.
   const gwAllowed = opts?.tools !== 'none' && (await googleActionsAllowed());
   const smsOn = opts?.tools !== 'none' && (await smsAllowed());
+  // Firecrawl brand scraping — offered only when a Firecrawl key is connected.
+  const fcOn = opts?.tools !== 'none' && (await firecrawlAllowed());
   // Movie-clip finder — same flag as the manual Hyperframes panel.
   const clipsOn = opts?.tools !== 'none' && process.env.MOVIE_CLIPS_ENABLED === 'true';
   const tools: Anthropic.Messages.ToolUnion[] = opts?.tools === 'none' ? [] : [
@@ -506,6 +509,8 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
     ...(gwAllowed ? googleToolDefinitions() : []),
     // SMS (Twilio) — offered only when Twilio is connected.
     ...(smsOn ? smsToolDefinitions() : []),
+    // Firecrawl brand scraping — offered only when a Firecrawl key is connected.
+    ...(fcOn ? await firecrawlToolDefinitions() : []),
   ];
 
   // Cache the initial task message. Multi-turn agents (research runs a
@@ -681,7 +686,8 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
               (FETCH_TOOL_NAMES as readonly string[]).includes(b.name) ||
               (CLIP_TOOL_NAMES as readonly string[]).includes(b.name) ||
               (GOOGLE_TOOL_NAMES as readonly string[]).includes(b.name) ||
-              (SMS_TOOL_NAMES as readonly string[]).includes(b.name)
+              (SMS_TOOL_NAMES as readonly string[]).includes(b.name) ||
+              FIRECRAWL_TOOL_NAMES.has(b.name)
             ),
         );
         if (handledToolUses.length === 0) {
@@ -705,6 +711,7 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
           if ((CLIP_TOOL_NAMES as readonly string[]).includes(tu.name)) return handleClipTool(tu, type);
           if ((GOOGLE_TOOL_NAMES as readonly string[]).includes(tu.name)) return handleGoogleTool(tu, type);
           if ((SMS_TOOL_NAMES as readonly string[]).includes(tu.name)) return handleSmsTool(tu, type);
+          if (FIRECRAWL_TOOL_NAMES.has(tu.name)) return handleFirecrawlTool(tu, type);
           return handleKgTool(tu, type);
         }));
         // Merge the correction (if any) into the same user block as the tool

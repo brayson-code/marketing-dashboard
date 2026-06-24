@@ -37,6 +37,13 @@ export interface WaveSpec { label: string; agents: WaveAgentSpec[]; brief?: stri
 
 export interface AgentResult { agentId: string; task: string; ok: boolean; text: string | null; error: string | null; variant?: string }
 
+/** Declarative early-halt condition (wave_runs.stop_when). null = no condition
+ *  (today's behavior). Evaluated at each wave boundary by evaluateStopWhen. */
+export interface StopWhen {
+  condition: 'goal_met' | 'no_progress';
+  note?: string;
+}
+
 interface CampaignRow {
   id: string;
   title: string;
@@ -46,6 +53,10 @@ interface CampaignRow {
   status: string;
   current_wave: number;
   total_waves: number;
+  /** Optional cap on waves to run before finalizing. null = run all waves. */
+  max_waves: number | null;
+  /** Optional declarative halt condition. null = no condition. */
+  stop_when: StopWhen | null;
 }
 
 async function llm(system: string, user: string, maxTokens: number): Promise<string> {
@@ -134,7 +145,7 @@ async function synthesizeWave(
 
 async function loadCampaign(id: string): Promise<CampaignRow | null> {
   const rows = (await sql()`
-    SELECT id, title, brief, goal_id, waves, status, current_wave, total_waves
+    SELECT id, title, brief, goal_id, waves, status, current_wave, total_waves, max_waves, stop_when
     FROM public.wave_runs WHERE id = ${id} AND tenant_id = ${tenantId()}
   `) as unknown as CampaignRow[];
   return rows[0] ?? null;
@@ -149,7 +160,108 @@ async function lastSynthesis(campaignId: string, waveIndex: number): Promise<str
   return rows[0]?.synthesis ?? null;
 }
 
-async function finalize(c: CampaignRow): Promise<void> {
+/** A goal is "satisfied/closed" once its lifecycle has ended — done (success)
+ *  or abandoned. Mirrors goals.ts GoalStatus; kept here as a literal set so this
+ *  module doesn't need a new goals.ts export. */
+function goalIsClosed(status: string): boolean {
+  return status === 'done' || status === 'abandoned';
+}
+
+/** Normalize synthesis text for a cheap near-duplicate / emptiness check: strip
+ *  the appended verification reliability block (it's deterministic boilerplate
+ *  that would mask real "no new findings"), lowercase, collapse whitespace. */
+function normalizeSynthesis(s: string | null | undefined): string {
+  if (!s) return '';
+  // Drop everything from the reliability block marker onward so two waves that
+  // only differ in their fact-checker footer still read as "no progress".
+  const cut = s.split(/\n+#+\s*reliability/i)[0] ?? s;
+  return cut.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/** Cheap "is the new synthesis basically the previous one" check — character
+ *  overlap is overkill; we compare the normalized bodies and a short prefix so a
+ *  reworded-but-substantively-identical wave still trips. Conservative: only
+ *  reports near-duplicate when the bodies are equal or one fully contains the
+ *  other and they're within ~5% length of each other. */
+function isNearDuplicate(curr: string, prev: string): boolean {
+  if (!prev) return false; // nothing to compare against (e.g. wave 0)
+  if (curr === prev) return true;
+  const longer = curr.length >= prev.length ? curr : prev;
+  const shorter = curr.length >= prev.length ? prev : curr;
+  if (shorter.length === 0) return false;
+  const lenRatio = shorter.length / longer.length;
+  return lenRatio >= 0.95 && longer.includes(shorter);
+}
+
+/**
+ * Evaluate the declarative stop condition for a campaign at a wave boundary.
+ * Called AFTER a wave's synthesis is produced and BEFORE advancing current_wave.
+ * INERT when both max_waves and stop_when are null → always { halt: false }, so a
+ * campaign with neither set behaves exactly as it did before this feature.
+ *
+ * Halts (in priority order) when:
+ *  - max_waves is set and the wave we just ran (ranWaveIdx) is the last allowed,
+ *    i.e. (ranWaveIdx + 1) >= max_waves;
+ *  - stop_when.condition === 'goal_met' and the linked goal (c.goal_id → goals)
+ *    is closed (status done/abandoned);
+ *  - stop_when.condition === 'no_progress' and this wave's synthesis is empty or
+ *    a near-duplicate of the previous wave's synthesis.
+ * Goal lookup is tenant-scoped and best-effort: a lookup failure does NOT halt.
+ */
+export async function evaluateStopWhen(opts: {
+  campaign: CampaignRow;
+  ranWaveIdx: number;
+  synthesis: string;
+  prevSynthesis: string | null;
+}): Promise<{ halt: boolean; reason?: string }> {
+  const { campaign: c, ranWaveIdx, synthesis, prevSynthesis } = opts;
+
+  // (1) Hard wave cap. Independent of stop_when so a caller can set just a cap.
+  if (typeof c.max_waves === 'number' && c.max_waves > 0 && ranWaveIdx + 1 >= c.max_waves) {
+    return { halt: true, reason: `Reached the configured wave cap (max_waves=${c.max_waves}).` };
+  }
+
+  const sw = c.stop_when;
+  if (!sw || typeof sw.condition !== 'string') return { halt: false };
+  const note = typeof sw.note === 'string' && sw.note.trim() ? ` — ${sw.note.trim()}` : '';
+
+  // (2) goal_met — halt once the linked goal is closed (done/abandoned).
+  if (sw.condition === 'goal_met') {
+    if (!c.goal_id) return { halt: false }; // no goal linked → nothing to satisfy
+    try {
+      const rows = (await sql()`
+        SELECT status FROM public.goals
+        WHERE id = ${c.goal_id} AND tenant_id = ${tenantId()}
+        LIMIT 1
+      `) as unknown as Array<{ status: string }>;
+      const status = rows[0]?.status;
+      if (status && goalIsClosed(status)) {
+        return { halt: true, reason: `Linked goal is ${status} — success condition met${note}.` };
+      }
+    } catch (e) {
+      // Goal lookup failure must NOT halt a healthy mission — degrade to "keep going".
+      console.error('[waves] evaluateStopWhen goal lookup failed:', (e as Error).message);
+    }
+    return { halt: false };
+  }
+
+  // (3) no_progress — halt when this wave added nothing new.
+  if (sw.condition === 'no_progress') {
+    const curr = normalizeSynthesis(synthesis);
+    const prev = normalizeSynthesis(prevSynthesis);
+    if (curr.length === 0) {
+      return { halt: true, reason: `Wave produced no synthesis — stopping (no progress)${note}.` };
+    }
+    if (isNearDuplicate(curr, prev)) {
+      return { halt: true, reason: `Wave synthesis matched the previous wave — stopping (no progress)${note}.` };
+    }
+    return { halt: false };
+  }
+
+  return { halt: false }; // unknown condition → inert
+}
+
+async function finalize(c: CampaignRow, haltReason?: string): Promise<void> {
   const stepRows = (await sql()`
     SELECT label, synthesis FROM public.wave_step_runs
     WHERE tenant_id = ${tenantId()} AND wave_run_id = ${c.id} AND status = 'done'
@@ -170,17 +282,32 @@ async function finalize(c: CampaignRow): Promise<void> {
     // keep the combined syntheses as the report on failure
   }
 
+  // Early-halt annotation: when a stop_when / max_waves condition ended the
+  // campaign before its last planned wave, prepend a one-line note so the report
+  // reads as a deliberate early stop, not a truncated run. No-op on a full run.
+  if (haltReason) {
+    report = `> **Stopped early:** ${haltReason}\n\n${report}`;
+  }
+
   await appendKnowledgeSection(`${c.title} — research report`, new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC', report)
     .catch((e) => console.error('[waves] KB save failed:', (e as Error).message));
 
   if (c.goal_id) {
-    await appendProgress(c.goal_id, `Research campaign "${c.title}" completed all ${c.total_waves} waves. Report filed to the knowledge base.`)
+    const progressNote = haltReason
+      ? `Research campaign "${c.title}" stopped early: ${haltReason} Report filed to the knowledge base.`
+      : `Research campaign "${c.title}" completed all ${c.total_waves} waves. Report filed to the knowledge base.`;
+    await appendProgress(c.goal_id, progressNote)
       .catch((e) => console.error('[waves] goal progress failed:', (e as Error).message));
   }
 
+  // status stays 'done' (no new status value). We deliberately DON'T write the halt
+  // reason into `error` — the mission UI renders a non-null `error` as a red failure
+  // for any non-paused status, so an early-but-successful halt must keep `error` null.
+  // The halt reason already lives in final_report (prepended above) and the goal note.
   await sql()`
     UPDATE public.wave_runs
-    SET status = 'done', final_report = ${report}, current_wave = ${c.total_waves}, updated_at = now()
+    SET status = 'done', final_report = ${report}, current_wave = ${c.total_waves},
+        updated_at = now()
     WHERE id = ${c.id} AND tenant_id = ${tenantId()}
   `;
 }
@@ -295,7 +422,7 @@ async function pauseWave(opts: { campaignId: string; stepId: number; reason: str
  * checkpoint), and finalize if it was the last. Designed to run inside one
  * serverless invocation via after(). Returns whether the campaign is complete.
  */
-export async function runNextWave(campaignId: string): Promise<{ done: boolean; ranWave?: number; error?: string; paused?: boolean }> {
+export async function runNextWave(campaignId: string): Promise<{ done: boolean; ranWave?: number; error?: string; paused?: boolean; halted?: boolean; reason?: string }> {
   const c = await loadCampaign(campaignId);
   if (!c) return { done: true, error: 'Campaign not found' };
   if (c.status !== 'running') return { done: true };
@@ -373,6 +500,20 @@ export async function runNextWave(campaignId: string): Promise<{ done: boolean; 
       SET status = 'done', synthesis = ${synthesis}, agent_results = ${jsonb(results)}, finished_at = now()
       WHERE id = ${stepId} AND tenant_id = ${tenantId()}
     `;
+
+    // --- Declarative early-halt (stopWhen) ----------------------------------
+    // Evaluated AFTER this wave's synthesis is checkpointed and BEFORE advancing
+    // current_wave. INERT when max_waves and stop_when are both null → halt:false,
+    // so a campaign with neither set runs every wave exactly as before. On halt we
+    // finalize through the EXISTING finalize() + 'done' status (no new status), and
+    // skip both the observer (would mutate a wave we'll never run) and the advance.
+    // `prior` already holds the previous wave's synthesis (= prevSynthesis).
+    const stop = await evaluateStopWhen({ campaign: c, ranWaveIdx: idx, synthesis, prevSynthesis: prior });
+    if (stop.halt) {
+      await finalize({ ...c, current_wave: idx + 1 }, stop.reason);
+      return { done: true, halted: true, ranWave: idx, reason: stop.reason };
+    }
+    // -----------------------------------------------------------------------
 
     const nextIdx = idx + 1;
 
@@ -628,9 +769,13 @@ export function dispatchMissionAdvance(campaignId: string, tenant: string = tena
  * Used by launch + the /api/cron/advance self-trigger. The manual "Advance" button
  * still works as an override but is no longer required.
  */
-export async function runAndChain(campaignId: string): Promise<{ done: boolean; ranWave?: number; error?: string }> {
+export async function runAndChain(campaignId: string): Promise<{ done: boolean; ranWave?: number; error?: string; halted?: boolean; reason?: string }> {
   const r = await runNextWave(campaignId);
-  if (!r.done && !r.error) dispatchMissionAdvance(campaignId); // more waves remain → keep going (carries tenant)
+  // Only chain the next wave when more waves remain. A declarative stopWhen halt
+  // returns done:true + halted:true and is already finalized — `!r.halted` makes
+  // the "don't re-dispatch a finished mission" intent explicit (it's redundant
+  // with `!r.done` today, but guards against any future done/halt drift).
+  if (!r.done && !r.error && !r.halted) dispatchMissionAdvance(campaignId); // more waves remain → keep going (carries tenant)
   return r;
 }
 
