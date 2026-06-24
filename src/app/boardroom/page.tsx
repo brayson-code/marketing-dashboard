@@ -3,7 +3,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Send, Phone, AlertCircle, ArrowDownToLine, ArrowUpFromLine, MessageSquare, Network, Paperclip, X, Loader2, ImageIcon, Info } from 'lucide-react';
 import { A2AHistory } from '@/components/chat/a2a-history';
+import { ApprovalCard } from '@/components/ui/approval-card';
 import { createClient } from '@/lib/supabase/client';
+
+/** A pending owner-step-up approval row from GET /api/approvals/pending (owner-only). */
+interface PendingApproval {
+  id: string | number;
+  action: string;
+  resource_ref: string | null;
+  payload: { tool?: string; summary?: string } | null;
+  created_at: string;
+}
 
 type Tab = 'imessage' | 'a2a';
 
@@ -94,6 +104,8 @@ function IMessageThread() {
   const [uploading, setUploading] = useState(0);
   const [dragOver, setDragOver] = useState(false);
   const [openInfo, setOpenInfo] = useState<number | null>(null);
+  const [approvals, setApprovals] = useState<PendingApproval[]>([]);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -107,11 +119,47 @@ function IMessageThread() {
     }
   }, []);
 
+  // Pending owner approvals (e.g. a held tool call awaiting sign-off). Owner-only API:
+  // a non-owner gets 403 → we render nothing (no error spam). Only present at all when
+  // tool-call approvals are enabled, so this is a quiet no-op for most workspaces.
+  const loadApprovals = useCallback(async () => {
+    try {
+      const res = await fetch('/api/approvals/pending', { cache: 'no-store' });
+      if (!res.ok) { setApprovals([]); return; }
+      const json = (await res.json()) as { pending?: PendingApproval[] };
+      setApprovals(Array.isArray(json.pending) ? json.pending : []);
+    } catch {
+      setApprovals([]);
+    }
+  }, []);
+
+  const resolveApproval = useCallback(async (id: string, decision: 'approve' | 'deny') => {
+    setResolvingId(id);
+    try {
+      const res = await fetch('/api/approvals/pending', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, decision }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setError(j.error || 'Could not resolve the approval');
+      }
+      // Refresh both: the card disappears and any resulting agent message shows up.
+      await Promise.all([loadApprovals(), load()]);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setResolvingId(null);
+    }
+  }, [loadApprovals, load]);
+
   useEffect(() => {
     load();
-    const id = setInterval(load, 5000);
+    loadApprovals();
+    const id = setInterval(() => { load(); loadApprovals(); }, 5000);
     return () => clearInterval(id);
-  }, [load]);
+  }, [load, loadApprovals]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -180,7 +228,7 @@ function IMessageThread() {
       if (!res.ok || !json.ok) {
         setError(json.error || `KeyPlayer couldn't respond (${res.status})`);
       }
-      await load();
+      await Promise.all([load(), loadApprovals()]);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -287,6 +335,30 @@ function IMessageThread() {
               </div>
             );
           })}
+          {approvals.length > 0 && (
+            <div className="space-y-2 pt-1">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80 px-1">
+                Awaiting your approval
+              </div>
+              {approvals.map((a) => (
+                <ApprovalCard
+                  key={String(a.id)}
+                  id={String(a.id)}
+                  title={a.payload?.tool === 'launch_campaign' ? 'Launch a research campaign'
+                    : a.payload?.tool === 'spawn_subagent' ? 'Spawn a sub-agent'
+                    : a.action === 'tool_call' ? `Run ${a.payload?.tool ?? a.resource_ref ?? 'a tool'}`
+                    : `${a.action}${a.resource_ref ? ` · ${a.resource_ref}` : ''}`}
+                  subtitle={resolvingId === String(a.id) ? 'Working…' : undefined}
+                  body={a.payload?.summary ?? 'KeyPlayer is asking for your sign-off before continuing.'}
+                  // listPendingApprovals returns DB status 'pending'; ApprovalCard only shows
+                  // its Approve/Reject buttons when the prop is literally 'pending_approval'.
+                  status="pending_approval"
+                  onApprove={(id) => { void resolveApproval(id, 'approve'); }}
+                  onReject={(id) => { void resolveApproval(id, 'deny'); }}
+                />
+              ))}
+            </div>
+          )}
           {sending && (
             <div className="flex justify-start">
               <div className="max-w-[78%] rounded-2xl px-3.5 py-2 text-xs bg-[var(--surface-2)] text-muted-foreground border border-border/60 inline-flex items-center gap-2">

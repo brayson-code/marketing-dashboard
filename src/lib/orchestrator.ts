@@ -20,6 +20,7 @@ import { listSpawnableSpecs, getDefPrompt } from './agent-defs';
 import { getAnthropicKey, NO_ANTHROPIC_KEY_MESSAGE } from './anthropic-key';
 import { buildMcpConfig, MCP_BETA, hasMcpBlock, type McpConfig } from './mcp-connector';
 import { logAudit } from './audit';
+import { toolApprovalsEnabled, isGatedTool } from './tool-approvals';
 
 export interface OrchestratorUsage { input: number; output: number; cost_usd: number; model: string }
 
@@ -457,6 +458,21 @@ async function handleClientToolUse(
         is_error: true,
       };
     }
+    // Owner-approval gate (OPT-IN via TOOL_APPROVALS_ENABLED; default OFF → no change).
+    // Held ≠ failed: return a normal tool_result (no is_error) so the model acks the owner.
+    if (toolApprovalsEnabled() && isGatedTool(toolUse.name)) {
+      const { createToolCallApproval } = await import('./pending-approvals');
+      const id = await createToolCallApproval({
+        tool: toolUse.name,
+        input: { type: input.type, task: input.task },
+        summary: `Spawn ${input.type} sub-agent: ${input.task}`,
+      });
+      return {
+        type: 'tool_result',
+        tool_use_id: toolUse.id,
+        content: `Held for owner approval (#${id}). The ${input.type} sub-agent will run once the owner approves.`,
+      };
+    }
     const result = await spawnSubAgent(input.type, input.task, parentTaskId);
     if (!result.ok) {
       return {
@@ -478,6 +494,21 @@ async function handleClientToolUse(
     const request = (toolUse.input as { request?: string }).request?.trim();
     if (!request) {
       return { type: 'tool_result', tool_use_id: toolUse.id, content: 'Error: launch_campaign requires a `request`.', is_error: true };
+    }
+    // Owner-approval gate (OPT-IN via TOOL_APPROVALS_ENABLED; default OFF → no change).
+    // Held ≠ failed: return a normal tool_result (no is_error) so the model acks the owner.
+    if (toolApprovalsEnabled() && isGatedTool(toolUse.name)) {
+      const { createToolCallApproval } = await import('./pending-approvals');
+      const id = await createToolCallApproval({
+        tool: toolUse.name,
+        input: { request },
+        summary: `Launch research campaign: ${request}`,
+      });
+      return {
+        type: 'tool_result',
+        tool_use_id: toolUse.id,
+        content: `Held for owner approval (#${id}). The research campaign will launch once the owner approves.`,
+      };
     }
     try {
       const launched = await launchResearchCampaign(request);
