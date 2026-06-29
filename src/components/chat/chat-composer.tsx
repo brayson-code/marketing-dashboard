@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Send } from 'lucide-react';
+import { MicButton } from './mic-button';
 
 // A Claude-composer-style prompt surface: a rounded card wrapping an
 // auto-growing <textarea> with a paper-plane send button.
@@ -28,9 +29,55 @@ export function ChatComposer({ onSend, disabled, busy, placeholder, accentVar }:
   const [text, setText] = useState('');
   const [focused, setFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Dictation: `dictBase` is the draft text BEFORE the live interim chunk, and
+  // `dictInterim` is the interim chunk currently appended to it. We rebuild the
+  // textarea value as base + interim so interim re-emits replace cleanly and a
+  // final segment folds into the base without duplicating.
+  const dictBaseRef = useRef('');
+  const dictInterimRef = useRef('');
+  // Wraps the MicButton; the focused-composer hotkey clicks it so the hotkey and
+  // the visible button share one dictation instance.
+  const micWrapRef = useRef<HTMLSpanElement>(null);
 
   const accent = accentVar ?? 'var(--primary)';
   const canSend = !disabled && !busy && text.trim().length > 0;
+
+  const joinDraft = (base: string, chunk: string) =>
+    base && chunk && !/\s$/.test(base) ? `${base} ${chunk}` : `${base}${chunk}`;
+
+  const handleTranscript = (chunk: string, isFinal: boolean) => {
+    if (!chunk) return;
+    const next = joinDraft(dictBaseRef.current, chunk);
+    if (isFinal) {
+      dictBaseRef.current = next;
+      dictInterimRef.current = '';
+    } else {
+      dictInterimRef.current = chunk;
+    }
+    setText(next);
+    requestAnimationFrame(resize);
+  };
+
+  // Keep the dictation base in sync with manual edits so the next chunk appends
+  // to whatever the user has actually typed (not a stale snapshot).
+  const handleTextChange = (value: string) => {
+    dictBaseRef.current = value;
+    dictInterimRef.current = '';
+    setText(value);
+  };
+
+  const handleComposerKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'm' || e.key === 'M')) {
+      e.preventDefault();
+      // stopPropagation so MicButton's own window-level hotkey doesn't also fire
+      // (which would toggle twice and cancel out). The button click drives the
+      // single shared dictation instance.
+      e.stopPropagation();
+      micWrapRef.current?.querySelector('button')?.click();
+      return;
+    }
+    handleKeyDown(e);
+  };
 
   // Auto-grow: reset to auto so it can shrink, then clamp to the cap.
   const resize = () => {
@@ -75,8 +122,8 @@ export function ChatComposer({ onSend, disabled, busy, placeholder, accentVar }:
       <textarea
         ref={textareaRef}
         value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={handleKeyDown}
+        onChange={(e) => handleTextChange(e.target.value)}
+        onKeyDown={handleComposerKeyDown}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         rows={1}
@@ -85,6 +132,9 @@ export function ChatComposer({ onSend, disabled, busy, placeholder, accentVar }:
         className="flex-1 resize-none bg-transparent px-1.5 py-1 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/50 focus:outline-none disabled:cursor-not-allowed"
         style={{ maxHeight: `${MAX_TEXTAREA_PX}px` }}
       />
+      <span ref={micWrapRef} className="inline-flex">
+        <MicButton onTranscript={handleTranscript} accentVar={accent} disabled={disabled} />
+      </span>
       <button
         type="button"
         onClick={submit}

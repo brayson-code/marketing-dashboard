@@ -5,6 +5,7 @@ import { MessageCircle, Send, ChevronDown, ChevronUp } from 'lucide-react';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { timeAgo } from '@/lib/utils';
 import { MessageBubble } from './message-bubble';
+import { MicButton } from './mic-button';
 import type { ChatMessage, ChatConversation } from '@/types';
 
 type AgentListItem = { id: string; name: string; emoji: string };
@@ -139,6 +140,20 @@ export function AgentChat() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pendingIdRef = useRef(-1);
+  // Dictation: base = the input BEFORE the current live interim chunk; we rebuild
+  // input as base + interim so interim re-emits replace and finals fold in cleanly.
+  const dictBaseRef = useRef('');
+  const micWrapRef = useRef<HTMLSpanElement>(null);
+
+  const joinDraft = (base: string, chunk: string) =>
+    base && chunk && !/\s$/.test(base) ? `${base} ${chunk}` : `${base}${chunk}`;
+
+  const handleTranscript = useCallback((chunk: string, isFinal: boolean) => {
+    if (!chunk) return;
+    const next = joinDraft(dictBaseRef.current, chunk);
+    if (isFinal) dictBaseRef.current = next;
+    setInput(next);
+  }, []);
 
   // Poll conversations
   const { data: conversations } = useSmartPoll<ChatConversation[]>(
@@ -222,6 +237,7 @@ export function AgentChat() {
 
     setMessages(prev => [...prev, optimistic]);
     setInput('');
+    dictBaseRef.current = '';
     setSending(true);
 
     try {
@@ -252,10 +268,25 @@ export function AgentChat() {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'm' || e.key === 'M')) {
+      e.preventDefault();
+      // stopPropagation so MicButton's own window hotkey doesn't toggle a second
+      // time (double toggle would cancel out). Click drives the shared instance.
+      e.stopPropagation();
+      micWrapRef.current?.querySelector('button')?.click();
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
+  };
+
+  // Keep the dictation base in sync with manual typing so the next spoken chunk
+  // appends to what the user actually has in the box.
+  const handleInputChange = (value: string) => {
+    dictBaseRef.current = value;
+    setInput(value);
   };
 
   // Start a new conversation
@@ -432,7 +463,7 @@ export function AgentChat() {
                     <textarea
                       ref={inputRef}
                       value={input}
-                      onChange={e => setInput(e.target.value)}
+                      onChange={e => handleInputChange(e.target.value)}
                       onKeyDown={handleKeyDown}
                       placeholder={`Message ${activeConv === 'hermes_apollo' ? 'team' : activeConv.replace('agent_', '')}...`}
                       rows={1}
@@ -440,6 +471,9 @@ export function AgentChat() {
                       className="flex-1 resize-none bg-muted/30 rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all"
                       style={{ maxHeight: '100px' }}
                     />
+                    <span ref={micWrapRef} className="inline-flex">
+                      <MicButton onTranscript={handleTranscript} disabled={!canEdit} />
+                    </span>
                     <button
                       onClick={handleSend}
                       disabled={!canEdit || !input.trim() || sending}

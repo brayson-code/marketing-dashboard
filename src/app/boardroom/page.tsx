@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Send, Phone, AlertCircle, ArrowDownToLine, ArrowUpFromLine, MessageSquare, Network, Paperclip, X, Loader2, ImageIcon, Info } from 'lucide-react';
 import { A2AHistory } from '@/components/chat/a2a-history';
+import { MicButton } from '@/components/chat/mic-button';
 import { ApprovalCard } from '@/components/ui/approval-card';
 import { createClient } from '@/lib/supabase/client';
 
@@ -108,6 +109,30 @@ function IMessageThread() {
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Dictation: base = the draft BEFORE the current live interim chunk; we rebuild
+  // draft as base + interim so interim re-emits replace and finals fold in cleanly.
+  const dictBaseRef = useRef('');
+  const micWrapRef = useRef<HTMLSpanElement>(null);
+
+  const joinDraft = (base: string, chunk: string) =>
+    base && chunk && !/\s$/.test(base) ? `${base} ${chunk}` : `${base}${chunk}`;
+
+  const handleTranscript = useCallback((chunk: string, isFinal: boolean) => {
+    if (!chunk) return;
+    setDraft((prevBase) => {
+      // prevBase here is whatever's in the box; on interim, replace the trailing
+      // interim by rebuilding from dictBaseRef (text committed before this chunk).
+      const next = joinDraft(dictBaseRef.current, chunk);
+      if (isFinal) dictBaseRef.current = next;
+      return next;
+    });
+  }, []);
+
+  // Keep the dictation base in sync with manual typing.
+  const handleDraftChange = (value: string) => {
+    dictBaseRef.current = value;
+    setDraft(value);
+  };
 
   const load = useCallback(async () => {
     try {
@@ -217,6 +242,7 @@ function IMessageThread() {
     const attachments = staged;
     // Optimistically clear the composer.
     setDraft('');
+    dictBaseRef.current = '';
     setStaged([]);
     try {
       const res = await fetch('/api/boardroom/ask', {
@@ -413,9 +439,17 @@ function IMessageThread() {
             </button>
             <textarea
               value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+              onChange={(e) => handleDraftChange(e.target.value)}
               onPaste={handlePaste}
               onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'm' || e.key === 'M')) {
+                  e.preventDefault();
+                  // stopPropagation so MicButton's own window hotkey doesn't fire a
+                  // second time (double toggle). Click drives the shared instance.
+                  e.stopPropagation();
+                  micWrapRef.current?.querySelector('button')?.click();
+                  return;
+                }
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                   e.preventDefault();
                   handleSend(e as unknown as React.FormEvent);
@@ -426,6 +460,9 @@ function IMessageThread() {
               rows={2}
               className="flex-1 resize-none"
             />
+            <span ref={micWrapRef} className="inline-flex items-center">
+              <MicButton onTranscript={handleTranscript} disabled={sending} />
+            </span>
             <button type="submit" disabled={!canSend} className="btn btn-primary">
               <Send size={14} /> {sending ? 'Thinking…' : 'Send'}
             </button>
