@@ -79,16 +79,20 @@ const PRIMARY: NavGroup[] = [
       { href: '/salesops', label: 'SalesOps', icon: PhoneCall, flag: 'salesops_enabled' },
     ],
   },
-  {
-    label: 'INSIGHTS',
-    items: [
-      { href: '/analytics', label: 'Analytics', icon: LineChart },
-      { href: '/kpis', label: 'KPIs', icon: BarChart3 },
-      { href: '/usage', label: 'Usage', icon: DollarSign },
-      { href: '/kg', label: 'Knowledge', icon: Network },
-    ],
-  },
 ];
+
+// INSIGHTS renders AFTER Ops (below it) for UI continuity — read-only analytics sit
+// beneath the operational tools. Same collapsible mechanism as every other section.
+const INSIGHTS: NavGroup = {
+  label: 'INSIGHTS',
+  collapsible: true,
+  items: [
+    { href: '/analytics', label: 'Analytics', icon: LineChart },
+    { href: '/kpis', label: 'KPIs', icon: BarChart3 },
+    { href: '/usage', label: 'Usage', icon: DollarSign },
+    { href: '/kg', label: 'Knowledge', icon: Network },
+  ],
+};
 
 const OPS: NavGroup = {
   label: 'OPS',
@@ -139,10 +143,10 @@ const SECTION_COLOR_MAP: Record<string, string> = {
   GENERAL: 'var(--primary)',
 };
 
-// Only sections that map to a real agent group get the inline agent-chat widget.
-// HOME (overview/tasks), INSIGHTS (read-only analytics), and GENERAL (connections/
-// billing/docs — no agents) are intentionally excluded: a chat there makes no sense.
-const CHAT_SECTIONS: ReadonlySet<string> = new Set(['AGENTS', 'MARKETING', 'REVENUE', 'OPS']);
+// Sections that get the inline agent-chat widget. INSIGHTS is included — pointed at the
+// operations/analyst agents so you can ask about the numbers right there. HOME (overview/
+// tasks) and GENERAL (connections/billing/docs — no agents) stay excluded: no chat there.
+const CHAT_SECTIONS: ReadonlySet<string> = new Set(['AGENTS', 'MARKETING', 'REVENUE', 'OPS', 'INSIGHTS']);
 
 // Per-user persisted open/closed state for a section. Sections default OPEN, so a
 // missing key reads as open — only an explicit "false" collapses one. Keyed by the
@@ -232,6 +236,20 @@ export function NavRail() {
         {/* OPS — same collapsible mechanism as every other section now. */}
         <CollapsibleSection
           group={OPS}
+          counts={counts ?? null}
+          pathname={pathname}
+          flags={flags}
+          hqOnly={HQ_ONLY}
+          isHq={isHq}
+          viewEnabled={viewEnabled}
+          openChatSection={openChatSection}
+          setOpenChatSection={setOpenChatSection}
+          className="mt-3 pt-3 border-t border-border/40"
+        />
+
+        {/* INSIGHTS — below Ops for UI continuity. */}
+        <CollapsibleSection
+          group={INSIGHTS}
           counts={counts ?? null}
           pathname={pathname}
           flags={flags}
