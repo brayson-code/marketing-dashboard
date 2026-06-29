@@ -57,17 +57,14 @@ const PRIMARY: NavGroup[] = [
     ],
   },
   {
-    label: 'CREATIVE',
-    items: [
-      // The Content hub fronts Ideas / Scripts / Hyperframes / Media / Competitors
-      // / Pipeline / Library / Engagement as tabs (see content-tabs.tsx).
-      { href: '/content/overview', label: 'Content Lab', icon: FlaskConical, countKey: 'content',
-        matchPrefixes: ['/content', '/content-lab', '/scripts', '/competitors', '/engagement'] },
-    ],
-  },
-  {
     label: 'MARKETING',
     items: [
+      // Content Lab leads the marketing flow (creation → distribution). The Content hub
+      // fronts Ideas / Scripts / Hyperframes / Media / Competitors / Pipeline / Library /
+      // Engagement as tabs (see content-tabs.tsx). Folded in from the old one-item
+      // CREATIVE section (same marketing department + color).
+      { href: '/content/overview', label: 'Content Lab', icon: FlaskConical, countKey: 'content',
+        matchPrefixes: ['/content', '/content-lab', '/scripts', '/competitors', '/engagement'] },
       { href: '/campaigns', label: 'Campaigns', icon: Waves },
       { href: '/missions', label: 'Missions', icon: Rocket },
       { href: '/outreach', label: 'Outreach', icon: Mail, countKey: 'outreach' },
@@ -135,13 +132,17 @@ const SETTINGS_ITEM: NavItem = { href: '/settings', label: 'Settings', icon: Set
 const SECTION_COLOR_MAP: Record<string, string> = {
   HOME: 'var(--primary)',
   AGENTS: 'var(--dept-leadership)',
-  CREATIVE: 'var(--dept-marketing)',
   MARKETING: 'var(--dept-marketing)',
   REVENUE: 'var(--dept-revenue)',
   INSIGHTS: 'var(--dept-operations)',
   OPS: 'var(--dept-operations)',
   GENERAL: 'var(--primary)',
 };
+
+// Only sections that map to a real agent group get the inline agent-chat widget.
+// HOME (overview/tasks), INSIGHTS (read-only analytics), and GENERAL (connections/
+// billing/docs — no agents) are intentionally excluded: a chat there makes no sense.
+const CHAT_SECTIONS: ReadonlySet<string> = new Set(['AGENTS', 'MARKETING', 'REVENUE', 'OPS']);
 
 // Per-user persisted open/closed state for a section. Sections default OPEN, so a
 // missing key reads as open — only an explicit "false" collapses one. Keyed by the
@@ -327,7 +328,8 @@ function CollapsibleSection({
   // Section accent: drives the header dot + label/chevron tint AND the chat widget.
   const accent = SECTION_COLOR_MAP[group.label];
   const headerColor = accent ?? 'var(--muted-foreground)';
-  const chatOpen = openChatSection === group.label;
+  const hasChat = CHAT_SECTIONS.has(group.label);
+  const chatOpen = hasChat && openChatSection === group.label;
   const toggleChat = (e: MouseEvent) => {
     // Never let the chat button collapse/expand the section dropdown.
     e.stopPropagation();
@@ -362,28 +364,33 @@ function CollapsibleSection({
             }}
           />
         </button>
-        {/* Per-section agent chat toggle — beside the chevron, never toggles collapse. */}
-        <button
-          type="button"
-          onClick={toggleChat}
-          aria-label={`Chat with ${group.label} agents`}
-          aria-pressed={chatOpen}
-          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md active:scale-95"
-          style={{
-            color: chatOpen ? headerColor : 'var(--muted-foreground)',
-            background: chatOpen ? `color-mix(in srgb, ${headerColor} 16%, transparent)` : 'transparent',
-            transition: 'color var(--t-press) var(--ease-out), background-color var(--t-press) var(--ease-out), transform var(--t-press) var(--ease-out)',
-          }}
-        >
-          <MessageCircle size={12} />
-        </button>
+        {/* Per-section agent chat toggle — only on sections that map to real agents
+            (beside the chevron, never toggles collapse). */}
+        {hasChat && (
+          <button
+            type="button"
+            onClick={toggleChat}
+            aria-label={`Chat with ${group.label} agents`}
+            aria-pressed={chatOpen}
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md active:scale-95"
+            style={{
+              color: chatOpen ? headerColor : 'var(--muted-foreground)',
+              background: chatOpen ? `color-mix(in srgb, ${headerColor} 16%, transparent)` : 'transparent',
+              transition: 'color var(--t-press) var(--ease-out), background-color var(--t-press) var(--ease-out), transform var(--t-press) var(--ease-out)',
+            }}
+          >
+            <MessageCircle size={12} />
+          </button>
+        )}
       </div>
-      <NavAgentChatWidget
-        sectionLabel={group.label}
-        accentVar={accent ?? 'var(--primary)'}
-        open={chatOpen}
-        onClose={() => setOpenChatSection(null)}
-      />
+      {hasChat && (
+        <NavAgentChatWidget
+          sectionLabel={group.label}
+          accentVar={accent ?? 'var(--primary)'}
+          open={chatOpen}
+          onClose={() => setOpenChatSection(null)}
+        />
+      )}
       {open && (
         <div className={`${compact ? 'space-y-0.5' : 'space-y-0.5 mt-1'}`} data-stagger>
           {items.map((item) => {

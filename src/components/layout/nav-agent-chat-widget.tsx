@@ -154,11 +154,15 @@ export function NavAgentChatWidget({ sectionLabel, accentVar, open, onClose }: P
     };
   }, [open]);
 
-  // Default-select the first section agent once the roster is in.
+  // Auto-select THE RESPECTIVE lead agent when the panel opens, so the user can start
+  // typing immediately. Prefer the section's executive (CMO for Marketing, CRO for
+  // Revenue, COO for Ops, the lead exec for Agents) over an arbitrary first match.
   useEffect(() => {
     if (!open) return;
     if (activeId) return;
-    if (sectionAgents.length > 0) setActiveId(sectionAgents[0].id);
+    if (sectionAgents.length === 0) return;
+    const lead = sectionAgents.find((a) => a.is_executive) ?? sectionAgents[0];
+    setActiveId(lead.id);
   }, [open, activeId, sectionAgents]);
 
   // Load history when the active *agent* changes (the "All agents" meta view

@@ -40,12 +40,9 @@ export const VIEW_SECTIONS: ReadonlyArray<{
     ],
   },
   {
-    section: 'Creative',
-    items: [{ href: '/content/overview', label: 'Content Lab' }],
-  },
-  {
     section: 'Marketing',
     items: [
+      { href: '/content/overview', label: 'Content Lab' },
       { href: '/campaigns', label: 'Campaigns' },
       { href: '/missions', label: 'Missions' },
       { href: '/outreach', label: 'Outreach' },
