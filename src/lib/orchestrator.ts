@@ -281,11 +281,24 @@ async function buildTools(gwAllowedArg?: boolean, smsOnArg?: boolean, fcOnArg?: 
         type: 'object',
         properties: {
           request: { type: 'string', description: 'The research request in plain language — what to research and for what decision.' },
+          max_waves: { type: 'number', description: 'Optional cap on how many waves to run before stopping early (e.g. 3). Omit to run the full planned campaign.' },
+          stop_when: { type: 'string', enum: ['goal_met', 'no_progress'], description: "Optional early-halt condition: 'goal_met' stops once the mission's goal is satisfied; 'no_progress' stops when a wave adds nothing new. Omit for no early halt." },
         },
         required: ['request'],
       },
     },
   ];
+}
+
+/** Parse the optional launch_campaign halt controls (the stopWhen kit) from a tool input. */
+function parseLaunchHalt(input: Record<string, unknown>): { maxWaves: number | null; stopWhen: { condition: 'goal_met' | 'no_progress' } | null } {
+  const n = Number(input.max_waves);
+  const maxWaves = Number.isInteger(n) && n > 0 ? n : null;
+  const sw = input.stop_when;
+  const stopWhen = sw === 'goal_met' || sw === 'no_progress'
+    ? { condition: sw as 'goal_met' | 'no_progress' }
+    : null;
+  return { maxWaves, stopWhen };
 }
 
 async function callClaude(
@@ -491,18 +504,23 @@ async function handleClientToolUse(
   }
 
   if (toolUse.name === 'launch_campaign') {
-    const request = (toolUse.input as { request?: string }).request?.trim();
+    const input = toolUse.input as Record<string, unknown>;
+    const request = (input.request as string | undefined)?.trim();
     if (!request) {
       return { type: 'tool_result', tool_use_id: toolUse.id, content: 'Error: launch_campaign requires a `request`.', is_error: true };
     }
+    // Optional early-halt controls (the stopWhen kit). Null/omitted = run the full campaign.
+    const { maxWaves, stopWhen } = parseLaunchHalt(input);
+    const haltNote = maxWaves ? ` (cap ${maxWaves} waves)` : stopWhen ? ` (stop when ${stopWhen.condition})` : '';
     // Owner-approval gate (OPT-IN via TOOL_APPROVALS_ENABLED; default OFF → no change).
     // Held ≠ failed: return a normal tool_result (no is_error) so the model acks the owner.
     if (toolApprovalsEnabled() && isGatedTool(toolUse.name)) {
       const { createToolCallApproval } = await import('./pending-approvals');
       const id = await createToolCallApproval({
         tool: toolUse.name,
-        input: { request },
-        summary: `Launch research campaign: ${request}`,
+        // Carry the halt controls so the held-then-approved launch applies them too.
+        input: { request, max_waves: maxWaves, stop_when: stopWhen?.condition ?? null },
+        summary: `Launch research campaign${haltNote}: ${request}`,
       });
       return {
         type: 'tool_result',
@@ -511,7 +529,7 @@ async function handleClientToolUse(
       };
     }
     try {
-      const launched = await launchResearchCampaign(request);
+      const launched = await launchResearchCampaign(request, { maxWaves, stopWhen });
       // Start wave 1 in the background so KeyPlayer can ack the owner immediately.
       // after() runs the callback once the current request's response is sent; if
       // we're somehow outside a request context, the owner just advances manually.

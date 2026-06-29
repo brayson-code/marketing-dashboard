@@ -579,15 +579,21 @@ export interface CreateCampaignInput {
    *  parent's id so the Campaign detail view can roll up its missions. Null /
    *  omitted = standalone mission (the default). */
   campaignId?: string | null;
+  /** Optional early-halt controls (the stopWhen kit). Both null/omitted = run every
+   *  planned wave (the default). Persisted to wave_runs.max_waves / stop_when and read
+   *  by evaluateStopWhen at each wave boundary. */
+  maxWaves?: number | null;
+  stopWhen?: StopWhen | null;
 }
 
 export async function createCampaign(input: CreateCampaignInput): Promise<string> {
   const rows = (await sql()`
-    INSERT INTO public.wave_runs (tenant_id, title, request, brief, goal_id, campaign_id, waves, status, current_wave, total_waves)
+    INSERT INTO public.wave_runs (tenant_id, title, request, brief, goal_id, campaign_id, waves, status, current_wave, total_waves, max_waves, stop_when)
     VALUES (
       ${tenantId()}, ${input.title}, ${input.request ?? null}, ${jsonb(input.brief)},
       ${input.goalId ?? null}, ${input.campaignId ?? null}, ${jsonb(input.waves)},
-      'running', 0, ${input.waves.length}
+      'running', 0, ${input.waves.length},
+      ${input.maxWaves ?? null}, ${input.stopWhen ? jsonb(input.stopWhen) : null}
     )
     RETURNING id
   `) as unknown as Array<{ id: string }>;

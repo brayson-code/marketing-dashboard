@@ -11,7 +11,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { getAnthropicKey, NO_ANTHROPIC_KEY_MESSAGE } from './anthropic-key';
 import { createGoal } from './goals';
-import { createCampaign, type CampaignBrief } from './waves';
+import { createCampaign, type CampaignBrief, type StopWhen } from './waves';
 import { composeWavePlan, planToWaves, type WavePlan } from './campaign-planner';
 
 /** A brief plus the kind of campaign it is — drives which wave plan is composed.
@@ -201,7 +201,7 @@ export async function previewCampaignPlan(request: string): Promise<CampaignPrev
  */
 export async function launchCampaign(
   request: string,
-  opts: { campaignId?: string | null; plan?: WavePlan } = {},
+  opts: { campaignId?: string | null; plan?: WavePlan; maxWaves?: number | null; stopWhen?: StopWhen | null } = {},
 ): Promise<LaunchedCampaign> {
   const { title, brief } = await draftCampaignBrief(request);
   const plan = opts.plan ?? (await composeWavePlan(brief));
@@ -226,6 +226,8 @@ export async function launchCampaign(
     title, request, brief, waves,
     goalId: goal.id,
     campaignId: opts.campaignId ?? null,
+    maxWaves: opts.maxWaves ?? null,
+    stopWhen: opts.stopWhen ?? null,
   });
   return { id, goalId: goal.id, title, brief, plan };
 }
@@ -238,7 +240,7 @@ export async function launchCampaign(
  */
 export async function launchResearchCampaign(
   request: string,
-  opts: { campaignId?: string | null } = {},
+  opts: { campaignId?: string | null; maxWaves?: number | null; stopWhen?: StopWhen | null } = {},
 ): Promise<LaunchedCampaign> {
   return launchCampaign(request, opts);
 }

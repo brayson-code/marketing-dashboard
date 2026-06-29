@@ -291,8 +291,14 @@ export async function resolvePendingApproval(
       if (tool === 'launch_campaign') {
         const request = typeof input.request === 'string' ? input.request.trim() : '';
         if (!request) throw new Error('Malformed launch_campaign payload (missing request)');
+        // Carry the optional halt controls the orchestrator stored at gate time.
+        const mw = Number(input.max_waves);
+        const maxWaves = Number.isInteger(mw) && mw > 0 ? mw : null;
+        const stopWhen = input.stop_when === 'goal_met' || input.stop_when === 'no_progress'
+          ? { condition: input.stop_when as 'goal_met' | 'no_progress' }
+          : null;
         const { launchResearchCampaign } = await import('@/lib/campaign-intake');
-        const launched = await launchResearchCampaign(request);
+        const launched = await launchResearchCampaign(request, { maxWaves, stopWhen });
         // The original branch fired runAndChain(launched.id) via after(); the resolve path
         // is its own API request, so call it inline (fire-and-forget) rather than via after().
         const { runAndChain } = await import('@/lib/waves');
