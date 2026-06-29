@@ -109,6 +109,11 @@ export async function GET() {
     // SalesOps (PIF AI Sales Co-Pilot re-host) — default off. Gates the nav item and
     // the page; the admin routes enforce it server-side regardless.
     salesops_enabled: process.env.SALESOPS_ENABLED === 'true',
+    // Command Center Builder ("playground") — OPTIONAL onboarding surface where a VA
+    // composes this workspace's nav and previews it before applying. Default off; gates
+    // ONLY the nav item + the /playground page (the underlying /api/command-center/views
+    // routes are always available to members). Mirrors salesops_enabled.
+    playground_enabled: process.env.PLAYGROUND_ENABLED === 'true',
     // SalesOps Playbook Phase 2 (Reanalyze: evidence sources → change-set → apply) —
     // a sub-flag of SalesOps, default off. Gates ONLY the Reanalyze surface on the
     // SalesOps page; the /api/salesops-admin/{sources,reanalyze,changeset*} routes enforce

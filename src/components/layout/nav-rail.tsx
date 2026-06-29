@@ -8,7 +8,7 @@ import {
   Search, BarChart3, LineChart, FileText, Rocket, Clock, List, Settings,
   FolderOpen, MessagesSquare, Activity, Target, Inbox, Network, DollarSign, Bug,
   Waves, TrendingUp, Dna, Timer, Link2, Sparkles, ChevronDown, ChevronRight,
-  FlaskConical, BookOpen, ArrowUpRight, Boxes, ShieldCheck, PhoneCall,
+  FlaskConical, BookOpen, ArrowUpRight, Boxes, ShieldCheck, PhoneCall, Blocks,
 } from 'lucide-react';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { useDashboard } from '@/store';
@@ -28,7 +28,7 @@ interface NavItem {
   // When set, the item is hidden unless the named feature flag (from /api/auth/me)
   // is true. Used by flag-gated surfaces (e.g. SalesOps) so nothing renders until
   // the operator flips SALESOPS_ENABLED — the routes enforce the flag server-side too.
-  flag?: 'salesops_enabled';
+  flag?: 'salesops_enabled' | 'playground_enabled';
 }
 interface NavGroup { label: string; items: NavItem[]; collapsible?: boolean }
 
@@ -96,6 +96,10 @@ const OPS: NavGroup = {
   collapsible: true,
   items: [
     { href: '/agents/workspace', label: 'Workspace', icon: FolderOpen },
+    // Command Center Builder — OPTIONAL onboarding surface, hidden unless
+    // PLAYGROUND_ENABLED is on (surfaced as playground_enabled from /api/auth/me). The
+    // /playground page double-checks the flag server-perceived from /api/auth/me too.
+    { href: '/playground', label: 'Playground', icon: Blocks, flag: 'playground_enabled' },
     { href: '/memory', label: 'Reports', icon: FileText },
     { href: '/learning', label: 'Learning', icon: TrendingUp },
     { href: '/genes', label: 'Genes', icon: Dna },
@@ -165,7 +169,10 @@ export function NavRail() {
   useEffect(() => {
     fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)).then((j) => {
       setIsHq(!!j?.is_hq);
-      setFlags({ salesops_enabled: !!j?.salesops_enabled });
+      setFlags({
+        salesops_enabled: !!j?.salesops_enabled,
+        playground_enabled: !!j?.playground_enabled,
+      });
       setViews((j?.command_center_views && typeof j.command_center_views === 'object')
         ? (j.command_center_views as Record<string, boolean>)
         : {});
