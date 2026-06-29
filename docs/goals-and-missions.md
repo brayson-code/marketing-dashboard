@@ -80,6 +80,17 @@ Some work is too big for one agent and one step. Missions break a large objectiv
 
 You can tie a Mission to a Goal, so a mission's progress feeds the goal it's meant to advance, and run missions under a **Campaign** to keep a multi-week push organized. A running mission's waves also appear in the **Automation Flow** strip on your [Overview](./overview.md).
 
+### Capping or stopping a mission early
+
+By default a mission runs its full wave sequence. But some objectives are effectively "done" before the last wave — the question's been answered, or a wave stops turning up anything new. To keep a mission from over-running (and spending) past that point, you can tell it when to wrap up. There are two ways, and you ask for either one in plain language right when you launch:
+
+- **Cap the number of waves.** Put a hard ceiling on how far it runs, e.g. *"Research our top 3 competitors, stop at 3 waves."* It runs up to that many waves and then finishes, even if it could keep going.
+- **Stop early when it's effectively done.** Let it bow out on its own — *"...and stop once we've answered the question"* or *"...stop when a wave stops adding anything new."* The mission ends as soon as the goal is met or a wave brings nothing meaningful beyond the last, instead of grinding through every planned stage.
+
+You can combine both — *"cap at 4 waves, but stop sooner if it's done"* — and KeyCommand will honor whichever comes first.
+
+**Why bother:** every wave is real agent work that costs spend. A cap or a stop-when-done condition means a mission stops when it has actually finished its job, rather than running waves that just repeat what you already have.
+
 ---
 
 ## Tips
@@ -88,5 +99,6 @@ You can tie a Mission to a Goal, so a mission's progress feeds the goal it's mea
 - **Keep a small set of active goals.** A handful of sharp goals focuses the team far better than a long wishlist.
 - **Use Missions for any big, multi-step push** — a launch, a content sprint, a research deep-dive, an outreach campaign — and let everyday asks flow through the [Boardroom](./boardroom.md) and [Approvals](./drafts.md).
 - **Check the wave plan before you launch.** Missions show you the stages first so you can catch anything off before it runs.
+- **Cap or stop a mission early to save spend.** When launching, just add something like *"stop at 3 waves"* or *"...and stop once we've answered the question"* so it doesn't keep running after the job's effectively done.
 - **Group related missions under a Campaign** when an effort spans channels and weeks, so the whole push reads against one goal and window.
 - **You are the verifier.** Agents propose that a goal is done; confirming it is your call, every time.

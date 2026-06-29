@@ -23,6 +23,7 @@ export const DOCS_NAV: DocNavGroup[] = [
     group: 'Features',
     items: [
       { slug: 'competitors', title: 'Competitor Reel Intel', blurb: 'Watch competitor reels and tear down why they won' },
+      { slug: 'brand-research', title: 'Brand & Web Research', blurb: 'Pull any site\'s brand profile — colours, fonts, logo — and a clean capture, via Firecrawl' },
       { slug: 'content-lab', title: 'Content Lab', blurb: 'Trend Radar, Trial Reel Generator, and reel scans' },
       { slug: 'script-studio', title: 'Script Studio', blurb: 'Edit reel scripts and read them off a teleprompter' },
       { slug: 'hyperframes', title: 'Hyperframes', blurb: 'Turn a brief into a short-form script + storyboard, then hand it to HeyGen' },

@@ -41,6 +41,16 @@ Each reply can show its token cost — click the small info icon on a message to
 
 ---
 
+## Approving costly actions inline
+
+When enabled for your workspace, the biggest, most expensive moves pause for your go-ahead right here in the chat. Before KeyPlayer kicks off a full multi-wave research campaign or spins up a sub-agent to take on extra work, it stops and shows you an **Approve** / **Deny** card in the conversation.
+
+Nothing runs until you decide. Tap **Approve** and the action kicks off; tap **Deny** and KeyPlayer drops it and moves on. You stay in control of the moments that cost the most.
+
+This is the same "you sign off before it acts" idea behind [Drafts](./drafts.md) — just brought inline for the big, in-the-moment calls instead of routing them to a separate queue.
+
+---
+
 ## Tips
 
 - **Use it as your catch-all.** When no specific page fits, describe the goal to the orchestrator and let it pick the right specialists.

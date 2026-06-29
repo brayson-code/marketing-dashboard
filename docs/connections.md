@@ -64,6 +64,7 @@ After connecting, flip **Settings → Google Workspace actions** on to let agent
 |---------|-----------------|-----------------|
 | **Apify** | **Competitor Reel Intel** — scraping competitor reels for analysis. This is the key that turns on the Competitors feature. | Free signup at apify.com → copy your API token |
 | **Deepgram** | Transcribes a reel's audio when it has no on-screen subtitle track, giving deeper teardowns and powering the "Optimize my reel" scan. Comes with free starting credit. | deepgram.com → API key |
+| **Firecrawl** | **Brand & Web Research** — point your agents at any public website and pull a brand profile (colours, fonts, logo), a clean text capture, and structured brand details (name, tagline, social links). Great for onboarding a client or studying a competitor. See [Brand & Web Research](./brand-research.md). | firecrawl.dev → API key |
 | **Instagram (via Meta)** | Reading your own reel performance (reach, plays, watch time) so the "Optimize my reel" scanner uses real numbers. | A Meta Page access token, or connect Instagram in the Social section |
 
 ### SMS & messaging

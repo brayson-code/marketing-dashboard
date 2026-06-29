@@ -10,12 +10,12 @@ This page walks you through your first session in KeyCommand: signing in, gettin
 
 KeyCommand opens to a sign-in screen. There are two ways in:
 
-- **Email + password** — enter the credentials for your KeyCommand account and click **Sign in**.
+- **Email + password** — enter the credentials for your KeyCommand account and click **Sign in**. Forgotten your password? Click **Forgot password?**, enter your email, and we'll send you a reset link — following it signs you in once so you can set a new password.
 - **Continue with Google** — sign in with the Google account that uses the **same email** as your KeyCommand account. The first time, it links to your existing account automatically, and your password keeps working alongside it.
 
 If you don't have an account yet, ask your KeyCommand administrator to create one for you — KeyCommand is invite-only, so signing in with a brand-new Google account won't create a workspace either. Each account belongs to a single workspace — everything you create (competitors, scripts, drafts, connections) stays private to your workspace.
 
-> **Forgot your password or can't get in?** Contact whoever set up your workspace. There's no public self-serve signup.
+> **Forgot your password?** Use the **Forgot password?** link on the sign-in screen to reset it yourself. **Still can't get in?** Contact whoever set up your workspace — there's no public self-serve signup, so a new account has to be created by your administrator.
 
 ---
 

@@ -9,6 +9,9 @@ Short answers to the questions people ask most. If something here doesn't unbloc
 ### How do I connect my accounts?
 Everything connects on one page: open **Connections** from the left navigation. Social accounts (Instagram, Facebook, LinkedIn, YouTube, X, TikTok) and **Google** connect with one tap; API-key services (Apify, Deepgram, AgentMail, Twilio, and more) connect by pasting a key. Your **Anthropic (Claude) key** is the first one to add — your agents stay paused until it's connected. See [Connections](./connections.md) and [Getting Started](./getting-started.md).
 
+### I forgot my password — what do I do?
+On the sign-in screen, click **Forgot password?** and enter your email. We'll send a password-reset link to that address — open it and you'll be signed in once so you can set a new password. If the email doesn't show up within a few minutes, check your spam or junk folder. If you still can't get in, see [Troubleshooting](./troubleshooting.md#cant-sign-in--forgot-password).
+
 ### Why isn't my agent posting / doing anything?
 Two common reasons:
 

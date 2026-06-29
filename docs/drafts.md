@@ -54,6 +54,23 @@ Drafts can pile up, and some go stale as your priorities change. Two tools help:
 
 ---
 
+## Download & export
+
+Sometimes you want a draft out of the app — to hand it to a client, share it with a teammate, or keep an offline copy. Every item here has an **Export** control that downloads the content you're already looking at, formatted for the file type you pick. The same **Export** control lives on your **Reports**, so you can download those the same way.
+
+Choose the format that fits where it's going:
+
+- **PDF (.pdf)** — a polished, locked-down deliverable. Reach for this when you're sending something to a client and want it to look finished and read the same everywhere.
+- **Word (.docx)** — like PDF, but editable. Pick this when the person on the other end needs to make changes or drop it into their own document.
+- **PowerPoint (.pptx)** — a quick slide deck. Each heading in the content becomes a new slide, so a well-structured draft turns into a presentation in one click.
+- **Excel (.xlsx)** — for tabular data. Any tables in the content come across as spreadsheet rows you can sort, filter, or chart.
+- **Markdown (.md)** — clean, plain text for reuse — pasting into another tool, a docs site, or back into a draft elsewhere.
+- **HTML (.html)** — the content as a self-contained web page, handy for embedding or sharing as a link.
+
+Whatever you download is exactly the content you see, just dressed for that file type — nothing is sent anywhere, and the original draft stays put.
+
+---
+
 ## Tips
 
 - **Make Drafts a daily habit.** A quick pass each morning keeps your agents productive and your output flowing.

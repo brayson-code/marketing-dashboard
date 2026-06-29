@@ -4,6 +4,14 @@ Concrete fixes for the most common "it's not working" moments. If you don't see 
 
 ---
 
+## Can't sign in / forgot password
+
+**Reset your password from the sign-in screen.** Click **Forgot password?**, enter your email, and we'll send you a reset link. Follow that link and you'll be signed in once so you can set a new password.
+
+If the email doesn't arrive within a few minutes, check your **spam or junk folder** and confirm you entered the same email address your account uses. Still stuck? Reach out to whoever set up your workspace — there's no public self-serve signup, so accounts are created by your administrator. See [Getting Started](./getting-started.md#1-sign-in).
+
+---
+
 ## My agents won't run at all
 
 **Connect your Claude key.** Your AI team runs on **your own Anthropic (Claude) key**, and every agent stays paused until it's connected. Open **Connections → AI providers → Anthropic (Claude API)**, click **Connect**, paste your key, and save. The key is checked against Anthropic before it's stored, so **connected** means it actually works. Don't have one? Create it at [console.anthropic.com](https://console.anthropic.com) → **API Keys**. See [Getting Started](./getting-started.md#3-connect-your-claude-key--step-one).
