@@ -19,6 +19,13 @@ export async function GET() {
     role: a.role,
     model: a.model,
     description: a.description,
+    // department + is_executive drive the per-section agent-chat filtering in
+    // NavAgentChatWidget (the SECTION→AGENTS map). They already live on SquadAgent;
+    // surface them here (additive — other consumers ignore the extra fields) so the
+    // widget can split the roster by department / C-suite instead of seeing every
+    // agent as department:null / is_executive:false.
+    department: a.department,
+    is_executive: a.is_executive,
     status: a.status,
     stats: {
       actions_today: 0,

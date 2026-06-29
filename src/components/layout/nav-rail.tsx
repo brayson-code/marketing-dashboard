@@ -2,16 +2,18 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type MouseEvent } from 'react';
 import {
   Gauge, Bot, Mail, Contact, Zap,
   Search, BarChart3, LineChart, FileText, Rocket, Clock, List, Settings,
   FolderOpen, MessagesSquare, Activity, Target, Inbox, Network, DollarSign, Bug,
   Waves, TrendingUp, Dna, Timer, Link2, Sparkles, ChevronDown, ChevronRight,
   FlaskConical, BookOpen, ArrowUpRight, Boxes, ShieldCheck, PhoneCall, Blocks,
+  MessageCircle,
 } from 'lucide-react';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { useDashboard } from '@/store';
+import { NavAgentChatWidget } from '@/components/layout/nav-agent-chat-widget';
 
 interface NavCounts {
   content: number; outreach: number; signals_today: number; new_leads: number; total_pending: number;
@@ -126,6 +128,21 @@ const BOTTOM_GROUP: NavGroup = {
 
 const SETTINGS_ITEM: NavItem = { href: '/settings', label: 'Settings', icon: Settings };
 
+// Per-section accent (matches the Overview lens / agent-orb department colors). Keyed
+// by the section LABEL (as rendered). Drives both the colored header dot/label tint and
+// the accentVar handed to the floating chat widget. Unmapped labels fall back to
+// var(--muted-foreground) for the header and var(--primary) for the widget accent.
+const SECTION_COLOR_MAP: Record<string, string> = {
+  HOME: 'var(--primary)',
+  AGENTS: 'var(--dept-leadership)',
+  CREATIVE: 'var(--dept-marketing)',
+  MARKETING: 'var(--dept-marketing)',
+  REVENUE: 'var(--dept-revenue)',
+  INSIGHTS: 'var(--dept-operations)',
+  OPS: 'var(--dept-operations)',
+  GENERAL: 'var(--primary)',
+};
+
 // Per-user persisted open/closed state for a section. Sections default OPEN, so a
 // missing key reads as open — only an explicit "false" collapses one. Keyed by the
 // section label so it survives reloads and never collides with other UI state.
@@ -166,6 +183,9 @@ export function NavRail() {
   // view (the filter below is gated on !isHq). Defaults to {} so before /api/auth/me
   // resolves nothing is hidden.
   const [views, setViews] = useState<Record<string, boolean>>({});
+  // Which section's floating agent chat is open. Only one at a time (a section label
+  // or null). Lifted here so toggling one section's chat closes any other.
+  const [openChatSection, setOpenChatSection] = useState<string | null>(null);
   useEffect(() => {
     fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)).then((j) => {
       setIsHq(!!j?.is_hq);
@@ -202,6 +222,8 @@ export function NavRail() {
             hqOnly={HQ_ONLY}
             isHq={isHq}
             viewEnabled={viewEnabled}
+            openChatSection={openChatSection}
+            setOpenChatSection={setOpenChatSection}
             className={idx > 0 ? 'mt-3 pt-3 border-t border-border/40' : ''}
           />
         ))}
@@ -215,6 +237,8 @@ export function NavRail() {
           hqOnly={HQ_ONLY}
           isHq={isHq}
           viewEnabled={viewEnabled}
+          openChatSection={openChatSection}
+          setOpenChatSection={setOpenChatSection}
           className="mt-3 pt-3 border-t border-border/40"
         />
       </div>
@@ -230,6 +254,8 @@ export function NavRail() {
           hqOnly={HQ_ONLY}
           isHq={isHq}
           viewEnabled={viewEnabled}
+          openChatSection={openChatSection}
+          setOpenChatSection={setOpenChatSection}
           compact
         />
         <div className="mt-0.5">
@@ -251,6 +277,7 @@ export function NavRail() {
 // header).
 function CollapsibleSection({
   group, counts, pathname, className, flags, hqOnly, isHq, viewEnabled, compact,
+  openChatSection, setOpenChatSection,
 }: {
   group: NavGroup;
   counts: NavCounts | null;
@@ -261,6 +288,8 @@ function CollapsibleSection({
   isHq: boolean;
   viewEnabled: (href: string) => boolean;
   compact?: boolean;
+  openChatSection: string | null;
+  setOpenChatSection: (label: string | null) => void;
 }) {
   const items = group.items.filter((i) =>
     // HQ-only items hide outside HQ; flag-gated items hide until their flag is on;
@@ -295,23 +324,66 @@ function CollapsibleSection({
     });
   };
 
+  // Section accent: drives the header dot + label/chevron tint AND the chat widget.
+  const accent = SECTION_COLOR_MAP[group.label];
+  const headerColor = accent ?? 'var(--muted-foreground)';
+  const chatOpen = openChatSection === group.label;
+  const toggleChat = (e: MouseEvent) => {
+    // Never let the chat button collapse/expand the section dropdown.
+    e.stopPropagation();
+    setOpenChatSection(chatOpen ? null : group.label);
+  };
+
   return (
     <div className={className}>
-      <button
-        type="button"
-        onClick={toggle}
-        aria-expanded={open}
-        className="w-full flex items-center justify-between px-2 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold hover:text-muted-foreground"
-      >
-        <span>{group.label}</span>
-        <ChevronRight
-          size={11}
+      <div className="w-full flex items-center gap-1 px-2 pb-1">
+        <button
+          type="button"
+          onClick={toggle}
+          aria-expanded={open}
+          className="flex flex-1 items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold min-w-0"
           style={{
-            transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
-            transition: 'transform var(--t-press) var(--ease-out)',
+            color: headerColor,
+            opacity: 0.85,
+            transition: 'color var(--t-press) var(--ease-out), opacity var(--t-press) var(--ease-out)',
           }}
-        />
-      </button>
+        >
+          {/* Section accent dot */}
+          <span
+            className="h-1.5 w-1.5 shrink-0 rounded-full"
+            style={{ background: headerColor }}
+          />
+          <span className="truncate">{group.label}</span>
+          <ChevronRight
+            size={11}
+            style={{
+              transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
+              transition: 'transform var(--t-press) var(--ease-out)',
+            }}
+          />
+        </button>
+        {/* Per-section agent chat toggle — beside the chevron, never toggles collapse. */}
+        <button
+          type="button"
+          onClick={toggleChat}
+          aria-label={`Chat with ${group.label} agents`}
+          aria-pressed={chatOpen}
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md active:scale-95"
+          style={{
+            color: chatOpen ? headerColor : 'var(--muted-foreground)',
+            background: chatOpen ? `color-mix(in srgb, ${headerColor} 16%, transparent)` : 'transparent',
+            transition: 'color var(--t-press) var(--ease-out), background-color var(--t-press) var(--ease-out), transform var(--t-press) var(--ease-out)',
+          }}
+        >
+          <MessageCircle size={12} />
+        </button>
+      </div>
+      <NavAgentChatWidget
+        sectionLabel={group.label}
+        accentVar={accent ?? 'var(--primary)'}
+        open={chatOpen}
+        onClose={() => setOpenChatSection(null)}
+      />
       {open && (
         <div className={`${compact ? 'space-y-0.5' : 'space-y-0.5 mt-1'}`} data-stagger>
           {items.map((item) => {
