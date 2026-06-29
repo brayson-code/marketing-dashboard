@@ -5,6 +5,7 @@ import { tenantId, DEFAULT_TENANT_ID, NO_TENANT_ID, hasWorkspace } from '@/lib/t
 import { getSubject, ROLE_TO_RBAC } from '@/lib/authz';
 import { redeemPendingEntitlement } from '@/lib/stripe';
 import { emitSecurityEvent } from '@/lib/security-events';
+import { getEnabledViews } from '@/lib/command-center-views';
 
 // Returns the current Supabase-authenticated user, with the REAL intra-workspace role
 // (owner | member | va) read from workspace_members (via getSubject()). This lets the
@@ -113,6 +114,12 @@ export async function GET() {
     // SalesOps page; the /api/salesops-admin/{sources,reanalyze,changeset*} routes enforce
     // it server-side regardless.
     playbook_reanalyze_enabled: process.env.PLAYBOOK_REANALYZE === 'true',
+    // Command Center enabled-views map (href → enabled?; missing key = on). The HQ
+    // workspace IGNORES the map (operators see everything), so it gets {} = all-on;
+    // client workspaces get their persisted map. SUBTRACTIVE ONLY — the nav still
+    // applies HQ-only/flag/plan gating on top, so a client can never reveal a view
+    // they otherwise can't see.
+    command_center_views: tid === DEFAULT_TENANT_ID ? {} : await getEnabledViews(),
   });
   response.headers.set('Cache-Control', 'no-store');
   return response;

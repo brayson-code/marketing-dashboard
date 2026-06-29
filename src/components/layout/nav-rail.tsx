@@ -106,18 +106,47 @@ const OPS: NavGroup = {
   ],
 };
 
-const BOTTOM: NavItem[] = [
-  { href: '/connections', label: 'Connections', icon: Link2 },
-  { href: '/billing', label: 'Billing', icon: Sparkles },
-  { href: '/autonomy', label: 'Autonomy', icon: Zap },
-  { href: '/docs', label: 'Docs', icon: BookOpen, newTab: true },
-  { href: '/settings', label: 'Settings', icon: Settings },
-];
+// BOTTOM now splits into a collapsible "GENERAL" dropdown (Connections / Billing /
+// Autonomy / Docs) plus a standalone pinned Settings row (always visible, never in a
+// dropdown so a client can never collapse their way out of reach of Settings).
+const BOTTOM_GROUP: NavGroup = {
+  label: 'GENERAL',
+  collapsible: true,
+  items: [
+    { href: '/connections', label: 'Connections', icon: Link2 },
+    { href: '/billing', label: 'Billing', icon: Sparkles },
+    { href: '/autonomy', label: 'Autonomy', icon: Zap },
+    { href: '/docs', label: 'Docs', icon: BookOpen, newTab: true },
+  ],
+};
+
+const SETTINGS_ITEM: NavItem = { href: '/settings', label: 'Settings', icon: Settings };
+
+// Per-user persisted open/closed state for a section. Sections default OPEN, so a
+// missing key reads as open — only an explicit "false" collapses one. Keyed by the
+// section label so it survives reloads and never collides with other UI state.
+const collapseKey = (section: string) => `nav:collapsed:${section}`;
+
+function readCollapsed(section: string): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(collapseKey(section)) === 'closed';
+  } catch {
+    return false;
+  }
+}
+
+function writeCollapsed(section: string, collapsed: boolean) {
+  try {
+    window.localStorage.setItem(collapseKey(section), collapsed ? 'closed' : 'open');
+  } catch {
+    /* private mode / storage disabled — fall back to in-memory state only */
+  }
+}
 
 export function NavRail() {
   const pathname = usePathname();
   const realOnly = useDashboard(s => s.realOnly);
-  const [opsOpen, setOpsOpen] = useState(false);
   // KeyWatch / Issues and the Security Console are HQ-only (both read across tenants
   // and can act on the platform). Hide them from client workspaces — the APIs enforce
   // it server-side too. Default false so they're hidden until proven HQ.
@@ -127,67 +156,165 @@ export function NavRail() {
   // all-off so a flag-gated item (SalesOps) stays hidden until /api/auth/me reports it
   // enabled — the routes enforce the flag server-side regardless.
   const [flags, setFlags] = useState<Record<string, boolean>>({});
+  // The per-tenant enabled-views map (keyed by nav href). SUBTRACTIVE ONLY: a view is
+  // hidden when its key is explicitly false; a MISSING key reads as enabled (default
+  // all-on). The HQ workspace IGNORES this map entirely — operators always see every
+  // view (the filter below is gated on !isHq). Defaults to {} so before /api/auth/me
+  // resolves nothing is hidden.
+  const [views, setViews] = useState<Record<string, boolean>>({});
   useEffect(() => {
     fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)).then((j) => {
       setIsHq(!!j?.is_hq);
       setFlags({ salesops_enabled: !!j?.salesops_enabled });
+      setViews((j?.command_center_views && typeof j.command_center_views === 'object')
+        ? (j.command_center_views as Record<string, boolean>)
+        : {});
     }).catch(() => {});
   }, []);
-  const opsItems = OPS.items.filter((i) => !HQ_ONLY.has(i.href) || isHq);
+
+  // A view passes the enabled-views map when EITHER we're the HQ workspace (operators
+  // see everything) OR the map doesn't explicitly disable it. Overview "/" is always on
+  // (callers also pass it through unconditionally) so a client can't lock themselves out.
+  const viewEnabled = (href: string) => isHq || href === '/' || views[href] !== false;
 
   const { data: counts } = useSmartPoll<NavCounts>(
     () => fetch(`/api/counts${realOnly ? '?real=true' : ''}`).then(r => r.json()),
     { interval: 30_000, key: realOnly },
   );
 
-  // Auto-open OPS if you navigated into one of its items.
-  useEffect(() => {
-    if (opsItems.some((i) => pathname.startsWith(i.href))) setOpsOpen(true);
-  }, [pathname, opsItems]);
-
   return (
     <nav className="nav-rail fixed left-0 top-[var(--header-height)] bottom-0 w-[var(--nav-width)] surface-opaque border-r border-border z-40 hidden md:flex flex-col">
       <div className="flex-1 overflow-y-auto px-2 py-3">
         {PRIMARY.map((group, idx) => (
-          <NavGroupBlock
+          <CollapsibleSection
             key={group.label}
             group={group}
             counts={counts ?? null}
             pathname={pathname}
             flags={flags}
+            hqOnly={HQ_ONLY}
+            isHq={isHq}
+            viewEnabled={viewEnabled}
             className={idx > 0 ? 'mt-3 pt-3 border-t border-border/40' : ''}
           />
         ))}
 
-        {/* Collapsible OPS group */}
-        <div className="mt-3 pt-3 border-t border-border/40">
-          <button
-            type="button"
-            onClick={() => setOpsOpen((v) => !v)}
-            className="w-full flex items-center justify-between px-2 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold hover:text-muted-foreground"
-          >
-            <span>OPS</span>
-            {opsOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-          </button>
-          {opsOpen && (
-            <div className="space-y-0.5 mt-1" data-stagger>
-              {opsItems.map((item) => (
-                <NavLink key={item.href} item={item} active={pathname.startsWith(item.href)} count={0} />
-              ))}
-            </div>
-          )}
-        </div>
+        {/* OPS — same collapsible mechanism as every other section now. */}
+        <CollapsibleSection
+          group={OPS}
+          counts={counts ?? null}
+          pathname={pathname}
+          flags={flags}
+          hqOnly={HQ_ONLY}
+          isHq={isHq}
+          viewEnabled={viewEnabled}
+          className="mt-3 pt-3 border-t border-border/40"
+        />
       </div>
 
-      {/* BOTTOM fixed group — Connections / Billing / Autonomy / Settings */}
-      <div className="px-2 py-2 border-t border-border/60 space-y-0.5">
-        {BOTTOM.map((item) => (
-          <NavLink key={item.href} item={item} active={pathname.startsWith(item.href)} count={0} compact />
-        ))}
+      {/* BOTTOM — collapsible GENERAL dropdown (Connections / Billing / Autonomy /
+          Docs) + a standalone pinned Settings row that's ALWAYS visible. */}
+      <div className="border-t border-border/60 px-2 py-2">
+        <CollapsibleSection
+          group={BOTTOM_GROUP}
+          counts={counts ?? null}
+          pathname={pathname}
+          flags={flags}
+          hqOnly={HQ_ONLY}
+          isHq={isHq}
+          viewEnabled={viewEnabled}
+          compact
+        />
+        <div className="mt-0.5">
+          <NavLink item={SETTINGS_ITEM} active={pathname.startsWith(SETTINGS_ITEM.href)} count={0} compact />
+        </div>
       </div>
 
       <UserCard />
     </nav>
+  );
+}
+
+// One collapsible section: a click-to-expand header (chevron rotates on open) over its
+// nav items, reusing the mechanism OPS originally used. Open/closed state persists
+// per-user in localStorage (default OPEN) and the section auto-opens when the active
+// route lives inside it. Visibility filters stack: an item shows only when it passes the
+// HQ-only rule AND its feature flag AND the enabled-views map (the map is bypassed for
+// HQ via viewEnabled). A section with zero visible items renders nothing (no orphan
+// header).
+function CollapsibleSection({
+  group, counts, pathname, className, flags, hqOnly, isHq, viewEnabled, compact,
+}: {
+  group: NavGroup;
+  counts: NavCounts | null;
+  pathname: string;
+  className?: string;
+  flags?: Record<string, boolean>;
+  hqOnly: Set<string>;
+  isHq: boolean;
+  viewEnabled: (href: string) => boolean;
+  compact?: boolean;
+}) {
+  const items = group.items.filter((i) =>
+    // HQ-only items hide outside HQ; flag-gated items hide until their flag is on;
+    // everything else passes the subtractive enabled-views map.
+    (!hqOnly.has(i.href) || isHq) &&
+    (!i.flag || flags?.[i.flag]) &&
+    viewEnabled(i.href),
+  );
+  // Hydration-safe: render OPEN on the server / first client paint (matching the
+  // default), then reconcile with the persisted preference after mount so SSR markup
+  // matches and we never read localStorage during render.
+  const [open, setOpen] = useState(true);
+  useEffect(() => {
+    setOpen(!readCollapsed(group.label));
+  }, [group.label]);
+
+  // Auto-open when you navigate into one of this section's (visible) items, so the
+  // active route is never hidden behind a collapsed header.
+  const hasActive = items.some((i) => isItemActive(i, pathname));
+  useEffect(() => {
+    if (hasActive) setOpen(true);
+  }, [hasActive]);
+
+  // An empty section (every item filtered out) renders no header at all.
+  if (items.length === 0) return null;
+
+  const toggle = () => {
+    setOpen((v) => {
+      const next = !v;
+      writeCollapsed(group.label, !next);
+      return next;
+    });
+  };
+
+  return (
+    <div className={className}>
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={open}
+        className="w-full flex items-center justify-between px-2 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold hover:text-muted-foreground"
+      >
+        <span>{group.label}</span>
+        <ChevronRight
+          size={11}
+          style={{
+            transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
+            transition: 'transform var(--t-press) var(--ease-out)',
+          }}
+        />
+      </button>
+      {open && (
+        <div className={`${compact ? 'space-y-0.5' : 'space-y-0.5 mt-1'}`} data-stagger>
+          {items.map((item) => {
+            const active = isItemActive(item, pathname);
+            const count = item.countKey && counts ? counts[item.countKey] : 0;
+            return <NavLink key={item.href} item={item} active={active} count={count} compact={compact} />;
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -199,26 +326,6 @@ function isItemActive(item: NavItem, pathname: string): boolean {
     return item.matchPrefixes.some((p) => pathname === p || pathname.startsWith(p + '/'));
   }
   return item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
-}
-
-function NavGroupBlock({ group, counts, pathname, className, flags }:
-  { group: NavGroup; counts: NavCounts | null; pathname: string; className?: string; flags?: Record<string, boolean> }) {
-  // Hide flag-gated items whose flag isn't enabled (e.g. SalesOps until SALESOPS_ENABLED).
-  const items = group.items.filter((i) => !i.flag || flags?.[i.flag]);
-  // An all-flagged group with every flag off would render an empty header — skip it.
-  if (items.length === 0) return null;
-  return (
-    <div className={className}>
-      <div className="px-2 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold">{group.label}</div>
-      <div className="space-y-0.5">
-        {items.map((item) => {
-          const active = isItemActive(item, pathname);
-          const count = item.countKey && counts ? counts[item.countKey] : 0;
-          return <NavLink key={item.href} item={item} active={active} count={count} />;
-        })}
-      </div>
-    </div>
-  );
 }
 
 function NavLink({ item, active, count, compact }:

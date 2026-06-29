@@ -10,6 +10,7 @@ import { WalkthroughSettings } from '@/components/walkthrough/walkthrough-settin
 import { ClientsAdminLink } from '@/components/clients/clients-admin-link';
 import { PlaybookCard } from '@/components/playbook/playbook-card';
 import { TeamMembers } from '@/components/settings/team-members';
+import { CommandCenterViews } from '@/components/settings/command-center-views';
 import { timeAgo } from '@/lib/utils';
 import { getRoleMatrix } from '@/lib/rbac';
 import pkg from '../../../package.json';
@@ -41,7 +42,7 @@ interface SyncInfo {
 }
 
 type Role = 'admin' | 'editor' | 'viewer';
-type SettingsTab = 'general' | 'memory' | 'team' | 'access' | 'about';
+type SettingsTab = 'general' | 'views' | 'memory' | 'team' | 'access' | 'about';
 
 interface UserRecord {
   id: number;
@@ -587,9 +588,10 @@ export default function SettingsPage() {
           </p>
         </div>
         <div className="panel-body">
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
             {[
               { key: 'general', label: 'General' },
+              { key: 'views', label: 'Command Center' },
               { key: 'memory', label: 'Memory' },
               { key: 'team', label: 'Team' },
               { key: 'access', label: 'Access' },
@@ -611,6 +613,9 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+
+      {/* Command Center — which nav sections this workspace sees */}
+      {activeTab === 'views' && <CommandCenterViews />}
 
       {/* Database Info */}
       {activeTab === 'general' && (
