@@ -1,7 +1,7 @@
 import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { NextResponse } from 'next/server';
 import { sql, tenantId } from '@/lib/db/client';
-import { sendIMessage, getBoardroomBadgePhone, isLoopMessageConfigured } from '@/lib/loopmessage';
+import { sendIMessage, getBoardroomBadgePhone, isLoopMessageConnected } from '@/lib/loopmessage';
 
 interface BoardroomRow {
   id: number;
@@ -29,7 +29,9 @@ export async function GET(request: Request) {
   `) as unknown as BoardroomRow[];
 
   return NextResponse.json({
-    configured: isLoopMessageConfigured(),
+    // Tenant-aware: a client's boardroom reflects ITS OWN LoopMessage connection, not
+    // the HQ env key (which would otherwise show every client as "connected").
+    configured: await isLoopMessageConnected(),
     owner_phone: await getBoardroomBadgePhone(),
     messages: rows.reverse(),
   });

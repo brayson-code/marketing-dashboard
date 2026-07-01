@@ -2,6 +2,7 @@ import { sql, jsonb, tenantId } from './db/client';
 import { DEFAULT_TENANT_ID } from './tenant';
 import { mdToPlainText } from './md-to-text';
 import { getDecryptedSecret, getIntegration } from './integrations-store';
+import { normalizeToE164 } from './twilio';
 
 const SEND_URL = 'https://a.loopmessage.com/api/v1/message/send/';
 
@@ -30,10 +31,18 @@ export async function getTenantOwnerPhone(): Promise<string | null> {
   try {
     const row = await getIntegration('loopmessage');
     const p = (row?.config as { owner_phone?: string } | undefined)?.owner_phone?.trim();
-    if (p) return p;
-  } catch { /* fall through to env (HQ only) */ }
-  const isHqOrDev = tenantId() === DEFAULT_TENANT_ID || process.env.NODE_ENV !== 'production';
-  return isHqOrDev ? (process.env.KEYPLAYERS_OWNER_PHONE?.trim() || null) : null;
+    // Normalize to E.164 (+1…) so a number stored WITHOUT the leading "+" (e.g.
+    // "16469647047") still sends — LoopMessage rejects a bare number.
+    if (p) return normalizeToE164(p);
+  } catch { /* fall through to env (HQ ONLY) */ }
+  // KEYPLAYERS_OWNER_PHONE is the HQ owner's personal cell. It is a fallback for the HQ
+  // tenant ONLY — a client must NEVER inherit it (wrong phone, and the client's own
+  // LoopMessage sandbox rejects it). Gated strictly on the HQ tenant, NOT on NODE_ENV:
+  // the old `|| NODE_ENV !== 'production'` leaked HQ's number to every client on any
+  // non-production runtime.
+  if (tenantId() !== DEFAULT_TENANT_ID) return null;
+  const env = process.env.KEYPLAYERS_OWNER_PHONE?.trim();
+  return env ? normalizeToE164(env) : null;
 }
 
 /** The number to SHOW in the Boardroom badge for the active tenant. The env
@@ -41,11 +50,21 @@ export async function getTenantOwnerPhone(): Promise<string | null> {
  *  must NEVER be shown to client workspaces. A client sees its own connected
  *  messaging number (Twilio/LoopMessage), or null if it hasn't connected one. */
 export async function getBoardroomBadgePhone(): Promise<string | null> {
-  const isHqOrDev = tenantId() === DEFAULT_TENANT_ID || process.env.NODE_ENV !== 'production';
-  if (isHqOrDev) {
+  // HQ tenant ONLY: the env KEYPLAYERS_OWNER_PHONE is the platform owner's personal cell
+  // and must NEVER be shown to a client workspace. Gated on the HQ tenant, NOT on NODE_ENV
+  // (the old `|| NODE_ENV !== 'production'` leaked HQ's number into client boardrooms on
+  // any non-production runtime — the reported bug).
+  if (tenantId() === DEFAULT_TENANT_ID) {
     const env = getOwnerPhone();
     if (env) return env;
   }
+  // A client sees ITS OWN number: the LoopMessage owner phone it set (where the
+  // orchestrator texts it), or its connected Twilio sending number — never HQ's.
+  try {
+    const loop = await getIntegration('loopmessage');
+    const ownerPhone = (loop?.config as { owner_phone?: string } | undefined)?.owner_phone?.trim();
+    if (ownerPhone) return normalizeToE164(ownerPhone);
+  } catch { /* no loopmessage owner phone */ }
   // Display-only: read the connected sending number. `from_number` is a text field
   // stored in the integration's `config` jsonb (not the encrypted secret), so we can
   // show it without decryption and without needing the full Twilio credential set.
@@ -167,7 +186,11 @@ export async function getLoopMessageConfig(): Promise<LoopMessageConfig | null> 
   // sender_name with a client's auth_key (or vice-versa) is exactly what triggers
   // LoopMessage's "invalid or unable to use this sender name". So env is a fallback
   // for HQ/dev only; a client uses strictly its own connected creds.
-  const isHqOrDev = tenantId() === DEFAULT_TENANT_ID || process.env.NODE_ENV !== 'production';
+  // Env LOOPMESSAGE_* is the HQ owner's OWN account — HQ tenant ONLY, never a client
+  // (pairing HQ's sender_name/auth_key with a client trips LoopMessage's "invalid sender
+  // name"). Gated on the HQ tenant, NOT on NODE_ENV (the old `|| NODE_ENV !== 'production'`
+  // leaked HQ's account into client sends on any non-production runtime).
+  const isHq = tenantId() === DEFAULT_TENANT_ID;
   try {
     // password-typed fields (auth_key) live in the encrypted secret; text fields
     // (sender_name) live in the integration's `config` jsonb — read both.
@@ -177,12 +200,12 @@ export async function getLoopMessageConfig(): Promise<LoopMessageConfig | null> 
     ]);
     const cfg = (row?.config ?? {}) as Partial<{ sender_name: string }>;
     const authKey = s?.auth_key?.trim();
-    const senderName = s?.sender_name?.trim() || cfg.sender_name?.trim() || (isHqOrDev ? process.env.LOOPMESSAGE_SENDER_NAME : undefined);
+    const senderName = s?.sender_name?.trim() || cfg.sender_name?.trim() || (isHq ? process.env.LOOPMESSAGE_SENDER_NAME : undefined);
     if (authKey) return { auth_key: authKey, sender_name: senderName };
   } catch {
     /* fall through to env */
   }
-  const envKey = isHqOrDev ? process.env.LOOPMESSAGE_AUTH_KEY?.trim() : undefined;
+  const envKey = isHq ? process.env.LOOPMESSAGE_AUTH_KEY?.trim() : undefined;
   if (envKey) return { auth_key: envKey, sender_name: process.env.LOOPMESSAGE_SENDER_NAME };
   return null;
 }
