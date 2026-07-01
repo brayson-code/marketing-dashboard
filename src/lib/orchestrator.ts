@@ -323,6 +323,13 @@ async function callClaude(
     const ctx = await companyContextBlock();
     if (ctx) systemBlocks.push({ type: 'text', text: ctx });
   } catch { /* best-effort context */ }
+  // Active documents (status="wiki") the owner marked as standing SOPs — injected
+  // as long-term context so the orchestrator follows them. Empty when none active.
+  try {
+    const { companyKnowledgeBlock } = await import('./knowledge-context');
+    const kb = await companyKnowledgeBlock();
+    if (kb) systemBlocks.push({ type: 'text', text: kb });
+  } catch { /* best-effort context */ }
   if (memory) {
     systemBlocks.push({
       type: 'text',

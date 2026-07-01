@@ -248,6 +248,13 @@ async function loadSubAgentSystemPrompt(type: string): Promise<string> {
     const ctx = await companyContextBlock();
     if (ctx) combined = `${ctx}\n${combined}`;
   } catch { /* never block a run on context load */ }
+  // Also prepend Active documents (status="wiki") — standing SOPs every sub-agent
+  // must follow. Empty when none are active, so behavior is unchanged until then.
+  try {
+    const { companyKnowledgeBlock } = await import('./knowledge-context');
+    const kb = await companyKnowledgeBlock();
+    if (kb) combined = `${kb}\n${combined}`;
+  } catch { /* never block a run on context load */ }
   return combined;
 }
 
