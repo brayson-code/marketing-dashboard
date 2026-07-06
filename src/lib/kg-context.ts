@@ -7,12 +7,17 @@
 // agent prompt so durable facts are recalled automatically — the agent reuses what
 // we already know instead of re-asking.
 //
-// Retrieval is STRUCTURED (no embeddings/vectors exist yet): a single bounded
-// candidate query (recency + confidence), an optional entity-name mention match
-// against the run's query text, then ONE relations query for the selected ids.
-// Everything is tenant-scoped via tenantId() (sql() bypasses RLS). Strict char
-// ceiling + return '' when the KG is empty → zero prompt/token cost when unused.
-// Never throws — a memory-load failure must NEVER break an agent run.
+// Retrieval is STRUCTURED (no embeddings/vectors exist yet): retrieve-then-
+// traverse. When we have query text we (a) KEYWORD-match entities via Postgres
+// full-text (kg_entities.search_tsv @@ websearch_to_tsquery, ranked by
+// ts_rank_cd — see migration 0055), (b) GRAPH-TRAVERSE 1 hop out to their
+// neighbors over kg_relations so a mention of "Acme" also pulls Acme's connected
+// contacts/deals, then (c) a recency+confidence FILL query tops up the remaining
+// slots (and covers the no-query case entirely). Finally ONE relations query
+// renders edges for the selected ids. Everything is tenant-scoped via tenantId()
+// (sql() bypasses RLS). Strict char ceiling + return '' when the KG is empty →
+// zero prompt/token cost when unused. Never throws — a memory-load failure must
+// NEVER break an agent run.
 
 import { sql, tenantId } from './db/client';
 
@@ -24,9 +29,16 @@ const HEADER =
 const OMITTED_NOTE = '\n\n_(additional remembered facts omitted for length)_';
 const JOINER = '\n'; // one line between entity bullets
 
-// Bounds (no unbounded N+1 anywhere): one query loads at most CANDIDATE_LIMIT
-// entities; we render at most MAX_ENTITIES of them, with at most
-// MAX_RELATIONS_PER_ENTITY edges each and MAX_RELATIONS_TOTAL edges overall.
+// Bounds (no unbounded N+1 anywhere). Candidate selection is a CONSTANT number of
+// queries: keyword-retrieve + traverse-edges + load-neighbors + recency fill, then
+// ONE edge-render relations query downstream. The keyword pass returns at most
+// KEYWORD_LIMIT primary matches; each is expanded by at most NEIGHBORS_PER_MATCHED
+// neighbors, capped at NEIGHBOR_TOTAL_CAP overall; the fill query loads at most
+// CANDIDATE_LIMIT entities. We render at most MAX_ENTITIES of the merged set, with
+// at most MAX_RELATIONS_PER_ENTITY edges each and MAX_RELATIONS_TOTAL edges overall.
+const KEYWORD_LIMIT = 30; // primary full-text matches
+const NEIGHBORS_PER_MATCHED = 2; // 1-hop expansion per matched entity
+const NEIGHBOR_TOTAL_CAP = 24; // overall neighbor budget (keeps the set small)
 const CANDIDATE_LIMIT = 60;
 const MAX_ENTITIES = 12;
 const MAX_RELATIONS_TOTAL = 40;
@@ -112,14 +124,92 @@ function summarizeAttrs(attrs: Record<string, unknown> | null): string {
 /**
  * A ready-to-inject "Relevant memory" system-prompt block built from the tenant's
  * knowledge graph, tenant-scoped and bounded. `queryText` (the run's task / latest
- * user message) biases selection toward entities named in it; when omitted we fall
- * back to the top-confidence, most-recent facts. Returns '' when the KG is empty or
- * nothing fits. Best-effort: any failure resolves to '' so it can never break a run.
+ * user message) drives keyword retrieval + 1-hop graph traversal (matched entities
+ * and their neighbors come first); when omitted we fall back to the top-confidence,
+ * most-recent facts. Returns '' when the KG is empty or nothing fits. Best-effort:
+ * any failure resolves to '' so it can never break a run.
  */
 export async function relevantMemoryBlock(queryText?: string): Promise<string> {
   try {
-    // 1) Candidate set — ONE bounded query (recency + confidence). Cap at 60.
-    const candidates = (await sql()`
+    // ── Candidate selection: retrieve-then-traverse (constant query count) ──────
+    const q = (queryText ?? '').trim();
+
+    // (a) KEYWORD retrieve — primary matches via Postgres full-text (migration
+    //     0055). Only when q is non-empty; a stopword-only q simply yields 0 rows.
+    let keywordRows: CandidateRow[] = [];
+    if (q) {
+      try {
+        keywordRows = (await sql()`
+          SELECT id, kind, name, attributes, confidence, updated_at
+          FROM public.kg_entities
+          WHERE tenant_id = ${tenantId()}
+            AND search_tsv @@ websearch_to_tsquery('english', ${q})
+          ORDER BY ts_rank_cd(search_tsv, websearch_to_tsquery('english', ${q})) DESC,
+                   updated_at DESC
+          LIMIT ${KEYWORD_LIMIT}
+        `) as unknown as CandidateRow[];
+      } catch {
+        // Keyword retrieval is additive: if the full-text column/index isn't available
+        // yet (e.g. code deployed before migration 0055), degrade to the recency+
+        // confidence fill below instead of nuking the whole memory block.
+        keywordRows = [];
+      }
+    }
+
+    // (b) GRAPH TRAVERSE (1-hop) — expand the matched entities to their neighbors
+    //     so a message about "Acme" also pulls Acme's connected contacts/deals.
+    //     TWO bounded queries total (edges, then neighbor entities) — NOT per
+    //     entity. ids passed as bound bigint[] params, never string-interpolated.
+    let neighborRows: CandidateRow[] = [];
+    if (keywordRows.length) {
+      const matchedIds = keywordRows.map((r) => Number(r.id));
+      const matchedSet = new Set(matchedIds);
+      try {
+        const edges = (await sql()`
+          SELECT from_id, to_id
+          FROM public.kg_relations
+          WHERE tenant_id = ${tenantId()}
+            AND (from_id = ANY(${matchedIds}::bigint[]) OR to_id = ANY(${matchedIds}::bigint[]))
+          ORDER BY COALESCE(confidence, 1.0) DESC, created_at DESC
+          LIMIT 400
+        `) as unknown as { from_id: number | string; to_id: number | string }[];
+
+        // Collect neighbor ids, ≤ NEIGHBORS_PER_MATCHED per matched anchor and
+        // ≤ NEIGHBOR_TOTAL_CAP overall, skipping ids already matched by keyword.
+        const perMatched = new Map<number, number>();
+        const seenNeighbor = new Set<number>();
+        const neighborIds: number[] = [];
+        for (const e of edges) {
+          if (neighborIds.length >= NEIGHBOR_TOTAL_CAP) break;
+          const from = Number(e.from_id);
+          const to = Number(e.to_id);
+          const anchor = matchedSet.has(from) ? from : matchedSet.has(to) ? to : null;
+          if (anchor === null) continue;
+          const neighbor = anchor === from ? to : from;
+          if (matchedSet.has(neighbor) || seenNeighbor.has(neighbor)) continue;
+          if ((perMatched.get(anchor) ?? 0) >= NEIGHBORS_PER_MATCHED) continue;
+          perMatched.set(anchor, (perMatched.get(anchor) ?? 0) + 1);
+          seenNeighbor.add(neighbor);
+          neighborIds.push(neighbor);
+        }
+
+        if (neighborIds.length) {
+          neighborRows = (await sql()`
+            SELECT id, kind, name, attributes, confidence, updated_at
+            FROM public.kg_entities
+            WHERE tenant_id = ${tenantId()}
+              AND id = ANY(${neighborIds}::bigint[])
+          `) as unknown as CandidateRow[];
+        }
+      } catch {
+        // Traversal is additive — a failure just yields keyword matches without neighbors.
+      }
+    }
+
+    // (c) FALLBACK / FILL (always) — the existing recency+confidence query. Tops up
+    //     remaining slots with entities not already selected, and covers the
+    //     no-queryText case entirely (pure top-confidence/recent, exactly as before).
+    const fillRows = (await sql()`
       SELECT id, kind, name, attributes, confidence, updated_at
       FROM public.kg_entities
       WHERE tenant_id = ${tenantId()}
@@ -127,19 +217,21 @@ export async function relevantMemoryBlock(queryText?: string): Promise<string> {
       LIMIT ${CANDIDATE_LIMIT}
     `) as unknown as CandidateRow[];
 
-    if (!candidates.length) return ''; // zero cost when the KG is empty
+    // (d) MERGE + ORDER — dedupe by id; keyword matches first, then their neighbors,
+    //     then the recency/confidence fill. Score each for the fill ordering / the
+    //     existing renderer; recency is normalized across the whole gathered set, so
+    //     with no query text (fill only) scoring is identical to before.
+    const allRows = [...keywordRows, ...neighborRows, ...fillRows];
+    if (!allRows.length) return ''; // zero cost when the KG is empty
 
-    // 2) Score = confidence*0.6 + recency*0.4 (recency normalized across candidates,
-    //    newer → higher). Entities whose name is mentioned in queryText are flagged.
-    const times = candidates.map((c) => toMs(c.updated_at));
+    const times = allRows.map((c) => toMs(c.updated_at));
     const minT = Math.min(...times);
     const maxT = Math.max(...times);
     const span = maxT - minT;
-    const q = (queryText ?? '').trim();
 
-    const scored: Scored[] = candidates.map((c, i) => {
+    const mkScored = (c: CandidateRow): Scored => {
       const conf = Math.min(Math.max(c.confidence ?? 1, 0), 1);
-      const recency = span > 0 ? (times[i] - minT) / span : 1;
+      const recency = span > 0 ? (toMs(c.updated_at) - minT) / span : 1;
       return {
         id: Number(c.id),
         kind: c.kind,
@@ -149,16 +241,27 @@ export async function relevantMemoryBlock(queryText?: string): Promise<string> {
         score: conf * 0.6 + recency * 0.4,
         mentioned: q ? isMentioned(c.name, q) : false,
       };
-    });
+    };
 
-    // Mentioned first (highest priority), then fill by score; at most MAX_ENTITIES.
-    const mentioned = scored.filter((s) => s.mentioned).sort((a, b) => b.score - a.score);
-    const rest = scored.filter((s) => !s.mentioned).sort((a, b) => b.score - a.score);
-    const selected = [...mentioned, ...rest].slice(0, MAX_ENTITIES);
+    const keywordScored = keywordRows.map(mkScored); // keep ts_rank order
+    const neighborScored = neighborRows.map(mkScored); // keep traversal order
+    // Fill matches the previous behavior: top-confidence/recent, sorted by score.
+    const fillScored = fillRows.map(mkScored).sort((a, b) => b.score - a.score);
+
+    const selected: Scored[] = [];
+    const selectedIds = new Set<number>();
+    for (const group of [keywordScored, neighborScored, fillScored]) {
+      for (const s of group) {
+        if (selected.length >= MAX_ENTITIES) break;
+        if (selectedIds.has(s.id)) continue;
+        selectedIds.add(s.id);
+        selected.push(s);
+      }
+      if (selected.length >= MAX_ENTITIES) break;
+    }
     if (!selected.length) return '';
 
     const ids = selected.map((s) => s.id);
-    const selectedIds = new Set(ids);
 
     // 3) Relations for the selected ids — ONE query (not per-entity). ids are passed
     //    as a safe array param (never string-interpolated) and cast to bigint[].
@@ -174,6 +277,7 @@ export async function relevantMemoryBlock(queryText?: string): Promise<string> {
         WHERE r.tenant_id = ${tenantId()}
           AND (r.from_id = ANY(${ids}::bigint[]) OR r.to_id = ANY(${ids}::bigint[]))
         ORDER BY COALESCE(r.confidence, 1.0) DESC, r.created_at DESC
+        LIMIT 400
       `) as unknown as RelationJoinRow[];
 
       let totalRel = 0;
