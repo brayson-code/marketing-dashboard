@@ -224,7 +224,7 @@ function checkRate(type: string): { allowed: true } | { allowed: false; resetInS
 
 // Load a sub-agent's system prompt. Prefer the live DB definition (Agent Studio);
 // fall back to the bundled agents/** files. Then substitute {{CONFIG}} vars.
-async function loadSubAgentSystemPrompt(type: string): Promise<string> {
+async function loadSubAgentSystemPrompt(type: string, task?: string): Promise<string> {
   let combined = await getDefPrompt(type).catch(() => null);
   if (!combined) {
     const dir = join(SUBAGENT_DIR, type);
@@ -255,6 +255,14 @@ async function loadSubAgentSystemPrompt(type: string): Promise<string> {
     const kb = await companyKnowledgeBlock();
     if (kb) combined = `${kb}\n${combined}`;
   } catch { /* never block a run on context load */ }
+  // Persistent memory (RAG-style) — always-on recall of durable KG facts, biased by
+  // this run's task so the agent reuses what we already know. Empty → nothing is
+  // injected (zero cost when the KG is empty). Best-effort; never blocks a run.
+  try {
+    const { relevantMemoryBlock } = await import('./kg-context');
+    const rm = await relevantMemoryBlock(task);
+    if (rm) combined = `${rm}\n${combined}`;
+  } catch { /* never block a run on memory load */ }
   return combined;
 }
 
@@ -482,7 +490,7 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
   void heartbeat(type, 'start', task.slice(0, 200), taskId);
 
   const client = new Anthropic({ apiKey: anthropicKey, maxRetries: 5 });
-  const systemPrompt = await loadSubAgentSystemPrompt(type);
+  const systemPrompt = await loadSubAgentSystemPrompt(type, task);
 
   // Tool gate (cost lever). Tools are what make a run multi-turn: each web_search /
   // KG / skill_recall round-trip is a separate billed API call. A caller that only

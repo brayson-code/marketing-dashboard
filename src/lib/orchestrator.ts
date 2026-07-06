@@ -301,6 +301,33 @@ function parseLaunchHalt(input: Record<string, unknown>): { maxWaves: number | n
   return { maxWaves, stopWhen };
 }
 
+/** The latest user message's text (for KG-memory relevance). Scans from the end
+ *  for a user turn that yields text; joins text parts when content is an array.
+ *  Returns undefined when none is found (memory then falls back to top facts). */
+function lastUserText(messages: Anthropic.MessageParam[]): string | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role !== 'user') continue;
+    const c = m.content;
+    if (typeof c === 'string') {
+      if (c.trim()) return c;
+      continue;
+    }
+    if (Array.isArray(c)) {
+      const text = c
+        .map((b) => (b && typeof b === 'object' && 'type' in b && b.type === 'text'
+          && typeof (b as { text?: unknown }).text === 'string'
+          ? (b as { text: string }).text
+          : ''))
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+      if (text) return text;
+    }
+  }
+  return undefined;
+}
+
 async function callClaude(
   client: Anthropic,
   template: string,
@@ -330,6 +357,14 @@ async function callClaude(
     const kb = await companyKnowledgeBlock();
     if (kb) systemBlocks.push({ type: 'text', text: kb });
   } catch { /* best-effort context */ }
+  // Persistent memory (RAG-style) — always-on recall of durable facts from the
+  // knowledge graph, biased by the latest user message so the orchestrator reuses
+  // what we already know instead of re-asking. Empty when the KG has nothing.
+  try {
+    const { relevantMemoryBlock } = await import('./kg-context');
+    const rm = await relevantMemoryBlock(lastUserText(messages));
+    if (rm) systemBlocks.push({ type: 'text', text: rm });
+  } catch { /* best-effort memory */ }
   if (memory) {
     systemBlocks.push({
       type: 'text',
