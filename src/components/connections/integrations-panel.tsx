@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { KeyRound, CheckCircle2, AlertCircle, X } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
+import { KeyRound, CheckCircle2, AlertCircle, Check, X } from 'lucide-react';
 import { BrandLogo } from '@/components/connections/brand-logo';
 
 type Category = 'ai' | 'messaging' | 'email' | 'calendar' | 'social' | 'analytics' | 'crm' | 'storage' | 'other';
@@ -13,6 +14,11 @@ interface ProviderDef {
   fields: Array<{ name: string; label: string; type: 'text' | 'password' | 'url'; required?: boolean; placeholder?: string }>;
   scopesHint?: string;
   comingSoon?: boolean;
+  /** Redirect-based OAuth providers (e.g. Jobber) — see IntegrationProviderDef in
+   * src/lib/integrations-store.ts for the full contract. Rendered by OAuthProviderTile
+   * below instead of the generic paste-a-key form. */
+  kind?: 'apikey' | 'oauth';
+  connectPath?: string;
 }
 
 interface Integration {
@@ -37,8 +43,175 @@ const CATEGORIES: Array<{ id: Category | 'all'; label: string }> = [
   { id: 'calendar', label: 'Calendar' },
   { id: 'social', label: 'Social' },
   { id: 'analytics', label: 'Analytics' },
+  { id: 'crm', label: 'CRM' },
   { id: 'storage', label: 'Other tools' },
 ];
+
+interface OAuthStatus {
+  /** Operator has set the platform-level env creds (e.g. JOBBER_CLIENT_ID/SECRET). */
+  configured: boolean;
+  /** This workspace has a stored token for the provider. */
+  connected: boolean;
+  account_name?: string | null;
+}
+
+/**
+ * OAuthProviderTile — renders a redirect-based OAuth provider (currently just
+ * Jobber). Unlike the generic paste-a-key tiles above, this fetches its own
+ * connect/disconnect status from a per-provider route rather than the shared
+ * /api/integrations-setup listing, and drives the OAuth handshake by navigating
+ * the browser to `connectPath` (full-page redirect to the provider's authorize
+ * screen, same pattern as the Stripe checkout redirect in src/app/billing/page.tsx)
+ * rather than a fetch-based popup like the Nango Connect UI.
+ *
+ * Status contract assumed here (GET /api/integrations/<id>/status →
+ * `{ configured, connected, account_name? }`) mirrors the shape /api/connections
+ * already uses (global `configured` + per-provider `connected`) so it reads
+ * consistently across both connection surfaces. TODO-verify: confirm this exact
+ * shape against whatever the Jobber connect/status/disconnect routes actually
+ * return once those land — this tile degrades safely either way (any fetch
+ * failure or unexpected shape is treated as "not configured", never a crash).
+ */
+// The exact fixed strings the OAuth callback routes redirect back with in ?error=
+// (see src/app/api/integrations/jobber/callback/route.ts). Anything else in the
+// URL is attacker-supplied text and gets a generic message instead.
+const KNOWN_OAUTH_CALLBACK_ERRORS = new Set([
+  'Jobber sign-in was cancelled or denied',
+  'Jobber sign-in could not be verified — please try again',
+  'Could not complete the Jobber connection',
+]);
+
+function OAuthProviderTile({ p }: { p: ProviderDef }) {
+  const [status, setStatus] = useState<OAuthStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+
+  const loadStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/integrations/${p.id}/status`, { cache: 'no-store' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'status check failed');
+      setStatus({
+        configured: json.configured !== false,
+        connected: !!json.connected,
+        account_name: json.account_name ?? null,
+      });
+    } catch {
+      // Route not wired yet (or a real failure) — default closed rather than
+      // claiming a connection we can't verify.
+      setStatus({ configured: false, connected: false });
+    } finally {
+      setLoading(false);
+    }
+  }, [p.id]);
+
+  useEffect(() => { loadStatus(); }, [loadStatus]);
+
+  // ?connected=<id> / ?error=... land here after the OAuth callback redirects
+  // back to /connections.
+  useEffect(() => {
+    const connectedParam = searchParams?.get('connected');
+    const errorParam = searchParams?.get('error');
+    if (connectedParam === p.id) {
+      setNotice(`${p.label} connected`);
+      loadStatus();
+    }
+    // The OAuth callbacks only ever redirect back with one of these fixed
+    // strings; anything else in ?error= is attacker-supplied URL text — show a
+    // generic message instead of reflecting it into an authenticated page.
+    if (errorParam) {
+      setLocalError(
+        KNOWN_OAUTH_CALLBACK_ERRORS.has(errorParam)
+          ? errorParam
+          : 'Connection failed — please try again.',
+      );
+    }
+  }, [searchParams, p.id, p.label, loadStatus]);
+
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 3000);
+    return () => clearTimeout(t);
+  }, [notice]);
+
+  function connect() {
+    setBusy(true);
+    window.location.href = p.connectPath || `/api/integrations/${p.id}/connect`;
+  }
+
+  async function disconnect() {
+    if (!confirm(`Disconnect ${p.label}?`)) return;
+    setBusy(true);
+    setLocalError(null);
+    try {
+      const res = await fetch(`/api/integrations/${p.id}/disconnect`, { method: 'POST' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Disconnect failed');
+      setNotice(`${p.label} disconnected`);
+      await loadStatus();
+    } catch (err) {
+      setLocalError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const configured = status?.configured ?? false;
+  const connected = status?.connected ?? false;
+
+  return (
+    <div className="panel">
+      <div className="p-4 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <div className="h-7 w-7 shrink-0 rounded-lg bg-[var(--surface-2)] border border-border flex items-center justify-center text-foreground">
+                <BrandLogo provider={p.id} size={16} />
+              </div>
+              <span className="font-semibold text-sm">{p.label}</span>
+              <span className={`badge ${loading ? 'badge-neutral' : connected ? 'badge-success' : 'badge-neutral'}`}>
+                {loading ? 'checking…' : connected ? <><CheckCircle2 size={10} /> connected</> : 'not connected'}
+              </span>
+            </div>
+            <div className="text-[10px] text-muted-foreground capitalize">{p.category}</div>
+            {p.scopesHint && <div className="text-[10px] text-muted-foreground">Scopes: {p.scopesHint}</div>}
+            {connected && status?.account_name && (
+              <div className="text-[10px] text-muted-foreground">Account: <span className="font-medium text-foreground">{status.account_name}</span></div>
+            )}
+          </div>
+          <div className="flex gap-1">
+            {!loading && configured && !connected && (
+              <button className="btn btn-primary btn-sm" disabled={busy} onClick={connect}>Connect {p.label}</button>
+            )}
+            {!loading && connected && (
+              <button className="btn btn-destructive btn-sm" disabled={busy} onClick={disconnect} title="Disconnect"><X size={11} /></button>
+            )}
+          </div>
+        </div>
+
+        {!loading && !configured && (
+          <div className="text-[11px] text-muted-foreground bg-[var(--surface-2)] rounded border border-border/60 p-2 flex items-center gap-1.5">
+            <AlertCircle size={12} className="shrink-0" />
+            Operator setup required — create an app in the Jobber Developer Center, then set JOBBER_CLIENT_ID / JOBBER_CLIENT_SECRET.
+          </div>
+        )}
+        {localError && (
+          <div className="text-[11px] text-destructive flex items-center gap-1.5">
+            <AlertCircle size={12} className="shrink-0" /> {localError}
+          </div>
+        )}
+        {notice && (
+          <div className="text-[11px] text-emerald-500 flex items-center gap-1.5">
+            <Check size={12} className="shrink-0" /> {notice}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 /**
  * IntegrationsPanel — the API-key / credential-based integrations grid (AI,
@@ -135,6 +308,7 @@ export function IntegrationsPanel() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {filtered.map((p) => {
+          if (p.kind === 'oauth') return <OAuthProviderTile key={p.id} p={p} />;
           const integration = integrations.find((i) => i.provider === p.id);
           const status = integration?.status ?? 'not_configured';
           const isEditing = editing === p.id;

@@ -452,6 +452,31 @@ function DeepgramMark({ size, className, label }: SvgRendererProps) {
   );
 }
 
+function JobberMark({ size, className, label }: SvgRendererProps) {
+  // Purpose-built clipboard-with-check glyph in Jobber teal #00B3A0 (no canonical
+  // Simple Icons mark for the field-service CRM) — reads as job/work tracking.
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      className={className}
+      role="img"
+      aria-label={label}
+      fill="none"
+      stroke="#00B3A0"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="5" y="4" width="14" height="17" rx="2" />
+      <path d="M9 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1" />
+      <path d="M8.5 13.5l2 2 4.5-4.5" />
+    </svg>
+  );
+}
+
 function FallbackMark({ size, className, label }: SvgRendererProps) {
   return <Plug size={size} className={className} aria-label={label} />;
 }
@@ -480,6 +505,7 @@ const RENDERERS: Record<string, (p: SvgRendererProps) => JSX.Element> = {
   plausible: PlausibleMark,
   ga4: Ga4Mark,
   hyperframes: HyperframesMark,
+  jobber: JobberMark,
 };
 
 export function BrandLogo({ provider, size = 24, className }: BrandLogoProps): JSX.Element {

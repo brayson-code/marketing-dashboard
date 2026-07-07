@@ -12,6 +12,8 @@ import { kgToolDefinitions, handleKgTool } from './kg-tools';
 import { googleToolDefinitions, handleGoogleTool, googleActionsAllowed, GOOGLE_TOOL_NAMES } from './google-tools';
 import { smsToolDefinitions, handleSmsTool, smsAllowed, SMS_TOOL_NAMES } from './sms-tools';
 import { firecrawlToolDefinitions, handleFirecrawlTool, firecrawlAllowed, FIRECRAWL_TOOL_NAMES } from './firecrawl-tools';
+import { jobberToolDefinitions, handleJobberTool, JOBBER_TOOL_NAMES } from './jobber-tools';
+import { jobberConnected } from './jobber';
 import { parseAttachments, buildUserContent } from './vision';
 import { estimateCostUsd } from './usage';
 import { launchResearchCampaign } from './campaign-intake';
@@ -253,6 +255,11 @@ async function buildTools(gwAllowedArg?: boolean, smsOnArg?: boolean, fcOnArg?: 
     // ── Firecrawl brand scraping — only when a Firecrawl key is connected. ────
     ...(fcOn ? await firecrawlToolDefinitions() : []),
 
+    // ── Jobber CRM — read tools ALWAYS registered (handler returns a friendly
+    //    "connect Jobber" payload when not connected); the write quote-draft tool
+    //    is included only when JOBBER_WRITE_ENABLED === 'true'. ─────────────────
+    ...jobberToolDefinitions(),
+
     {
       name: 'spawn_subagent',
       description:
@@ -422,6 +429,27 @@ async function callClaude(
         'instead of guessing. Do NOT claim you cannot read websites when this tool is available.',
     });
   }
+  // Jobber CRM capability note — only when Jobber is connected (same prompt-awareness
+  // reason as Google/SMS/Firecrawl: the base skills list doesn't mention it). The read
+  // tools are always registered, but without this the model may claim it lacks CRM
+  // access. The quote-draft line only appears when JOBBER_WRITE_ENABLED is on.
+  const jobberOn = await jobberConnected().catch(() => false);
+  if (jobberOn) {
+    const writeOn = process.env.JOBBER_WRITE_ENABLED === 'true';
+    systemBlocks.push({
+      type: 'text',
+      text:
+        '# Jobber CRM is connected — you can read it NOW\n' +
+        'Jobber is connected, so you have these LIVE read tools — use them directly when the ' +
+        'owner asks about clients, quotes, jobs, or invoices (do NOT say you lack CRM access):\n' +
+        '- `jobber_list_clients`, `jobber_get_client` — clients + contact detail\n' +
+        '- `jobber_list_quotes`, `jobber_list_jobs`, `jobber_list_invoices` — pipeline + billing\n' +
+        (writeOn
+          ? 'You can also DRAFT a quote with `jobber_create_quote_draft`. It only drafts the quote — ' +
+            'a human must still review and approve/send it inside Jobber. Never imply a drafted quote is sent.'
+          : 'Creating/drafting quotes is NOT enabled yet — you can only READ Jobber data, not write to it.'),
+    });
+  }
   const tools = await buildTools(gwAllowed, smsOn, fcOn);
 
   // MCP HUB — when the tenant has >=1 enabled MCP server, add mcp_servers + the
@@ -478,6 +506,10 @@ const CLIENT_TOOL_NAMES = new Set<string>([
   ...SMS_TOOL_NAMES,
   // Firecrawl brand scraping — same requirement: recognize the name or the loop bails.
   ...FIRECRAWL_TOOL_NAMES,
+  // Jobber CRM tools (read always + write when enabled) — recognize all names so
+  // the loop processes them (a registered-but-unrecognized tool ends the turn with
+  // no text reply).
+  ...JOBBER_TOOL_NAMES,
 ]);
 
 async function handleClientToolUse(
@@ -649,6 +681,11 @@ async function handleClientToolUse(
   // ── Firecrawl brand scraping (only present when connected; shared handler) ───
   if (FIRECRAWL_TOOL_NAMES.has(toolUse.name)) {
     return handleFirecrawlTool(toolUse);
+  }
+
+  // ── Jobber CRM tools (read always; write when enabled; shared handler) ───────
+  if (JOBBER_TOOL_NAMES.has(toolUse.name)) {
+    return handleJobberTool(toolUse, 'keyplayer');
   }
 
   // ── Drafts tools ─────────────────────────────────────────────────────────

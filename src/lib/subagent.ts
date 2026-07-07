@@ -9,6 +9,7 @@ import { skillRecallToolDefinitions, handleSkillRecallTool } from './skill-recal
 import { googleToolDefinitions, handleGoogleTool, googleActionsAllowed, GOOGLE_TOOL_NAMES } from './google-tools';
 import { smsToolDefinitions, handleSmsTool, smsAllowed, SMS_TOOL_NAMES } from './sms-tools';
 import { firecrawlToolDefinitions, handleFirecrawlTool, firecrawlAllowed, FIRECRAWL_TOOL_NAMES } from './firecrawl-tools';
+import { jobberToolDefinitions, handleJobberTool, JOBBER_TOOL_NAMES } from './jobber-tools';
 import { fetchToolDefinitions, handleFetchTool, FETCH_TOOL_NAMES } from './fetch-tools';
 import { clipToolDefinitions, handleClipTool, CLIP_TOOL_NAMES } from './clip-tools';
 import { chooseVariant } from './selection';
@@ -526,6 +527,11 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
     ...(smsOn ? smsToolDefinitions() : []),
     // Firecrawl brand scraping — offered only when a Firecrawl key is connected.
     ...(fcOn ? await firecrawlToolDefinitions() : []),
+    // Jobber CRM — read tools always registered (handler returns a friendly
+    // "connect Jobber" payload when not connected); the write quote-draft tool is
+    // included only when JOBBER_WRITE_ENABLED === 'true'. (This whole array is the
+    // non-tool-free branch, so tool-free runs never see these.)
+    ...jobberToolDefinitions(),
   ];
 
   // Cache the initial task message. Multi-turn agents (research runs a
@@ -702,7 +708,8 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
               (CLIP_TOOL_NAMES as readonly string[]).includes(b.name) ||
               (GOOGLE_TOOL_NAMES as readonly string[]).includes(b.name) ||
               (SMS_TOOL_NAMES as readonly string[]).includes(b.name) ||
-              FIRECRAWL_TOOL_NAMES.has(b.name)
+              FIRECRAWL_TOOL_NAMES.has(b.name) ||
+              JOBBER_TOOL_NAMES.has(b.name)
             ),
         );
         if (handledToolUses.length === 0) {
@@ -727,6 +734,7 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
           if ((GOOGLE_TOOL_NAMES as readonly string[]).includes(tu.name)) return handleGoogleTool(tu, type);
           if ((SMS_TOOL_NAMES as readonly string[]).includes(tu.name)) return handleSmsTool(tu, type);
           if (FIRECRAWL_TOOL_NAMES.has(tu.name)) return handleFirecrawlTool(tu, type);
+          if (JOBBER_TOOL_NAMES.has(tu.name)) return handleJobberTool(tu, type);
           return handleKgTool(tu, type);
         }));
         // Merge the correction (if any) into the same user block as the tool

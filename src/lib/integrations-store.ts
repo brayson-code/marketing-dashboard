@@ -22,6 +22,18 @@ export interface IntegrationProviderDef {
   scopesHint?: string;
   /** Not wired up yet — shown on Connections with a "Coming soon" badge, not connectable. */
   comingSoon?: boolean;
+  /**
+   * Redirect-based OAuth providers (e.g. Jobber — authorization-code grant against
+   * a platform-level Developer Center app) render a Connect/Disconnect button flow
+   * on the Connections page instead of the generic paste-a-key form. `fields` stays
+   * empty for these — the tile drives its own status via GET
+   * /api/integrations/<id>/status and kicks off the OAuth dance by navigating the
+   * browser to `connectPath` (defaults to /api/integrations/<id>/connect when
+   * omitted). See src/components/connections/integrations-panel.tsx's
+   * OAuthProviderTile for the render branch. Defaults to 'apikey' when unset.
+   */
+  kind?: 'apikey' | 'oauth';
+  connectPath?: string;
 }
 
 export interface IntegrationRow {
@@ -109,6 +121,15 @@ export const PROVIDERS: IntegrationProviderDef[] = [
   { id: 'firecrawl', label: 'Firecrawl (brand & web scraping)', category: 'other',
     scopesHint: 'Create a Firecrawl key at firecrawl.dev.',
     fields: [{ name: 'api_key', label: 'API Key', type: 'password', required: true, placeholder: 'fc-...' }] },
+  // OAuth (authorization-code grant), not a paste-a-key tile — see `kind` doc above.
+  // Requires a platform-level Jobber Developer Center app (operator-configured via
+  // JOBBER_CLIENT_ID / JOBBER_CLIENT_SECRET env vars); scopes are fixed on that app,
+  // not chosen per-connection. Token pair is stored per-tenant the same way as every
+  // other provider here: upsertIntegration({ provider: 'jobber', secret: { access_token,
+  // refresh_token }, expires_at }).
+  { id: 'jobber', label: 'Jobber', category: 'crm', kind: 'oauth', connectPath: '/api/integrations/jobber/connect',
+    scopesHint: 'Connects your Jobber account via OAuth. Requires an operator-configured Jobber Developer Center app — scopes (Clients, Jobs, Quotes, Invoices, etc.) are set there, not here.',
+    fields: [] },
 ];
 
 // ── Crypto ──────────────────────────────────────────────────────────────────
