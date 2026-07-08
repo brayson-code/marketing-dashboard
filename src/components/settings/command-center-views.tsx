@@ -24,11 +24,11 @@
 // Owner / member / VA may all use this panel.
 
 import { useEffect, useState, useCallback } from 'react';
-import { LayoutGrid, RotateCcw } from 'lucide-react';
+import { LayoutGrid, RotateCcw, Info } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 // Shared, PURE catalog — same source the server lib + validation use, so the panel can
 // never render a row the server rejects (no drift). Safe in the client bundle (no `sql`).
-import { VIEW_SECTIONS, isViewOn } from '@/lib/command-center-catalog';
+import { VIEW_SECTIONS, isViewOn, notifyCommandCenterViewsChanged } from '@/lib/command-center-catalog';
 
 type Preset = 'full' | 'lite' | 'content' | 'sales';
 
@@ -43,6 +43,16 @@ export function CommandCenterViews() {
   const [enabled, setEnabled] = useState<Record<string, boolean> | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null); // href or preset key in flight
+  // The HQ workspace ignores this map entirely (NavRail shows everything regardless —
+  // see nav-rail.tsx's `viewEnabled`), so toggling here persists but never visibly
+  // changes HQ's own nav. Without this banner that reads as "nothing happens."
+  const [isHq, setIsHq] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)).then((j) => {
+      setIsHq(!!j?.is_hq);
+    }).catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -80,6 +90,9 @@ export function CommandCenterViews() {
       if (!res.ok) throw new Error(data.error || 'Failed to update view');
       // Reconcile with the server's authoritative map.
       if (data.enabled && typeof data.enabled === 'object') setEnabled(data.enabled);
+      // Tell the (already-mounted, root-level) NavRail to re-fetch so the toggle is
+      // visible immediately instead of only after a hard reload.
+      notifyCommandCenterViewsChanged();
     } catch (err) {
       toast.error((err as Error).message);
       setEnabled(prev); // rollback
@@ -100,6 +113,7 @@ export function CommandCenterViews() {
       if (!res.ok) throw new Error(data.error || 'Failed to apply preset');
       if (data.enabled && typeof data.enabled === 'object') setEnabled(data.enabled);
       else await load();
+      notifyCommandCenterViewsChanged();
       toast.success(`Applied "${preset}" layout`);
     } catch (err) {
       toast.error((err as Error).message);
@@ -120,6 +134,18 @@ export function CommandCenterViews() {
         back on anytime. Overview and Settings are always on. Some views may
         still be hidden by your plan.
       </p>
+
+      {isHq && (
+        <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-muted-foreground">
+          <Info size={14} className="text-warning shrink-0 mt-0.5" />
+          <span>
+            You&apos;re on the HQ workspace — the operator nav always shows every
+            section regardless of this map, so toggles and presets below will save
+            but <strong>won&apos;t change your own nav</strong>. This panel is meant
+            for configuring client workspaces.
+          </span>
+        </div>
+      )}
 
       {/* Presets */}
       <div className="space-y-1.5">

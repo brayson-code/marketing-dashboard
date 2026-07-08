@@ -225,27 +225,29 @@ export default function UsagePage() {
       <div className="panel">
         <div className="panel-header"><h3 className="section-title">By agent</h3></div>
         <div className="panel-body p-0">
-          <table className="data-table">
-            <thead><tr>
-              <th>Agent</th><th>Model</th><th>Calls</th><th>Input</th><th>Output</th><th>Avg time</th><th>Cost</th>
-            </tr></thead>
-            <tbody>
-              {data.by_agent.length === 0 && (
-                <tr><td colSpan={7} className="text-center text-muted-foreground">No usage yet.</td></tr>
-              )}
-              {data.by_agent.map((a) => (
-                <tr key={a.agent_id}>
-                  <td className="font-mono text-xs">{a.agent_id}</td>
-                  <td className="text-xs text-muted-foreground">{a.model}</td>
-                  <td>{a.calls}</td>
-                  <td>{fmtNum(a.input_tokens)}</td>
-                  <td>{fmtNum(a.output_tokens)}</td>
-                  <td>{a.avg_duration_sec.toFixed(1)}s</td>
-                  <td>{fmtUsd(a.cost_usd)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="data-table">
+              <thead><tr>
+                <th>Agent</th><th>Model</th><th>Calls</th><th>Input</th><th>Output</th><th>Avg time</th><th>Cost</th>
+              </tr></thead>
+              <tbody>
+                {data.by_agent.length === 0 && (
+                  <tr><td colSpan={7} className="text-center text-muted-foreground">No usage yet.</td></tr>
+                )}
+                {data.by_agent.map((a) => (
+                  <tr key={a.agent_id}>
+                    <td className="font-mono text-xs">{a.agent_id}</td>
+                    <td className="text-xs text-muted-foreground">{a.model}</td>
+                    <td>{a.calls}</td>
+                    <td>{fmtNum(a.input_tokens)}</td>
+                    <td>{fmtNum(a.output_tokens)}</td>
+                    <td>{a.avg_duration_sec.toFixed(1)}s</td>
+                    <td>{fmtUsd(a.cost_usd)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>

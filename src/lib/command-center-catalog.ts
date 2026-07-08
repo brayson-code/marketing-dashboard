@@ -149,3 +149,18 @@ export function sanitizeEnabledViews(input: Record<string, unknown>): EnabledVie
 export function isViewOn(enabled: EnabledViews, href: string): boolean {
   return enabled[href] !== false;
 }
+
+// ─── Cross-component change notification ───────────────────────────────────────
+// NavRail (src/components/layout/nav-rail.tsx) fetches the enabled-views map from
+// /api/auth/me exactly ONCE, on mount — it's rendered at the app root layout, so it
+// never remounts on client-side navigation. Without a bridge, saving a toggle/preset
+// from Settings (or the Playground) persists to the DB but the visible nav stays
+// stale until a hard reload. The Settings panel + Playground call
+// notifyCommandCenterViewsChanged() after every successful write; NavRail listens
+// for it and re-fetches /api/auth/me to pick up the new map immediately.
+export const COMMAND_CENTER_VIEWS_CHANGED_EVENT = 'cc-views-changed';
+
+export function notifyCommandCenterViewsChanged(): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new Event(COMMAND_CENTER_VIEWS_CHANGED_EVENT));
+}

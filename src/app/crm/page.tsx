@@ -925,7 +925,7 @@ function KanbanColumn({
 }) {
   return (
     <div
-      className={`min-w-[200px] w-[200px] shrink-0 snap-start transition-colors rounded-xl ${
+      className={`min-w-[150px] w-[150px] sm:min-w-[170px] sm:w-[170px] xl:min-w-[200px] xl:w-[200px] shrink-0 snap-start transition-colors rounded-xl ${
         isDragOver ? 'bg-primary/10 ring-1 ring-primary/30' : ''
       }`}
       onDragOver={canEdit ? onDragOver : undefined}

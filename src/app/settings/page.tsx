@@ -271,6 +271,13 @@ export default function SettingsPage() {
       .catch(() => {});
   }, []);
 
+  // The legacy local-user system (better-sqlite3, see src/lib/db.ts) can't run on
+  // Vercel's read-only serverless filesystem — every call into it 500s there. Rather
+  // than hard-fail with a red toast, flip this flag and render a graceful inline note
+  // (the Team tab is the real, Supabase-backed replacement). Local dev (writable cwd)
+  // still works normally and clears the flag on a successful load.
+  const [legacyAccessUnavailable, setLegacyAccessUnavailable] = useState(false);
+
   async function loadUsers() {
     if (currentUser?.role !== 'admin') return;
     setUserLoading(true);
@@ -279,8 +286,9 @@ export default function SettingsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to load users');
       setUsers(Array.isArray(data.users) ? data.users : []);
-    } catch (err) {
-      toast.error((err as Error).message);
+      setLegacyAccessUnavailable(false);
+    } catch {
+      setLegacyAccessUnavailable(true);
     } finally {
       setUserLoading(false);
     }
@@ -300,18 +308,24 @@ export default function SettingsPage() {
         nextDrafts[req.email] = req.requested_role || 'viewer';
       });
       setRequestRoleDrafts(nextDrafts);
-    } catch (err) {
-      toast.error((err as Error).message);
+      setLegacyAccessUnavailable(false);
+    } catch {
+      setLegacyAccessUnavailable(true);
     } finally {
       setRequestLoading(false);
     }
   }
 
+  // Only load the legacy Users & Roles data when the Access tab is actually open —
+  // previously this fired unconditionally on every Settings mount (any tab), which is
+  // why the "Failed to load users" / "Failed to load login requests" toasts appeared
+  // on every visit to Settings rather than only when viewing Access.
   useEffect(() => {
+    if (activeTab !== 'access') return;
     loadUsers().catch(() => {});
     loadLoginRequests().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser?.role]);
+  }, [activeTab, currentUser?.role]);
 
   async function triggerSync() {
     setSyncing(true);
@@ -601,7 +615,7 @@ export default function SettingsPage() {
                 key={tab.key}
                 type="button"
                 onClick={() => setActiveTab(tab.key as SettingsTab)}
-                className={`rounded-lg px-3 py-2 text-sm border transition-colors ${
+                className={`rounded-lg px-3 py-2 text-sm border whitespace-nowrap transition-colors ${
                   activeTab === tab.key
                     ? 'bg-primary/15 border-primary/40 text-primary'
                     : 'bg-muted/20 border-border text-muted-foreground hover:text-foreground hover:bg-muted/40'
@@ -1422,6 +1436,12 @@ export default function SettingsPage() {
         {currentUser?.role !== 'admin' ? (
           <p className="text-xs text-muted-foreground">
             Admin access required to manage users and roles.
+          </p>
+        ) : legacyAccessUnavailable ? (
+          <p className="text-xs text-muted-foreground">
+            This legacy local-user panel isn&apos;t available in this deployment.
+            Manage workspace members, roles, and invites from the{' '}
+            <strong>Team</strong> tab instead.
           </p>
         ) : (
           <>

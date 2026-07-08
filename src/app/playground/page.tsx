@@ -36,6 +36,7 @@ import {
   VIEW_SECTIONS,
   PRESETS as CATALOG_PRESETS,
   isViewOn,
+  notifyCommandCenterViewsChanged,
   type EnabledViews,
 } from '@/lib/command-center-catalog';
 
@@ -154,6 +155,9 @@ export default function PlaygroundPage() {
         data.enabled && typeof data.enabled === 'object' ? data.enabled : full;
       setServerMap(saved);
       setWorking(saved);
+      // Tell the (already-mounted, root-level) NavRail to re-fetch so the applied
+      // layout is visible immediately instead of only after a hard reload.
+      notifyCommandCenterViewsChanged();
       toast.success('Command Center updated for this workspace');
     } catch (err) {
       toast.error((err as Error).message);

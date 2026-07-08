@@ -97,7 +97,7 @@ export function KpiStrip({ department }: { department: Department }) {
 
   return (
     <div className="panel">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 divide-y lg:divide-y-0 lg:divide-x divide-border/40">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 divide-y md:divide-y-0 md:divide-x divide-border/40">
         <Cell
           label="System Status"
           value={<span style={{ color: meta.color }}>{meta.label}</span>}

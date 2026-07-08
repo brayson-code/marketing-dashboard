@@ -954,7 +954,7 @@ function CadenceStep({
           No executive cron jobs found yet. They&apos;ll appear here after the C-suite is seeded for your tenant.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border">
+        <div className="overflow-x-auto rounded-xl border border-border">
           <table className="w-full text-xs">
             <thead className="bg-[var(--surface-2)] text-muted-foreground">
               <tr>

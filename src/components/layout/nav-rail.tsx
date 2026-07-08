@@ -14,6 +14,7 @@ import {
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { useDashboard } from '@/store';
 import { NavAgentChatWidget } from '@/components/layout/nav-agent-chat-widget';
+import { COMMAND_CENTER_VIEWS_CHANGED_EVENT } from '@/lib/command-center-catalog';
 
 interface NavCounts {
   content: number; outreach: number; signals_today: number; new_leads: number; total_pending: number;
@@ -192,16 +193,26 @@ export function NavRail() {
   // or null). Lifted here so toggling one section's chat closes any other.
   const [openChatSection, setOpenChatSection] = useState<string | null>(null);
   useEffect(() => {
-    fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)).then((j) => {
-      setIsHq(!!j?.is_hq);
-      setFlags({
-        salesops_enabled: !!j?.salesops_enabled,
-        playground_enabled: !!j?.playground_enabled,
-      });
-      setViews((j?.command_center_views && typeof j.command_center_views === 'object')
-        ? (j.command_center_views as Record<string, boolean>)
-        : {});
-    }).catch(() => {});
+    const loadMe = () => {
+      fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)).then((j) => {
+        setIsHq(!!j?.is_hq);
+        setFlags({
+          salesops_enabled: !!j?.salesops_enabled,
+          playground_enabled: !!j?.playground_enabled,
+        });
+        setViews((j?.command_center_views && typeof j.command_center_views === 'object')
+          ? (j.command_center_views as Record<string, boolean>)
+          : {});
+      }).catch(() => {});
+    };
+    loadMe();
+    // NavRail lives at the app-root layout and never remounts on client-side
+    // navigation, so a toggle/preset saved from Settings (or the Playground) would
+    // otherwise persist to the DB but stay invisible here until a hard reload.
+    // Re-fetch on this event (dispatched after every successful views write) so the
+    // rail updates immediately.
+    window.addEventListener(COMMAND_CENTER_VIEWS_CHANGED_EVENT, loadMe);
+    return () => window.removeEventListener(COMMAND_CENTER_VIEWS_CHANGED_EVENT, loadMe);
   }, []);
 
   // A view passes the enabled-views map when EITHER we're the HQ workspace (operators
