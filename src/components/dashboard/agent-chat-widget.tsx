@@ -6,6 +6,7 @@ import { MessageBubble } from '@/components/chat/message-bubble';
 import { ChatComposer } from '@/components/chat/chat-composer';
 import { toast } from '@/components/ui/toast';
 import type { ChatMessage } from '@/types';
+import type { Department } from '@/components/agent-orb';
 
 // Overview board tile: the SAME agent chat experience as the left-nav chat panel
 // (NavAgentChatWidget), embedded inline in a board cell instead of a floating dialog.
@@ -16,8 +17,16 @@ import type { ChatMessage } from '@/types';
 //   - /api/agents      — the roster (flat array), same as the nav panel.
 //   - /api/agent-chat  — GET history + POST { agentId, message } → { reply }.
 //
-// TARGET: the tenant's "command" agent — the lead executive of the squad (the AI CEO /
-// top exec), which is the practical orchestrator any workspace member can reach 1:1.
+// TARGET: the ACTIVE LENS's executive — this widget receives the board's `department`
+// prop (the same lens LensTabs drives for HeroAgents/DepartmentRoster/etc., lifted as
+// board-level state in <WidgetBoard> and passed to every widget generically) and keeps
+// the active agent in lockstep with it: Leadership → the lead exec (AI CEO-equivalent),
+// Marketing → the CMO-equivalent, and so on, mirroring the SAME is_executive +
+// department match /api/hero-agents already uses to build the lens-filtered hero row —
+// no new mapping invented here. A LENS CHANGE ALWAYS WINS: if the operator manually
+// picked a different agent from the dropdown, that pick survives only until the next
+// lens change, then gets overridden. A lens with no exec seeded on this tenant is a
+// no-op (keep the current agent, never crash).
 //
 // LAYOUT: this is the FLAGSHIP element of the overview board — a full board row
 // (registry `defaultSpan: 3`, see dashboard-widgets.ts), designed to feel like
@@ -53,6 +62,24 @@ interface AgentItem {
 // fixer/improver are HQ/system agents — spawnSubAgent refuses all three.
 const NON_CHATTABLE = new Set<string>(['keyplayer', 'fixer', 'improver']);
 
+// Resolves the ACTIVE LENS's executive from the already-fetched roster — the same
+// is_executive + department signal /api/hero-agents filters on, so lens ↔ agent stays
+// in lockstep with the hero row without inventing a second mapping. Leadership prefers
+// the exec whose OWN department is 'leadership' (the CEO-equivalent, e.g. `ai-ceo`),
+// falling back to any executive; every other lens matches its own department's exec.
+// Returns null when this tenant hasn't seeded one — callers must leave the current
+// agent selected rather than clearing it (never crash on a sparse roster).
+function execForDepartment(agents: AgentItem[], department: Department): AgentItem | null {
+  if (department === 'leadership') {
+    return (
+      agents.find((a) => a.is_executive && a.department === 'leadership') ??
+      agents.find((a) => a.is_executive) ??
+      null
+    );
+  }
+  return agents.find((a) => a.is_executive && a.department === department) ?? null;
+}
+
 function parseAgentsResponse(payload: unknown): AgentItem[] {
   const rows: unknown[] = Array.isArray(payload)
     ? payload
@@ -74,7 +101,7 @@ function parseAgentsResponse(payload: unknown): AgentItem[] {
     .filter((a) => a.id && !NON_CHATTABLE.has(a.id));
 }
 
-export function AgentChatWidget() {
+export function AgentChatWidget({ department }: { department: Department }) {
   const [agents, setAgents] = useState<AgentItem[]>([]);
   const [agentsLoading, setAgentsLoading] = useState(true);
   const [agentsError, setAgentsError] = useState(false);
@@ -90,6 +117,10 @@ export function AgentChatWidget() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
   const tempIdRef = useRef(-1);
+  // Guards the one-time "pick SOME agent so the operator can type immediately" bootstrap
+  // below from re-firing after the first resolution — every resolution after that is a
+  // deliberate lens-change switch, not a fallback pick.
+  const initializedRef = useRef(false);
 
   const activeAgent = activeId ? agents.find((a) => a.id === activeId) ?? null : null;
 
@@ -115,14 +146,23 @@ export function AgentChatWidget() {
     };
   }, []);
 
-  // Default target = the lead executive (the client's "command" agent), else the first
-  // chattable agent, so the operator can type immediately.
+  // Keep the active agent in lockstep with the board's lens. First resolution (roster
+  // just loaded, nothing picked yet) falls back to any executive / the first chattable
+  // agent so the operator can type immediately, even if THIS lens has no exec of its
+  // own. Every resolution after that fires only on a real department change and always
+  // wins over a manual dropdown pick — unless the new lens has no seeded exec, in which
+  // case we leave the current agent alone (no crash, no clearing the selection).
   useEffect(() => {
-    if (activeId) return;
     if (agents.length === 0) return;
-    const lead = agents.find((a) => a.is_executive) ?? agents[0];
-    setActiveId(lead.id);
-  }, [activeId, agents]);
+    const exec = execForDepartment(agents, department);
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      const fallback = exec ?? agents.find((a) => a.is_executive) ?? agents[0];
+      setActiveId(fallback.id);
+      return;
+    }
+    if (exec) setActiveId(exec.id);
+  }, [department, agents]);
 
   const loadHistory = useCallback(async (agentId: string) => {
     setHistoryLoading(true);
@@ -294,10 +334,13 @@ export function AgentChatWidget() {
             }}
           >
             {activeAgent ? (
-              <>
+              // Keyed on the agent id so a switch — whether from a lens change or a
+              // manual pick — remounts this span and replays the fade-in, a subtle
+              // "the target just changed" cue instead of the label silently swapping.
+              <span key={activeAgent.id} className="flex items-center gap-1.5 animate-in">
                 <span aria-hidden>{activeAgent.emoji}</span>
                 <span className="max-w-[110px] truncate">{activeAgent.name}</span>
-              </>
+              </span>
             ) : (
               <span>{agentsLoading ? 'Loading…' : 'Select agent'}</span>
             )}
