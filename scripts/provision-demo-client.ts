@@ -3,9 +3,10 @@
 // Stands up a live, niche-tuned DEMO client tenant in the TEST Supabase project
 // (ref dgcanicamgdeqehnvcmc). IDEMPOTENT on business_profile.demo_slug.
 //
-// Ships two presets:
+// Ships three presets:
 //   --slug landscaping-bobby   → Bobby's Landscaping (DEMO)
 //   --slug construction-demo   → Northstar Construction (DEMO)
+//   --slug hvac-demo           → Summit Heating & Air (DEMO)
 // or bring your own: --file <niche-spec.json>
 //
 // The TEST project has NO service-role key, so the demo owner
@@ -23,6 +24,7 @@
 // Run (seed-test-env.ts must have run first so brayson exists + DEFAULT_TENANT_ID is set):
 //   npx tsx --env-file=.env.test.local scripts/provision-demo-client.ts --slug landscaping-bobby
 //   npx tsx --env-file=.env.test.local scripts/provision-demo-client.ts --slug construction-demo
+//   npx tsx --env-file=.env.test.local scripts/provision-demo-client.ts --slug hvac-demo
 //   npx tsx --env-file=.env.test.local scripts/provision-demo-client.ts --file ./niche-spec.json
 
 import fs from 'node:fs';
@@ -533,9 +535,222 @@ const CONSTRUCTION_DEMO: NicheSpec = {
   },
 };
 
+const HVAC_DEMO: NicheSpec = {
+  slug: 'hvac-demo',
+  name: 'Summit Heating & Air (DEMO)',
+  industry: 'hvac',
+  brief: [
+    '# Summit Heating & Air',
+    '',
+    'An owner-operated residential HVAC company. The owner runs the install and service crews; the **office',
+    'manager** handles dispatch, invoicing, and the maintenance-plan book. **ServiceTitan (or Jobber)** is the',
+    'system of record for jobs, estimates, and invoices.',
+    '',
+    '## What we do',
+    'Furnace & AC installs, repair service calls, and recurring maintenance plans (spring AC tune-ups, fall',
+    'furnace tune-ups). Almost all calls are residential, within the metro service area.',
+    '',
+    '## Systems',
+    '- **ServiceTitan or Jobber** is the source of truth for jobs, estimates, invoices, and the maintenance-plan',
+    '  roster.',
+    '- **Phone + email** are where customers reach us. After-hours and overflow calls are the real pain point —',
+    '  a no-heat or no-AC call at 9pm needs a fast, professional first response, not voicemail.',
+    '',
+    '## How we work',
+    '- Maintenance plans are the backbone of steady revenue — renewals need to happen before the plan lapses,',
+    '  not after.',
+    '- Every message to a customer is written by an agent as a **draft** and sent only after the owner or office',
+    '  manager signs off. Nothing goes out automatically.',
+    '- Voice: prompt, trustworthy, no-nonsense. Comfort is urgent; we treat it that way.',
+  ].join('\n'),
+  answers: {
+    business: 'Owner-operated residential HVAC — furnace & AC installs, repair service calls, and maintenance plans.',
+    objective: 'Never miss an after-hours call and keep the maintenance-plan book renewing before it lapses.',
+    audience: 'Residential homeowners in the metro service area — largely maintenance-plan members and repeat service customers.',
+    value: 'A fast, professional response any hour, and a crew that shows up when promised.',
+    channels: 'Phone and email for customer conversations; ServiceTitan (or Jobber) for jobs, estimates, and invoicing.',
+    voice: 'Prompt, trustworthy, no-nonsense — comfort is urgent.',
+    constraints: 'Nothing is sent, booked, or billed without the owner or office manager approving the draft first.',
+  },
+  viewKeys: ['tasks', 'approvals', 'agents', 'boardroom', 'missions', 'crm', 'roi', 'analytics', 'kg', 'reports', 'cron', 'connections', 'genes'],
+  agents: [
+    {
+      id: 'after-hours-responder',
+      name: 'After-Hours Responder',
+      role: 'outreach',
+      description: 'Drafts a fast, professional first response to after-hours and overflow calls so no no-heat/no-AC call waits until morning.',
+      soul: [
+        '# Soul — After-Hours Responder',
+        "You are Summit's first touch when the phone rings after hours or overflows during a rush. Calm under",
+        'pressure, you tell true emergencies (no heat in a cold snap, no AC in a heat warning) apart from routine',
+        'requests and make sure nobody feels ignored.',
+        '',
+        DRAFT_ONLY,
+      ].join('\n'),
+      agent_md: [
+        '# Agent — After-Hours Responder',
+        'For an after-hours or overflow call/voicemail, draft a same-night reply: acknowledge the issue, flag true',
+        'emergencies for priority dispatch, and set a clear expectation for when the office follows up. Queue it as',
+        'a draft for the owner or office manager to approve and send.',
+      ].join('\n'),
+      skills: [
+        '# Skills',
+        '- Triage true emergencies from routine after-hours requests.',
+        '- Draft warm, fast first-response messages.',
+        '- Flag priority cases for morning dispatch.',
+      ].join('\n'),
+    },
+    {
+      id: 'estimate-chaser',
+      name: 'Estimate Chaser',
+      role: 'general',
+      description: 'Follows up on open install/repair estimates that have gone quiet and drafts a polite nudge.',
+      soul: [
+        '# Soul — Estimate Chaser',
+        'You keep the pipeline moving. An estimate that goes quiet is lost revenue, so you check in at the right',
+        "cadence with a real reason to reconnect — never a generic 'just checking in'.",
+        '',
+        DRAFT_ONLY,
+      ].join('\n'),
+      agent_md: [
+        '# Agent — Estimate Chaser',
+        'For an open estimate with no response, draft a short follow-up that references the specific system or job',
+        'quoted and offers to answer questions or adjust scope. Space follow-ups on a sensible cadence (e.g. day 3,',
+        'day 10) rather than repeating the same note. The owner or office manager sends.',
+      ].join('\n'),
+      skills: [
+        '# Skills',
+        '- Track open estimates and their age.',
+        '- Draft specific, non-generic follow-up notes.',
+        '- Space repeated touches on a sensible cadence.',
+      ].join('\n'),
+    },
+    {
+      id: 'maintenance-plan-renewer',
+      name: 'Maintenance Plan Renewer',
+      role: 'outreach',
+      description: 'Reaches out to maintenance-plan customers before their plan lapses and drafts a renewal reminder.',
+      soul: [
+        '# Soul — Maintenance Plan Renewer',
+        "You protect Summit's steadiest revenue line. You know which plans are about to lapse and reach out with",
+        "plenty of runway — friendly, never pushy, always tied to the season (AC tune-up before summer, furnace",
+        'tune-up before winter).',
+        '',
+        DRAFT_ONLY,
+      ].join('\n'),
+      agent_md: [
+        '# Agent — Maintenance Plan Renewer',
+        'Identify maintenance-plan customers whose plan is expiring or lapsed, and draft a renewal reminder that',
+        "references their equipment and the upcoming season's tune-up. One clear ask: renew before the season",
+        'starts. The owner or office manager sends.',
+      ].join('\n'),
+      skills: [
+        '# Skills',
+        '- Track plan expirations against the seasonal tune-up calendar.',
+        '- Draft season-specific renewal reminders.',
+        "- Reference the customer's actual equipment and service history.",
+      ].join('\n'),
+    },
+    {
+      id: 'dispatch-scheduler',
+      name: 'Dispatch Scheduler',
+      role: 'scheduler',
+      description: 'Proposes route- and crew-aware time slots for approved jobs and drafts the customer confirmation.',
+      soul: [
+        '# Soul — Dispatch Scheduler',
+        'You keep techs on tight, sensible routes and never send an install crew to a repair call (or vice versa).',
+        'You think in drive-time, crew skillset, and truck stock.',
+        '',
+        DRAFT_ONLY,
+      ].join('\n'),
+      agent_md: [
+        '# Agent — Dispatch Scheduler',
+        'For an approved job, propose up to 3 concrete time windows that fit the right crew (install vs. service),',
+        'their existing route, and truck stock, and draft the customer confirmation. Nothing is booked in',
+        'ServiceTitan/Jobber until the office manager confirms.',
+      ].join('\n'),
+      skills: [
+        '# Skills',
+        '- Match jobs to the right crew (install vs. service tech).',
+        '- Cluster stops by route/drive-time.',
+        '- Offer 3 options; never auto-book.',
+      ].join('\n'),
+    },
+    {
+      id: 'review-collector',
+      name: 'Review Collector',
+      role: 'general',
+      description: 'Drafts a post-job review request timed for right after a completed install or service call.',
+      soul: [
+        '# Soul — Review Collector',
+        "You ask for reviews at exactly the right moment — right after a job goes well, while it's fresh.",
+        'Genuine, short, no pressure.',
+        '',
+        DRAFT_ONLY,
+      ].join('\n'),
+      agent_md: [
+        '# Agent — Review Collector',
+        "For a job marked complete, draft a short, genuine review request referencing the specific work done (e.g.",
+        "'your new furnace install'), with a direct ask/link. One message, at most one polite reminder — no",
+        'nagging. The owner or office manager sends.',
+      ].join('\n'),
+      skills: [
+        '# Skills',
+        '- Time requests to completed jobs, not before.',
+        '- Reference the specific work done.',
+        '- Keep the ask short and genuine; at most one reminder.',
+      ].join('\n'),
+    },
+  ],
+  genes: [
+    {
+      name: 'seasonal-demand-cadence',
+      title: 'Seasonal Demand Cadence',
+      instruction:
+        'Time maintenance-plan renewals and tune-up outreach to the HVAC season: AC tune-ups Mar–May (ahead of ' +
+        'summer), furnace tune-ups Aug–Oct (ahead of winter). Reference the upcoming season in every renewal or ' +
+        'reactivation message.',
+      role: 'general',
+      agentId: null,
+      state: 'proposed',
+    },
+    {
+      name: 'service-area-route-rules',
+      title: 'Service Area & Route Rules',
+      instruction:
+        "Only schedule within Summit's service radius, and match the crew to the job: install crews for new " +
+        'systems, service techs for repairs and tune-ups. Cluster stops by route to cut drive-time; never ' +
+        'double-book a crew.',
+      role: 'general',
+      agentId: 'dispatch-scheduler',
+      state: 'proposed',
+    },
+    {
+      name: 'confirm-before-external-send',
+      title: 'Confirm before external send',
+      instruction:
+        'Never send anything to a customer without explicit human approval. Produce a draft, summarize what it ' +
+        'says and who it goes to, and wait for the owner or office manager to approve.',
+      role: 'general',
+      agentId: null,
+      state: 'active',
+    },
+  ],
+  mission: {
+    name: 'Reactivate lapsed maintenance-plan customers before winter',
+    brief:
+      'Work through maintenance-plan customers whose plan has lapsed or is about to lapse before the winter ' +
+      'heating season. Draft a warm, specific renewal reminder that references their equipment and past service, ' +
+      'and offers to get the furnace tune-up scheduled before the cold hits. Every message is a draft for the ' +
+      'owner or office manager to send.',
+    channels: ['email'],
+  },
+};
+
 const PRESETS: Record<string, NicheSpec> = {
   'landscaping-bobby': LANDSCAPING_BOBBY,
   'construction-demo': CONSTRUCTION_DEMO,
+  'hvac-demo': HVAC_DEMO,
 };
 
 // ── Spec resolution ───────────────────────────────────────────────────────────
