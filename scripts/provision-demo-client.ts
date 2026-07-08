@@ -34,6 +34,7 @@ import { createGene } from '../src/lib/genes';
 import { createCampaign, updateCampaign } from '../src/lib/campaigns';
 import { setEnabledViews, TOGGLEABLE_HREFS } from '../src/lib/command-center-views';
 import { saveCompanyPlaybook, type PlaybookAnswers } from '../src/lib/company-playbook';
+import { INDUSTRY_TEMPLATES } from '../src/lib/dashboard-layout';
 import {
   assertTestProject,
   isUuid,
@@ -620,7 +621,21 @@ async function main() {
     tenantId = await createWorkspace(spec.name, demoUserId, 'pro');
     console.log(`✅ demo tenant created: ${tenantId}`);
   }
-  await mergeBusinessProfile(tenantId, { demo_slug: spec.slug, demo: true, industry: spec.industry });
+  // Industry → default dashboard layout template (falls back to omitting the key
+  // when no template matches, e.g. a bring-your-own --file spec with a novel
+  // industry — the overview then just uses the built-in default layout).
+  const dashboardTemplate = INDUSTRY_TEMPLATES[spec.industry as keyof typeof INDUSTRY_TEMPLATES];
+  await mergeBusinessProfile(tenantId, {
+    demo_slug: spec.slug,
+    demo: true,
+    industry: spec.industry,
+    ...(dashboardTemplate ? { dashboard_layout: dashboardTemplate } : {}),
+  });
+  console.log(
+    dashboardTemplate
+      ? `✅ dashboard layout template applied: ${spec.industry}`
+      : `  [info] no dashboard layout template for industry '${spec.industry}' — dashboard_layout key omitted`
+  );
 
   // 3) Pin the demo owner's JWT claim to the demo tenant.
   await stampTenantClaim(demoUserId, tenantId);

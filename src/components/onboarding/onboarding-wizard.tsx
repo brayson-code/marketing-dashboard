@@ -10,6 +10,7 @@ import {
   Bell,
   Building2,
   Check,
+  CheckCircle2,
   Eye,
   Flag,
   Lightbulb,
@@ -21,6 +22,7 @@ import {
   Plug,
   Rocket,
   Sparkles,
+  SquareStack,
   Target,
   Timer,
   UserCircle2,
@@ -83,6 +85,33 @@ interface InviteResult {
   link: string | null;
   error: string | null;
 }
+
+// Mirrors OnboardingProvisioning from src/app/api/onboarding/route.ts — what GET
+// /api/onboarding tells us about a tenant that was already stood up (industry,
+// company brief, custom agents, nav views) before the wizard ever ran, e.g. via
+// scripts/provision-demo-client.ts and a Key Matrix intake. Defaults to "nothing
+// provisioned" so a real, freshly-invited client renders exactly as before.
+interface ProvisioningInfo {
+  provisioned: boolean;
+  industry: string | null;
+  hasPlaybook: boolean;
+  playbookPreview: string | null;
+  agentCount: number;
+  viewsConfigured: boolean;
+  viewsOnCount: number;
+  viewsTotalCount: number;
+}
+
+const EMPTY_PROVISIONING: ProvisioningInfo = {
+  provisioned: false,
+  industry: null,
+  hasPlaybook: false,
+  playbookPreview: null,
+  agentCount: 0,
+  viewsConfigured: false,
+  viewsOnCount: 0,
+  viewsTotalCount: 0,
+};
 
 interface WizardData {
   role: Role | null;
@@ -195,6 +224,10 @@ export function OnboardingWizard({ onDone }: { onDone?: () => void } = {}) {
   const [csuite, setCsuite] = useState<CronExec[] | null>(null);
   const [csuiteLoaded, setCsuiteLoaded] = useState(false);
 
+  // Set from GET /api/onboarding's `provisioning` block. Stays EMPTY_PROVISIONING
+  // (provisioned: false) for every ordinary tenant, so nothing below changes for them.
+  const [provisioning, setProvisioning] = useState<ProvisioningInfo>(EMPTY_PROVISIONING);
+
   // Outcome of the teammate invite (legacy step, kept wired for /settings reuse):
   // emailed ✓, or a copyable link when no email provider is configured.
   const [inviteResult, setInviteResult] = useState<InviteResult | null>(null);
@@ -211,6 +244,9 @@ export function OnboardingWizard({ onDone }: { onDone?: () => void } = {}) {
         if (json.onboarding_complete) {
           if (onDone) onDone(); else router.replace('/');
           return;
+        }
+        if (json.provisioning && typeof json.provisioning === 'object') {
+          setProvisioning({ ...EMPTY_PROVISIONING, ...json.provisioning });
         }
         const bp = json.business_profile;
         if (bp && typeof bp === 'object') {
@@ -542,13 +578,18 @@ export function OnboardingWizard({ onDone }: { onDone?: () => void } = {}) {
                   <WelcomeStep
                     role={data.role}
                     agencySize={data.agencySize}
+                    provisioning={provisioning}
                     onPickRole={(role) => setData((d) => ({ ...d, role }))}
                     onPickSize={(agencySize) => setData((d) => ({ ...d, agencySize }))}
                   />
                 )}
 
                 {meta.key === 'profile' && (
-                  <ProfileStep value={data.business} onChange={(business) => setData((d) => ({ ...d, business }))} />
+                  <ProfileStep
+                    value={data.business}
+                    provisioning={provisioning}
+                    onChange={(business) => setData((d) => ({ ...d, business }))}
+                  />
                 )}
 
                 {meta.key === 'stack' && <StackStep />}
@@ -562,7 +603,11 @@ export function OnboardingWizard({ onDone }: { onDone?: () => void } = {}) {
                 )}
 
                 {meta.key === 'seed' && (
-                  <SeedStep value={data.knowledgeSeed} onChange={(knowledgeSeed) => setData((d) => ({ ...d, knowledgeSeed }))} />
+                  <SeedStep
+                    value={data.knowledgeSeed}
+                    provisioning={provisioning}
+                    onChange={(knowledgeSeed) => setData((d) => ({ ...d, knowledgeSeed }))}
+                  />
                 )}
 
                 {meta.key === 'done' && <DoneStep role={data.role} />}
@@ -609,11 +654,65 @@ export function OnboardingWizard({ onDone }: { onDone?: () => void } = {}) {
   );
 }
 
+// Title-cases a freeform industry string ("landscaping" → "Landscaping") without
+// assuming it's one of the fixed INDUSTRIES options — provisioned tenants (Key
+// Matrix / demo presets) carry arbitrary industry strings that fixed list doesn't
+// cover, so this is used everywhere we DISPLAY an industry, never for matching.
+function titleCase(s: string): string {
+  return s.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// ─── Provisioned-tenant intro banner ───────────────────────────────────────────
+// Shown at the top of the Welcome step only when GET /api/onboarding reports
+// provisioning.provisioned. Reframes the wizard around what a Key Matrix intake /
+// demo preset already built, using real tenant data — never shown for an
+// ordinary, freshly-invited client (whose business_profile starts empty).
+function ProvisionedIntro({ provisioning }: { provisioning: ProvisioningInfo }) {
+  if (!provisioning.provisioned) return null;
+  const industryLabel = provisioning.industry ? titleCase(provisioning.industry) : 'your business';
+
+  const facts: string[] = [];
+  if (provisioning.industry) facts.push(`Industry: ${industryLabel}`);
+  if (provisioning.agentCount > 0) {
+    facts.push(`${provisioning.agentCount} custom agent${provisioning.agentCount === 1 ? '' : 's'} on your squad`);
+  }
+  if (provisioning.hasPlaybook) facts.push('Company brief already written');
+  if (provisioning.viewsConfigured) {
+    facts.push(`${provisioning.viewsOnCount} of ${provisioning.viewsTotalCount} nav views turned on`);
+  }
+
+  return (
+    <div
+      className="mb-5 space-y-3 rounded-xl border p-4"
+      style={{ borderColor: 'rgba(16,217,130,0.35)', background: 'rgba(16,217,130,0.07)' }}
+    >
+      <div className="flex items-start gap-2.5">
+        <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--primary)]/15 text-[var(--primary)]">
+          <SquareStack size={13} />
+        </span>
+        <p className="text-sm font-medium leading-snug">
+          Your command center was built for <span className="text-[var(--primary)]">{industryLabel}</span> from your
+          Key Matrix — here&apos;s what&apos;s already live and what&apos;s left.
+        </p>
+      </div>
+      {facts.length > 0 && (
+        <ul className="space-y-1.5 pl-8">
+          {facts.map((f) => (
+            <li key={f} className="flex items-center gap-2 text-xs text-muted-foreground">
+              <CheckCircle2 size={13} className="shrink-0 text-[var(--primary)]" /> {f}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 // ─── Step 1: Welcome, role & agency size ──────────────────────────────────────
 function WelcomeStep({
-  role, agencySize, onPickRole, onPickSize,
+  role, agencySize, provisioning, onPickRole, onPickSize,
 }: {
-  role: Role | null; agencySize: AgencySize | null;
+  role: Role | null; agencySize: AgencySize | null; provisioning: ProvisioningInfo;
   onPickRole: (r: Role) => void; onPickSize: (s: AgencySize) => void;
 }) {
   const options: Array<{ id: Role; label: string; desc: string }> = [
@@ -623,6 +722,7 @@ function WelcomeStep({
   ];
   return (
     <div className="space-y-5">
+      <ProvisionedIntro provisioning={provisioning} />
       <h1 className="text-xl font-semibold">Welcome to your Command Centre.</h1>
       <p className="text-sm text-muted-foreground">First, who are you here? This tailors how we talk to you.</p>
       <div className="space-y-2.5">
@@ -687,8 +787,17 @@ function WelcomeStep({
 }
 
 // ─── Step 2: Business profile ─────────────────────────────────────────────────
-function ProfileStep({ value, onChange }: { value: BusinessProfile; onChange: (v: BusinessProfile) => void }) {
+function ProfileStep({
+  value, provisioning, onChange,
+}: {
+  value: BusinessProfile; provisioning: ProvisioningInfo; onChange: (v: BusinessProfile) => void;
+}) {
   const set = (patch: Partial<BusinessProfile>) => onChange({ ...value, ...patch });
+  // Industry was already set from provisioning (Key Matrix / demo preset), which can
+  // carry a freeform string the fixed INDUSTRIES dropdown doesn't have an option for
+  // (e.g. "landscaping"). Show it as a locked "already set" chip instead of asking
+  // again — and instead of a <select> that would silently fail to display the value.
+  const industryLocked = provisioning.provisioned && !!provisioning.industry && !!value.industry;
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold">Tell us about the business.</h1>
@@ -700,15 +809,25 @@ function ProfileStep({ value, onChange }: { value: BusinessProfile; onChange: (v
       </label>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <label className="block space-y-1 text-xs">
+        <div className="block space-y-1 text-xs">
           <span className="text-muted-foreground">Industry *</span>
-          <select className={INPUT} value={value.industry} onChange={(e) => set({ industry: e.target.value })}>
-            <option value="">Select…</option>
-            {INDUSTRIES.map((i) => (
-              <option key={i} value={i}>{i}</option>
-            ))}
-          </select>
-        </label>
+          {industryLocked ? (
+            <div className="flex items-center gap-2 rounded-lg border border-[var(--primary)]/40 bg-[var(--primary)]/10 px-3 py-2">
+              <CheckCircle2 size={14} className="shrink-0 text-[var(--primary)]" />
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium capitalize">{value.industry}</div>
+                <div className="text-[10px] text-muted-foreground">Set up from your Key Matrix</div>
+              </div>
+            </div>
+          ) : (
+            <select className={INPUT} value={value.industry} onChange={(e) => set({ industry: e.target.value })}>
+              <option value="">Select…</option>
+              {INDUSTRIES.map((i) => (
+                <option key={i} value={i}>{i}</option>
+              ))}
+            </select>
+          )}
+        </div>
         <label className="block space-y-1 text-xs">
           <span className="text-muted-foreground">Team size *</span>
           <select className={INPUT} value={value.teamSize} onChange={(e) => set({ teamSize: e.target.value })}>
@@ -1101,7 +1220,51 @@ function InviteStep({ value, onChange, result }: {
 }
 
 // ─── Step 11: Knowledge seed → KB doc "Agency profile" ────────────────────────
-function SeedStep({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function SeedStep({
+  value, provisioning, onChange,
+}: {
+  value: string; provisioning: ProvisioningInfo; onChange: (v: string) => void;
+}) {
+  // A provisioned tenant already has a full company brief (business_profile.playbook,
+  // written from the Key Matrix intake / demo preset) — asking for a redundant "voice
+  // memo" here doesn't make sense. Show it as done instead, with the option to add
+  // more rather than being forced to re-type the whole thing.
+  if (provisioning.provisioned && provisioning.hasPlaybook) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-xl font-semibold">Your squad already has a voice.</h1>
+        <p className="text-xs text-muted-foreground">
+          Your company brief was written from your Key Matrix intake — every agent already reads it before it does
+          anything. Nothing to do here.
+        </p>
+
+        <div className="space-y-2 rounded-xl border border-[var(--primary)]/40 bg-[var(--primary)]/10 p-3.5">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <CheckCircle2 size={14} className="shrink-0 text-[var(--primary)]" /> Company brief already written
+          </div>
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Set up from your Key Matrix
+          </div>
+          {provisioning.playbookPreview && (
+            <p className="text-xs italic leading-relaxed text-muted-foreground">
+              &ldquo;{provisioning.playbookPreview}&rdquo;
+            </p>
+          )}
+        </div>
+
+        <label className="block space-y-1 text-xs">
+          <span className="text-muted-foreground">Anything to add? (optional)</span>
+          <textarea
+            className={`${INPUT} min-h-[100px] leading-relaxed`}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="Only fill this in if there's something the brief above doesn't already cover."
+          />
+        </label>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold">Give the squad a voice memo.</h1>
