@@ -19,6 +19,15 @@ export async function POST() {
       return NextResponse.json({ configured: false });
     }
     const token = await createConnectSessionToken(tenantId());
+    if (!token) {
+      // createConnectSessionToken already console.error'd the underlying cause —
+      // surface a generic-but-actionable message to the panel instead of a bare
+      // { configured: true, token: null } the caller has no way to act on.
+      return NextResponse.json(
+        { error: 'Nango session failed — check NANGO_SECRET_KEY and integration config keys' },
+        { status: 502 },
+      );
+    }
     return NextResponse.json({ configured: true, token });
   } catch (error) {
     return NextResponse.json({ error: (error as Error).message }, { status: 500 });

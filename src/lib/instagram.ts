@@ -13,6 +13,11 @@ import { tenantId } from './tenant';
 
 const PROVIDER = 'instagram';
 
+/** Graph API version for all Instagram-Login (graph.instagram.com) calls, here
+ *  and in instagram-publish.ts. Bump this one line when Meta deprecates it —
+ *  graph.instagram.com currently accepts v21+; v19.0 expired 2026-05-21. */
+export const IG_GRAPH_VERSION = 'v23.0';
+
 interface IGConn { connection_id: string; provider_config_key: string }
 
 async function getConn(): Promise<IGConn | null> {
@@ -75,7 +80,7 @@ export interface IGAccount {
 export async function getAccount(): Promise<IGAccount | null> {
   interface Resp { id?: string; username?: string; name?: string; profile_picture_url?: string; media_count?: number; followers_count?: number; follows_count?: number }
   const r = await igProxy<Resp>({
-    endpoint: '/v19.0/me',
+    endpoint: `/${IG_GRAPH_VERSION}/me`,
     params: { fields: 'id,username,name,profile_picture_url,media_count,followers_count,follows_count' },
   });
   if (!r?.id) return null;
@@ -96,8 +101,8 @@ export interface IGAccountInsights {
   start: string;
   end: string;
   reach: number;
-  impressions: number;
-  profile_views: number;
+  /** Replaces the deprecated `impressions` metric (removed Graph API v21+). */
+  views: number;
   /** Net follower change inferred from `follower_count` daily series (last − first).
    *  IG Graph reports `follower_count` as a daily delta on day period, summed here. */
   followers_gained: number;
@@ -115,7 +120,7 @@ export async function getAccountInsights(): Promise<IGAccountInsights | null> {
   let igUserId: string | null = null;
   try {
     interface MeResp { id?: string }
-    const me = await igProxy<MeResp>({ endpoint: '/v19.0/me', params: { fields: 'id' } });
+    const me = await igProxy<MeResp>({ endpoint: `/${IG_GRAPH_VERSION}/me`, params: { fields: 'id' } });
     igUserId = me?.id ?? null;
   } catch {
     return null;
@@ -130,9 +135,11 @@ export async function getAccountInsights(): Promise<IGAccountInsights | null> {
 
   try {
     const r = await igProxy<IGInsightsResp>({
-      endpoint: `/v19.0/${igUserId}/insights`,
+      endpoint: `/${IG_GRAPH_VERSION}/${igUserId}/insights`,
       params: {
-        metric: 'reach,impressions,profile_views,follower_count',
+        // 'impressions' and 'profile_views' were removed from this endpoint in
+        // Graph API v21+; 'views' is the replacement for impressions.
+        metric: 'reach,views,follower_count',
         period: 'day',
         since,
         until,
@@ -153,8 +160,7 @@ export async function getAccountInsights(): Promise<IGAccountInsights | null> {
       start: start.toISOString().slice(0, 10),
       end: end.toISOString().slice(0, 10),
       reach: sumMetric('reach'),
-      impressions: sumMetric('impressions'),
-      profile_views: sumMetric('profile_views'),
+      views: sumMetric('views'),
       followers_gained: sumMetric('follower_count'),
     };
   } catch {
@@ -215,7 +221,7 @@ function mapMedia(x: IGMediaItem): IGMedia {
 export async function listRecentMedia(max = 24): Promise<IGMedia[]> {
   interface Resp { data?: IGMediaItem[] }
   const r = await igProxy<Resp>({
-    endpoint: '/v19.0/me/media',
+    endpoint: `/${IG_GRAPH_VERSION}/me/media`,
     params: {
       fields: 'id,media_type,media_url,thumbnail_url,permalink,caption,timestamp,like_count,comments_count',
       limit: Math.min(max, 100),
@@ -233,7 +239,7 @@ export async function listAllMedia(opts: { maxPages?: number } = {}): Promise<IG
   for (let page = 0; page < maxPages; page++) {
     interface Resp { data?: IGMediaItem[]; paging?: { next?: string; cursors?: { after?: string } } }
     const r = await igProxy<Resp>({
-      endpoint: '/v19.0/me/media',
+      endpoint: `/${IG_GRAPH_VERSION}/me/media`,
       params: {
         fields: 'id,media_type,media_url,thumbnail_url,permalink,caption,timestamp,like_count,comments_count',
         limit: 100,
@@ -270,7 +276,7 @@ export async function listRecentComments(maxMedia = 8, perMedia = 6): Promise<IG
     try {
       interface Resp { data?: Array<{ id: string; username?: string; text?: string; timestamp?: string; like_count?: number }> }
       const r = await igProxy<Resp>({
-        endpoint: `/v19.0/${m.id}/comments`,
+        endpoint: `/${IG_GRAPH_VERSION}/${m.id}/comments`,
         params: { fields: 'id,username,text,timestamp,like_count', limit: perMedia },
       });
       for (const c of r.data ?? []) {
@@ -346,7 +352,7 @@ export async function getMediaInsights(reelUrl: string): Promise<IGMediaInsights
     interface InsightEntry { name?: string; values?: InsightVal[] }
     interface InsightsResp { data?: InsightEntry[] }
     const resp = await igProxy<InsightsResp>({
-      endpoint: `/v19.0/${hit.id}/insights`,
+      endpoint: `/${IG_GRAPH_VERSION}/${hit.id}/insights`,
       params: {
         metric: 'reach,plays,saved,shares,total_interactions,ig_reels_video_view_total_time',
       },
@@ -395,7 +401,7 @@ export async function replyToComment(parentId: string, text: string): Promise<st
   interface Resp { id?: string }
   const r = await igProxy<Resp>({
     method: 'POST',
-    endpoint: `/v19.0/${parentId}/replies`,
+    endpoint: `/${IG_GRAPH_VERSION}/${parentId}/replies`,
     data: { message: body },
   });
   if (!r?.id) throw new Error('instagram: reply API returned no id');

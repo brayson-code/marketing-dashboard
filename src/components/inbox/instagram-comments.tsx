@@ -15,7 +15,7 @@ interface IGComment {
 
 // Instagram triage panel — mirrors the YouTube one. Drafts route through the
 // same content-writer path; publish handler routes by `platform` metadata so
-// IG comment replies post to /v19.0/<commentId>/replies via Nango.
+// IG comment replies post to /<IG_GRAPH_VERSION>/<commentId>/replies via Nango.
 export function InstagramCommentsPanel() {
   const [comments, setComments] = useState<IGComment[]>([]);
   const [loading, setLoading] = useState(true);

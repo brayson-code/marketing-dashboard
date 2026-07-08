@@ -19,7 +19,7 @@ import { tenantId } from './tenant';
 const PROVIDER = 'facebook';
 
 // Same Graph API version the Instagram connector pins (instagram.ts).
-const GRAPH_VERSION = 'v19.0';
+const GRAPH_VERSION = 'v23.0';
 
 interface FBConn { connection_id: string; provider_config_key: string }
 
@@ -38,7 +38,7 @@ async function getConn(): Promise<FBConn | null> {
 
 interface ProxyOpts {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
-  endpoint: string;             // e.g. '/v19.0/me/accounts'
+  endpoint: string;             // e.g. '/v23.0/me/accounts'
   params?: Record<string, string | number | undefined>;
   data?: unknown;
 }

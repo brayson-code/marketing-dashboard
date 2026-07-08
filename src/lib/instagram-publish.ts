@@ -2,15 +2,17 @@
 // Instagram Business / Creator account.
 //
 // Uses the same Nango proxy pattern as instagram.ts (connection_id == tenant_id,
-// provider 'instagram', proxy through /v19.0/*). Private helpers are self-contained
-// here; instagram.ts is NOT imported so this file has no circular risk.
+// provider 'instagram', proxy through /${IG_GRAPH_VERSION}/*). Private helpers are
+// self-contained here; instagram.ts is only imported for the shared graph version
+// constant, so this file still has no circular risk (instagram.ts doesn't import
+// from here).
 //
 // Flow:
-//   1. Resolve IG user id  (GET /v19.0/me?fields=id)
-//   2. Create container    (POST /v19.0/<ig_user_id>/media)
-//   3. Poll status_code    (GET  /v19.0/<container_id>?fields=status_code,status)
+//   1. Resolve IG user id  (GET /<version>/me?fields=id)
+//   2. Create container    (POST /<version>/<ig_user_id>/media)
+//   3. Poll status_code    (GET  /<version>/<container_id>?fields=status_code,status)
 //        until FINISHED, ERROR, or EXPIRED — or ~3.5 min timeout.
-//   4. Publish             (POST /v19.0/<ig_user_id>/media_publish)
+//   4. Publish             (POST /<version>/<ig_user_id>/media_publish)
 //   5. Best-effort permalink fetch (non-fatal)
 //
 // Scope/permission errors (OAuthException / PermissionsError from Meta) are
@@ -20,6 +22,7 @@
 import { getNango, providerConfigKeyFor } from './nango';
 import { sql } from './db/client';
 import { tenantId } from './tenant';
+import { IG_GRAPH_VERSION } from './instagram';
 
 const PROVIDER = 'instagram';
 
@@ -131,7 +134,7 @@ export async function publishReel(
   let igUserId: string;
   try {
     interface MeResp { id?: string }
-    const me = await igProxy<MeResp>({ endpoint: '/v19.0/me', params: { fields: 'id' } });
+    const me = await igProxy<MeResp>({ endpoint: `/${IG_GRAPH_VERSION}/me`, params: { fields: 'id' } });
     if (!me?.id) throw new Error('instagram: /me returned no id');
     igUserId = me.id;
   } catch (err) {
@@ -151,7 +154,7 @@ export async function publishReel(
     interface ContainerResp { id?: string }
     const container = await igProxy<ContainerResp>({
       method: 'POST',
-      endpoint: `/v19.0/${igUserId}/media`,
+      endpoint: `/${IG_GRAPH_VERSION}/${igUserId}/media`,
       data: {
         media_type: 'REELS',
         video_url: opts.videoUrl,
@@ -193,7 +196,7 @@ export async function publishReel(
     let poll: StatusResp;
     try {
       poll = await igProxy<StatusResp>({
-        endpoint: `/v19.0/${containerId}`,
+        endpoint: `/${IG_GRAPH_VERSION}/${containerId}`,
         params: { fields: 'status_code,status' },
       });
     } catch (err) {
@@ -230,7 +233,7 @@ export async function publishReel(
     interface PublishResp { id?: string }
     const published = await igProxy<PublishResp>({
       method: 'POST',
-      endpoint: `/v19.0/${igUserId}/media_publish`,
+      endpoint: `/${IG_GRAPH_VERSION}/${igUserId}/media_publish`,
       data: { creation_id: containerId },
     });
     if (!published?.id) throw new Error('instagram: publish returned no id');
@@ -250,7 +253,7 @@ export async function publishReel(
   try {
     interface PermalinkResp { permalink?: string }
     const meta = await igProxy<PermalinkResp>({
-      endpoint: `/v19.0/${mediaId}`,
+      endpoint: `/${IG_GRAPH_VERSION}/${mediaId}`,
       params: { fields: 'permalink' },
     });
     permalink = meta?.permalink ?? null;

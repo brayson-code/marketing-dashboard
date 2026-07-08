@@ -105,11 +105,19 @@ export async function createConnectSessionToken(tenant: string): Promise<string 
     // that doesn't exist), blocking every provider including the ones that ARE ready.
     const configured = await configuredIntegrationKeys(nango);
     const allowed = PROVIDERS.map((p) => p.providerConfigKey).filter((k) => configured.has(k));
-    if (allowed.length === 0) return null; // nothing wired in Nango yet
+    if (allowed.length === 0) {
+      // Nothing wired in Nango yet — log so this is visible in server logs
+      // instead of silently returning null with no trace of why.
+      console.error('[nango] createConnectSession: no configured integrations match our PROVIDERS list — check the Nango dashboard / NANGO_*_CONFIG_KEY env vars');
+      return null;
+    }
     const res = await nango.createConnectSession({
       end_user: { id: tenant },
       allowed_integrations: allowed,
     });
+    if (!res?.data?.token) {
+      console.error('[nango] createConnectSession returned no token:', JSON.stringify(res));
+    }
     return res?.data?.token ?? null;
   } catch (e) {
     // Most common during setup: allowed_integrations references integration ids
@@ -122,8 +130,9 @@ export async function createConnectSessionToken(tenant: string): Promise<string 
 
 /**
  * Status of every supported provider for the current tenant: each provider always
- * appears, with `connected` true/false based on our `connections` table. This reads
- * only our DB (no Nango call) so it works even when Nango is unconfigured.
+ * appears, with `connected` true/false based on our `connections` table. Falls back
+ * to a one-shot Nango reconcile (see below) when a provider looks disconnected; works
+ * fine with no Nango call at all when Nango is unconfigured.
  */
 export async function listProviderStatus(): Promise<ProviderStatus[]> {
   let connectedMap = new Map<string, string | null>();
@@ -154,6 +163,28 @@ export async function listProviderStatus(): Promise<ProviderStatus[]> {
   if (nango) {
     const configured = await configuredIntegrationKeys(nango);
     if (configured.size > 0) availableKeys = configured;
+  }
+
+  // Self-heal: a provider can show "not connected" here even though the user
+  // completed the OAuth flow, if the browser closed before our /api/connections
+  // POST callback fired (see connect-panel.tsx `onEvent`). One-shot reconcile:
+  // ask Nango directly for this tenant's connections (connection_id == tenant_id
+  // by convention) and backfill any row we're missing. Best-effort — a failed
+  // reconcile just leaves the provider "not connected" until the next attempt.
+  const missing = PROVIDERS.filter((p) => !connectedMap.has(p.key));
+  if (nango && missing.length > 0) {
+    try {
+      const { connections } = await nango.listConnections({ connectionId: tenantId() });
+      for (const c of connections ?? []) {
+        const provider = missing.find((p) => p.providerConfigKey === c.provider_config_key);
+        if (provider && !connectedMap.has(provider.key)) {
+          await recordConnection(provider.key, c.connection_id, c.provider_config_key);
+          connectedMap.set(provider.key, c.created ?? new Date().toISOString());
+        }
+      }
+    } catch {
+      // Nango unreachable / rate-limited — leave the DB state as-is.
+    }
   }
 
   return PROVIDERS.map((p) => ({

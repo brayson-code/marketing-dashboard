@@ -14,8 +14,8 @@ interface ProviderStatus {
 
 // We dynamically import @nangohq/frontend so it never loads on the server or when
 // unconfigured. The event passed to onEvent is the SDK's ConnectUIEvent union; we
-// only act on the discriminated 'connect' / 'close' members and read it loosely to
-// stay resilient to minor SDK shape changes.
+// act on the discriminated 'connect' / 'close' / 'error' members and read it loosely
+// to stay resilient to minor SDK shape changes.
 
 /**
  * ConnectPanel — social-OAuth connection manager for the current workspace.
@@ -100,6 +100,13 @@ export default function ConnectPanel() {
               setBusy(null);
               await load();
             } else if (event.type === 'close') {
+              setBusy(null);
+            } else if (event.type === 'error') {
+              const errorType = event.payload?.errorType;
+              const errorMessage = event.payload?.errorMessage;
+              setError(
+                [errorType, errorMessage].filter(Boolean).join(': ') || 'Connection failed. Please try again.',
+              );
               setBusy(null);
             }
           },

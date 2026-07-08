@@ -13,7 +13,7 @@ import { sql } from './db/client';
 import { tenantId } from './tenant';
 
 const PROVIDER = 'facebook-ads';
-const GRAPH_VERSION = 'v21.0';
+const GRAPH_VERSION = 'v23.0';
 
 interface FBConn { connection_id: string; provider_config_key: string }
 
@@ -37,7 +37,7 @@ export async function isConnected(): Promise<boolean> {
 
 interface ProxyOpts {
   method?: 'GET' | 'POST';
-  endpoint: string; // e.g. '/v21.0/me/adaccounts'
+  endpoint: string; // e.g. '/v23.0/me/adaccounts'
   params?: Record<string, string | number | undefined>;
   data?: unknown;
 }

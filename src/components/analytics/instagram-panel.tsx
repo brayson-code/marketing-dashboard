@@ -17,8 +17,7 @@ interface IGInsights {
   start: string;
   end: string;
   reach: number;
-  impressions: number;
-  profile_views: number;
+  views: number;
   followers_gained: number;
 }
 
@@ -121,10 +120,9 @@ export function InstagramPanel() {
             {insights ? (
               <div>
                 <div className="text-micro text-muted-foreground mb-1">Last 30 days · {insights.start} → {insights.end}</div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <Stat label="Reach" value={fmt(insights.reach)} accent="var(--primary)" />
-                  <Stat label="Impressions" value={fmt(insights.impressions)} />
-                  <Stat label="Profile views" value={fmt(insights.profile_views)} />
+                  <Stat label="Views" value={fmt(insights.views)} />
                   <Stat
                     label="Net followers"
                     value={(insights.followers_gained > 0 ? '+' : '') + fmt(insights.followers_gained)}
@@ -133,7 +131,7 @@ export function InstagramPanel() {
                 </div>
               </div>
             ) : (
-              <div className="text-micro text-muted-foreground">No insights yet — Business/Creator account required for reach + impressions.</div>
+              <div className="text-micro text-muted-foreground">No insights yet — Business/Creator account required for reach + views.</div>
             )}
 
             <div>
