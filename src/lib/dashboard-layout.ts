@@ -53,10 +53,17 @@ function makeLayout(widgets: LayoutWidget[]): DashboardLayout {
   return { version: LAYOUT_VERSION, widgets };
 }
 
-// DEFAULT — reproduces src/app/page.tsx TODAY, region for region (LensTabs is a board
-// control, not a widget, so it isn't listed). Spans are explicit so this "today's page"
-// contract can't silently drift if a registry defaultSpan is ever tuned.
+// DEFAULT — the overview for unconfigured tenants. Historically this reproduced
+// src/app/page.tsx region for region; it now leads with the Command Chat widget.
+// INTENTIONAL DEFAULT CHANGE (owner's explicit call: the agent chat should be "on by
+// default in every work space"): `agent_chat` is pinned as the FIRST widget (span 3) of
+// every fresh/unconfigured overview. This does NOT touch tenants who saved their own
+// layout — resolveLayout prefers a per-user or per-tenant layout over this template, so
+// only unconfigured workspaces see the new default. (LensTabs is a board control, not a
+// widget, so it isn't listed.) Spans are explicit so the contract can't silently drift
+// if a registry defaultSpan is ever tuned.
 export const DEFAULT_TEMPLATE: DashboardLayout = makeLayout([
+  w('agent_chat', 3),
   w('kpi_strip', 3),
   w('quick_win', 3),
   w('north_star', 3),
@@ -75,8 +82,10 @@ export const DEFAULT_TEMPLATE: DashboardLayout = makeLayout([
 // OPS-FOCUSED — for trades like landscaping/construction: KPIs, goals, the owner's
 // queues, the team, active automations, spend. Deliberately NO content_lab /
 // competitor_intel / engagement / knowledge_map (a landscaper doesn't want Content Labs
-// or competitor reels on their overview).
+// or competitor reels on their overview). Command Chat leads here too — same intentional
+// "on by default in every work space" call as DEFAULT_TEMPLATE.
 const OPS_TEMPLATE: DashboardLayout = makeLayout([
+  w('agent_chat', 3),
   w('kpi_strip', 3),
   w('north_star', 3),
   w('operator_queue', 1),

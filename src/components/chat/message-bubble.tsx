@@ -2,6 +2,8 @@
 
 import { memo } from 'react';
 import type { ChatMessage } from '@/types';
+import { AgentIcon } from '@/components/agent-icon';
+import type { Department } from '@/components/agent-orb';
 
 const AGENT_THEMES: Record<string, { bg: string; text: string; border: string }> = {
   hermes: { bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/20' },
@@ -47,6 +49,13 @@ interface Props {
   message: ChatMessage;
   isHuman: boolean;
   isGrouped: boolean;
+  // When supplied for an AGENT (non-human) message, render that agent's distinct
+  // identity icon (AgentIcon) in the avatar slot instead of the initial-letter circle.
+  // Passed as scalars (not a node) so the memo boundary below can keep its O(1) bail-out.
+  // Absent → the original letter avatar, so every other MessageBubble caller is unaffected.
+  agentId?: string;
+  agentRole?: string;
+  agentDepartment?: Department | null;
 }
 
 // MEMOIZATION NOTE: a message here always arrives complete (one JSON reply, no
@@ -63,8 +72,11 @@ interface Props {
 // (and re-parses its markdown) on every one of those ticks. Wrapping the export
 // in `memo` with a value comparator turns that into an O(1) bail-out for every
 // bubble except the one that actually changed.
-function MessageBubbleImpl({ message, isHuman, isGrouped }: Props) {
+function MessageBubbleImpl({ message, isHuman, isGrouped, agentId, agentRole, agentDepartment }: Props) {
   const theme = getTheme(message.from_agent);
+  // Show the agent's distinct icon only for its own (non-human) bubbles when a caller
+  // opts in by passing the agent's identity.
+  const showAgentIcon = !isHuman && (agentId != null || agentDepartment != null || agentRole != null);
 
   if (message.message_type === 'system') {
     return (
@@ -91,9 +103,15 @@ function MessageBubbleImpl({ message, isHuman, isGrouped }: Props) {
   return (
     <div className={`flex gap-2 ${isHuman ? 'flex-row-reverse' : 'flex-row'} ${isGrouped ? 'mt-0.5' : 'mt-3'}`}>
       {!isGrouped ? (
-        <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold ${theme.bg} ${theme.text} border ${theme.border}`}>
-          {message.from_agent.charAt(0).toUpperCase()}
-        </div>
+        showAgentIcon ? (
+          <span className="w-7 h-7 flex items-center justify-center shrink-0">
+            <AgentIcon id={agentId} role={agentRole} department={agentDepartment ?? undefined} size="sm" />
+          </span>
+        ) : (
+          <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold ${theme.bg} ${theme.text} border ${theme.border}`}>
+            {message.from_agent.charAt(0).toUpperCase()}
+          </div>
+        )
       ) : (
         <div className="w-7 shrink-0" />
       )}
@@ -134,5 +152,8 @@ export const MessageBubble = memo(MessageBubbleImpl, (prev, next) =>
   prev.message.to_agent === next.message.to_agent &&
   prev.message.from_agent === next.message.from_agent &&
   prev.isHuman === next.isHuman &&
-  prev.isGrouped === next.isGrouped,
+  prev.isGrouped === next.isGrouped &&
+  prev.agentId === next.agentId &&
+  prev.agentRole === next.agentRole &&
+  prev.agentDepartment === next.agentDepartment,
 );

@@ -203,9 +203,12 @@ export function NavAgentChatWidget({ sectionLabel, accentVar, open, onClose }: P
     loadHistory(activeAgent.id);
   }, [activeAgent, loadHistory]);
 
-  // Auto-scroll to the newest message.
+  // Auto-scroll to the newest message by scrolling ONLY the internal thread container —
+  // not Element.scrollIntoView(), which also scrolls scrollable ancestors (and the page).
+  // Harmless in this fixed dialog, but kept in lockstep with the overview widget's fix.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const c = scrollRef.current;
+    if (c) c.scrollTop = c.scrollHeight;
   }, [messages, thinking]);
 
   const handleSend = useCallback(

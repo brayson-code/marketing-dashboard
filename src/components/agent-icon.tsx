@@ -7,7 +7,7 @@
 import {
   Crown, Megaphone, DollarSign, Cog, Heart,
   PenLine, Film, Telescope, Brain, Send, Microscope, Image, CalendarDays, Bot,
-  Sparkles, Wand2, Inbox, Workflow,
+  Sparkles, Wand2, Workflow, Command,
 } from 'lucide-react';
 import { colorForDepartment, type Department } from '@/components/agent-orb';
 
@@ -22,7 +22,9 @@ const BY_ID: Record<string, LucideIcon> = {
   'ai-cxo': Heart,
   'content-writer': PenLine,
   'hyperframes-agent': Film,
-  'keyplayer': Bot,
+  // The orchestrator — a distinct "command" glyph (Crown is already the AI-CEO), so it
+  // reads as the conductor of the squad wherever it appears (chat picker, message icons).
+  'keyplayer': Command,
   'lead-research': Telescope,
   'memory-compactor': Brain,
   'outreach-sender': Send,

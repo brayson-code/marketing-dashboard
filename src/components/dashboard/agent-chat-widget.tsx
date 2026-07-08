@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, MessageCircle } from 'lucide-react';
 import { MessageBubble } from '@/components/chat/message-bubble';
 import { ChatComposer } from '@/components/chat/chat-composer';
+import { AgentIcon } from '@/components/agent-icon';
 import { toast } from '@/components/ui/toast';
 import type { ChatMessage } from '@/types';
 import type { Department } from '@/components/agent-orb';
@@ -37,10 +38,14 @@ import type { Department } from '@/components/agent-orb';
 // subtle dropdown (Claude's model-picker pattern) instead of a persistent chip
 // row competing with the conversation for space.
 //
-// DELTA vs. the nav panel: `keyplayer` (the boardroom Orchestrator) is intentionally NOT
-// a target here — it can't run through spawnSubAgent (its home is the admin-only
-// Boardroom / Mission Control), so it's excluded from the roster exactly like the nav
-// panel does (NON_CHATTABLE). The tile defaults to the lead executive instead.
+// DELTA vs. the nav panel: `keyplayer` (the Orchestrator) IS reachable here, but NOT via
+// /api/agent-chat — that path 502s for it because it isn't a spawnable sub-agent. Instead
+// it's offered as a distinct first-class picker option ("KeyPlayer — Orchestrator") whose
+// messages route through the Boardroom endpoints (POST /api/boardroom/ask to send, GET
+// /api/boardroom/messages for history) — the same orchestrator conversation the Boardroom
+// page and iMessage use, so the thread is shared and persistent, not an in-widget-only
+// session. It stays excluded from the /api/agents-derived roster (NON_CHATTABLE) and is
+// injected separately (see ORCHESTRATOR below). fixer/improver remain fully excluded.
 //
 // Tenant isolation is enforced server-side; this component never touches sql().
 
@@ -101,6 +106,68 @@ function parseAgentsResponse(payload: unknown): AgentItem[] {
     .filter((a) => a.id && !NON_CHATTABLE.has(a.id));
 }
 
+// The orchestrator, injected as a first-class picker option (it's filtered OUT of the
+// /api/agents roster by NON_CHATTABLE). Chatting with it routes through the Boardroom
+// endpoints instead of /api/agent-chat — see loadHistory/handleSend below.
+const ORCHESTRATOR_ID = 'keyplayer';
+const ORCHESTRATOR: AgentItem = {
+  id: ORCHESTRATOR_ID,
+  name: 'KeyPlayer',
+  emoji: '🎛️',
+  role: 'Orchestrator',
+  department: 'leadership',
+  is_executive: false,
+};
+
+const DEPARTMENTS = new Set<string>([
+  'leadership', 'marketing', 'revenue', 'operations', 'client_experience',
+]);
+
+// Narrow the roster's freeform department string to a known Department (drives AgentIcon's
+// color); anything unrecognized → undefined (AgentIcon falls back to the primary accent).
+function asDepartment(d: string | null | undefined): Department | undefined {
+  return d && DEPARTMENTS.has(d) ? (d as Department) : undefined;
+}
+
+/** One boardroom_messages row as returned by GET /api/boardroom/messages. */
+interface BoardroomRow {
+  id: number;
+  direction: 'in' | 'out';
+  text: string | null;
+  created_at: string | number;
+}
+
+// Map the orchestrator's Boardroom history into the shared ChatMessage shape MessageBubble
+// renders. direction 'in' = the owner's turn (human), 'out' = KeyPlayer's reply. Blank-text
+// rows (e.g. image-only inbound messages) are dropped so the thread has no empty bubbles.
+function boardroomToChat(rows: unknown): ChatMessage[] {
+  if (!Array.isArray(rows)) return [];
+  const out: ChatMessage[] = [];
+  for (const r of rows) {
+    const m = r as Partial<BoardroomRow>;
+    const text = typeof m.text === 'string' ? m.text : '';
+    if (!text.trim()) continue;
+    const inbound = m.direction === 'in';
+    const raw = m.created_at;
+    const ts =
+      typeof raw === 'number' ? raw
+        : typeof raw === 'string' ? Math.floor(Date.parse(raw) / 1000)
+          : NaN;
+    out.push({
+      id: Number(m.id),
+      conversation_id: 'boardroom',
+      from_agent: inbound ? 'human' : ORCHESTRATOR_ID,
+      to_agent: inbound ? ORCHESTRATOR_ID : 'human',
+      content: text,
+      message_type: 'text',
+      metadata: null,
+      read_at: null,
+      created_at: Number.isFinite(ts) ? ts : Math.floor(Date.now() / 1000),
+    });
+  }
+  return out;
+}
+
 export function AgentChatWidget({ department }: { department: Department }) {
   const [agents, setAgents] = useState<AgentItem[]>([]);
   const [agentsLoading, setAgentsLoading] = useState(true);
@@ -113,7 +180,6 @@ export function AgentChatWidget({ department }: { department: Department }) {
   const [needsKey, setNeedsKey] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
 
-  const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
   const tempIdRef = useRef(-1);
@@ -122,7 +188,14 @@ export function AgentChatWidget({ department }: { department: Department }) {
   // deliberate lens-change switch, not a fallback pick.
   const initializedRef = useRef(false);
 
-  const activeAgent = activeId ? agents.find((a) => a.id === activeId) ?? null : null;
+  // The picker's full option list: the Orchestrator first (injected — it's not in the
+  // /api/agents roster), then the chattable sub-agents. `agents` (sub-agents only) still
+  // drives the lens-lockstep resolution below, so a lens change never auto-picks the
+  // orchestrator — it's a deliberate manual choice that then routes elsewhere.
+  const pickerAgents = useMemo<AgentItem[]>(() => [ORCHESTRATOR, ...agents], [agents]);
+
+  const activeAgent = activeId ? pickerAgents.find((a) => a.id === activeId) ?? null : null;
+  const isOrchestrator = activeAgent?.id === ORCHESTRATOR_ID;
 
   // Load the roster once on mount (same source as the nav panel).
   useEffect(() => {
@@ -153,21 +226,38 @@ export function AgentChatWidget({ department }: { department: Department }) {
   // wins over a manual dropdown pick — unless the new lens has no seeded exec, in which
   // case we leave the current agent alone (no crash, no clearing the selection).
   useEffect(() => {
-    if (agents.length === 0) return;
+    // Wait for the roster fetch to settle so the first resolution sees the real squad
+    // (and only then falls back to the orchestrator when there are no sub-agents at all).
+    if (agentsLoading) return;
     const exec = execForDepartment(agents, department);
     if (!initializedRef.current) {
       initializedRef.current = true;
-      const fallback = exec ?? agents.find((a) => a.is_executive) ?? agents[0];
+      // Prefer this lens's exec, then any exec, then the first chattable sub-agent, and
+      // finally the Orchestrator — which is always present, so the tile is usable even on
+      // a tenant with no seeded sub-agents (or when /api/agents fails to load).
+      const fallback = exec ?? agents.find((a) => a.is_executive) ?? agents[0] ?? ORCHESTRATOR;
       setActiveId(fallback.id);
       return;
     }
     if (exec) setActiveId(exec.id);
-  }, [department, agents]);
+  }, [department, agents, agentsLoading]);
 
   const loadHistory = useCallback(async (agentId: string) => {
     setHistoryLoading(true);
     setNeedsKey(false);
     try {
+      // The orchestrator's thread is the shared Boardroom conversation — a different
+      // endpoint + shape than the per-sub-agent /api/agent-chat history.
+      if (agentId === ORCHESTRATOR_ID) {
+        const res = await fetch('/api/boardroom/messages?limit=100', { cache: 'no-store' });
+        if (!res.ok) {
+          setMessages([]);
+          return;
+        }
+        const data = await res.json();
+        setMessages(boardroomToChat(data?.messages));
+        return;
+      }
       const res = await fetch(`/api/agent-chat?agentId=${encodeURIComponent(agentId)}`);
       if (!res.ok) {
         setMessages([]);
@@ -190,8 +280,14 @@ export function AgentChatWidget({ department }: { department: Department }) {
     loadHistory(activeAgent.id);
   }, [activeAgent, loadHistory]);
 
+  // Keep the newest message in view by scrolling ONLY the internal thread container —
+  // never Element.scrollIntoView(), which walks up and scrolls the page/window too. When
+  // this widget sits at the TOP of the overview, that ancestor-scroll is exactly what
+  // yanked the whole page down on load (history arrives → effect fires → page jumps).
+  // Setting container.scrollTop is self-contained and can't move the page.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const c = scrollRef.current;
+    if (c) c.scrollTop = c.scrollHeight;
   }, [messages, thinking]);
 
   // Close the agent picker on an outside click or Escape — it's a small
@@ -234,6 +330,59 @@ export function AgentChatWidget({ department }: { department: Department }) {
       setMessages((prev) => [...prev, optimistic]);
       setThinking(true);
       setNeedsKey(false);
+
+      // ── Orchestrator: route through the Boardroom, not /api/agent-chat ──────────────
+      // POST /api/boardroom/ask runs a full orchestrator turn and always replies with
+      // JSON ({ ok, reply, error }) — even on 429/502/503 — so we never parse nothing.
+      if (agentId === ORCHESTRATOR_ID) {
+        try {
+          const res = await fetch('/api/boardroom/ask', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text }),
+          });
+          const data = await res.json().catch(() => null);
+          if (res.ok && data?.ok) {
+            const replyText = typeof data.reply === 'string' ? data.reply : '';
+            setMessages((prev) => {
+              const cleared = prev.map((m) =>
+                m.id === tempId ? { ...m, pendingStatus: undefined } : m,
+              );
+              if (!replyText) return cleared;
+              tempIdRef.current -= 1;
+              const replyMsg: ChatMessage = {
+                id: tempIdRef.current,
+                conversation_id: 'boardroom',
+                from_agent: ORCHESTRATOR_ID,
+                to_agent: 'human',
+                content: replyText,
+                message_type: 'text',
+                metadata: null,
+                read_at: null,
+                created_at: Math.floor(Date.now() / 1000),
+              };
+              return [...cleared, replyMsg];
+            });
+            return;
+          }
+          setMessages((prev) =>
+            prev.map((m) => (m.id === tempId ? { ...m, pendingStatus: 'failed' as const } : m)),
+          );
+          toast.error(
+            typeof data?.error === 'string' && data.error
+              ? data.error
+              : 'KeyPlayer could not respond. Try again.',
+          );
+        } catch {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === tempId ? { ...m, pendingStatus: 'failed' as const } : m)),
+          );
+          toast.error('Network error — message not sent.');
+        } finally {
+          setThinking(false);
+        }
+        return;
+      }
 
       try {
         const res = await fetch('/api/agent-chat', {
@@ -324,7 +473,7 @@ export function AgentChatWidget({ department }: { department: Department }) {
           <button
             type="button"
             onClick={() => setPickerOpen((o) => !o)}
-            disabled={agentsLoading || agents.length === 0}
+            disabled={agentsLoading}
             aria-haspopup="listbox"
             aria-expanded={pickerOpen}
             className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
@@ -338,7 +487,12 @@ export function AgentChatWidget({ department }: { department: Department }) {
               // manual pick — remounts this span and replays the fade-in, a subtle
               // "the target just changed" cue instead of the label silently swapping.
               <span key={activeAgent.id} className="flex items-center gap-1.5 animate-in">
-                <span aria-hidden>{activeAgent.emoji}</span>
+                <AgentIcon
+                  id={activeAgent.id}
+                  role={activeAgent.role}
+                  department={asDepartment(activeAgent.department)}
+                  size="sm"
+                />
                 <span className="max-w-[110px] truncate">{activeAgent.name}</span>
               </span>
             ) : (
@@ -354,14 +508,15 @@ export function AgentChatWidget({ department }: { department: Department }) {
             />
           </button>
 
-          {pickerOpen && agents.length > 0 && (
+          {pickerOpen && pickerAgents.length > 0 && (
             <div
               role="listbox"
               aria-label="Choose an agent"
               className="glass-strong animate-in absolute right-0 top-[calc(100%+6px)] z-20 max-h-64 w-56 overflow-y-auto rounded-xl border border-border/60 p-1.5 shadow-xl"
             >
-              {agents.map((a) => {
+              {pickerAgents.map((a) => {
                 const active = a.id === activeId;
+                const isOrch = a.id === ORCHESTRATOR_ID;
                 return (
                   <button
                     key={a.id}
@@ -379,11 +534,16 @@ export function AgentChatWidget({ department }: { department: Department }) {
                       transition: 'background-color var(--t-press) var(--ease-out)',
                     }}
                   >
-                    <span aria-hidden>{a.emoji}</span>
-                    <span className="min-w-0 flex-1 truncate font-medium">{a.name}</span>
-                    {a.is_executive && (
+                    <AgentIcon id={a.id} role={a.role} department={asDepartment(a.department)} size="sm" />
+                    <span className="min-w-0 flex-1 truncate font-medium">
+                      {a.name}
+                      {isOrch && <span className="text-muted-foreground/70"> — Orchestrator</span>}
+                    </span>
+                    {isOrch ? (
+                      <span className="shrink-0 text-[9px] uppercase tracking-wide text-muted-foreground/60">orch</span>
+                    ) : a.is_executive ? (
                       <span className="shrink-0 text-[9px] uppercase tracking-wide text-muted-foreground/60">exec</span>
-                    )}
+                    ) : null}
                   </button>
                 );
               })}
@@ -392,9 +552,9 @@ export function AgentChatWidget({ department }: { department: Department }) {
         </div>
       </div>
 
-      {(agentsError || (!agentsLoading && agents.length === 0)) && (
+      {agentsError && (
         <div className="shrink-0 border-b border-border/40 px-5 py-2 text-[11px] text-destructive">
-          {agentsError ? 'Couldn’t load agents.' : 'No agents available yet.'}
+          Couldn’t load the rest of your squad — the Orchestrator is still available.
         </div>
       )}
 
@@ -419,17 +579,18 @@ export function AgentChatWidget({ department }: { department: Department }) {
                   </div>
                 ) : messages.length === 0 ? (
                   <div className="flex flex-1 flex-col items-center justify-center gap-3 py-20 text-center">
-                    <span
-                      className="grid h-12 w-12 place-items-center rounded-2xl text-2xl"
-                      style={{ background: `color-mix(in srgb, ${ACCENT} 12%, transparent)` }}
-                      aria-hidden
-                    >
-                      {activeAgent.emoji}
-                    </span>
+                    <AgentIcon
+                      id={activeAgent.id}
+                      role={activeAgent.role}
+                      department={asDepartment(activeAgent.department)}
+                      size="lg"
+                    />
                     <p className="text-base font-medium text-foreground/90">Chat with {activeAgent.name}</p>
                     <p className="max-w-sm text-sm text-muted-foreground/60">
-                      {activeAgent.role ? `${activeAgent.role} · ` : ''}Ask a question or hand off a task — replies land
-                      here and in the nav panel.
+                      {activeAgent.role ? `${activeAgent.role} · ` : ''}
+                      {isOrchestrator
+                        ? 'Ask anything — this is your Orchestrator, and this thread is shared with the Boardroom + iMessage.'
+                        : 'Ask a question or hand off a task — replies land here and in the nav panel.'}
                     </p>
                   </div>
                 ) : (
@@ -440,6 +601,11 @@ export function AgentChatWidget({ department }: { department: Department }) {
                         message={m}
                         isHuman={m.from_agent === 'human' || m.from_agent === 'operator'}
                         isGrouped={false}
+                        // Give the active agent's own bubbles its distinct identity icon
+                        // (all assistant replies in this thread come from the selected agent).
+                        agentId={activeAgent.id}
+                        agentRole={activeAgent.role}
+                        agentDepartment={asDepartment(activeAgent.department)}
                       />
                     ))}
                   </div>
@@ -454,7 +620,6 @@ export function AgentChatWidget({ department }: { department: Department }) {
                     <span>{activeAgent.name} is thinking…</span>
                   </div>
                 )}
-                <div ref={bottomRef} />
               </div>
             </div>
 
