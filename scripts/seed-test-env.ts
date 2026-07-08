@@ -29,7 +29,8 @@ import {
   stampTenantClaim,
   ensureMembership,
   tenantIdByName,
-  seedOrgChartIfEmpty,
+  seedOrgChart,
+  seedHqOrgChartSource,
 } from './lib/test-seed-common';
 
 const HQ_NAME = 'KeyPlayers HQ (TEST)';
@@ -66,17 +67,24 @@ async function main() {
   await stampTenantClaim(userId, tenantId);
   console.log('✅ owner JWT claim pinned to HQ');
 
-  // 5) Ensure the org chart exists. On a fresh TEST DB the trigger's seed source
-  //    is empty, so this is typically a no-op and the app renders agents from the
-  //    bundled agents/** files. Best-effort per the plan.
-  const agentCount = await seedOrgChartIfEmpty(tenantId);
-  if (agentCount > 0) {
-    console.log(`✅ agent_defs present for HQ: ${agentCount} row(s)`);
-  } else {
-    console.log('ℹ️  HQ has 0 agent_defs rows — the app falls back to the bundled agents/** files (expected on a fresh TEST DB).');
-  }
+  // 5) Populate public.seed_org_chart()'s seed-SOURCE tenant (a different, literal
+  //    tenant id than `tenantId` above — see HQ_ORG_CHART_SOURCE_TENANT_ID) with
+  //    the bundled specialists + keyplayer, plus the 5 C-suite executives + their
+  //    dormant cron templates. On a fresh TEST DB this source was empty, which is
+  //    why seed_org_chart() silently copied 0 rows and the squad page's "Org
+  //    chart" section (is_executive=true) never rendered for any tenant.
+  const src = await seedHqOrgChartSource();
+  console.log(
+    `✅ org-chart seed source populated: specialists ${src.specialistsBefore}→${src.specialistsAfter}, ` +
+    `execs ${src.execsBefore}→${src.execsAfter}, exec crons ${src.execCronsBefore}→${src.execCronsAfter}`,
+  );
 
-  // 6) Safe summary (no secrets).
+  // 6) Copy that org chart into THIS tenant (HQ). Always invoked — safe to rerun
+  //    (seed_org_chart's own INSERT is ON CONFLICT DO NOTHING per row).
+  const agentCount = await seedOrgChart(tenantId);
+  console.log(`✅ agent_defs present for HQ: ${agentCount} row(s)`);
+
+  // 7) Safe summary (no secrets).
   console.log('');
   console.log(JSON.stringify({ ok: true, tenantId, userId, email: OWNER_EMAIL }, null, 2));
   console.log('');

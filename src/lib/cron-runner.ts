@@ -335,3 +335,57 @@ export async function runDueJobs(): Promise<{ ran: number; results: Array<{ id: 
   }
   return { ran: results.length, results };
 }
+
+/**
+ * Self-heal jobs wedged in 'running'. runOne flips last_status to 'running' before
+ * the (slow) agent call and only clears it in its final UPDATE. If that run is
+ * killed by the hourly time cap — or any hard crash — the final UPDATE never lands,
+ * so last_status stays 'running' forever and the board shows a job frozen mid-run
+ * with no self-heal. This janitor flips any job that's been 'running' longer than
+ * the function could possibly live (well past the 300s cap) to 'error' with a
+ * plain-English note and reschedules next_run_at so it fires again on its normal
+ * cadence. Records the reap in cron_runs so the interrupted tick is visible, not a
+ * silent gap. Runs across ALL tenants (the hourly dispatcher connects as the
+ * RLS-bypassing postgres role — same pattern as runDueJobs' global select).
+ */
+export async function reapStuckRunningJobs(): Promise<{ reaped: number }> {
+  // 15 min is comfortably beyond the 300s (5 min) function cap, so a legitimately
+  // long run is never reaped mid-flight — only genuinely dead ones.
+  const stuck = (await sql()`
+    SELECT id, enabled, schedule_expr, schedule_tz, tenant_id
+    FROM public.cron_jobs
+    WHERE last_status = 'running'
+      AND updated_at < now() - interval '15 minutes'
+    LIMIT 100
+  `) as unknown as Array<{
+    id: string;
+    enabled: boolean;
+    schedule_expr: string;
+    schedule_tz: string;
+    tenant_id: string;
+  }>;
+
+  const note = 'Interrupted — the run was cut off (likely hit the hourly time cap) and was reset automatically.';
+  let reaped = 0;
+  for (const job of stuck) {
+    const nextIso = job.enabled
+      ? (computeNextRun(job.schedule_expr, job.schedule_tz)?.toISOString() ?? null)
+      : null;
+    // Re-check last_status = 'running' in the UPDATE so we never clobber a job that
+    // legitimately finished between the SELECT and here.
+    const updated = (await sql()`
+      UPDATE public.cron_jobs SET
+        last_status = 'error', last_error = ${note},
+        next_run_at = ${nextIso}, updated_at = now()
+      WHERE tenant_id = ${job.tenant_id} AND id = ${job.id} AND last_status = 'running'
+      RETURNING id
+    `) as unknown as unknown[];
+    if (updated.length === 0) continue;
+    await sql()`
+      INSERT INTO public.cron_runs (tenant_id, job_id, status, duration_ms, summary, error, next_run_at)
+      VALUES (${job.tenant_id}, ${job.id}, 'error', 0, ${'Run interrupted and auto-reset'}, ${note}, ${nextIso})
+    `.catch(() => {});
+    reaped++;
+  }
+  return { reaped };
+}

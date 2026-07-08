@@ -10,6 +10,13 @@ import {
   type DraftStatus,
 } from '@/lib/drafts';
 
+export const dynamic = 'force-dynamic';
+// Publishing an Instagram Reel polls Meta's container API for up to ~3.5 min
+// (see instagram-publish.ts POLL_TIMEOUT_MS). Without this the default function
+// cap kills the POST mid-publish, the draft never flips to 'published', and a
+// retry re-posts the same Reel. Give it room to finish and flip the status.
+export const maxDuration = 300;
+
 export async function GET(request: Request) {
   enterTenant(await resolveTenant());
   const url = new URL(request.url);

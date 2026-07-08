@@ -48,7 +48,7 @@ import {
   findUserIdByEmail,
   tenantIdByDemoSlug,
   mergeBusinessProfile,
-  seedOrgChartIfEmpty,
+  seedOrgChart,
 } from './lib/test-seed-common';
 
 const OWNER_EMAIL = 'brayson@keyplayershq.com';
@@ -868,8 +868,14 @@ async function main() {
     console.warn('  [warn] brayson not found — run scripts/seed-test-env.ts first to create the HQ owner.');
   }
 
-  // 5) Org chart (best-effort; app falls back to bundled agents on a fresh TEST DB).
-  await seedOrgChartIfEmpty(tenantId);
+  // 5) Org chart. ALWAYS invoked (not gated on "agent_defs is empty" — this tenant
+  //    already has 0 rows on first run, but on a RERUN it has the 5 custom agents
+  //    below, and seed_org_chart's own INSERT is ON CONFLICT DO NOTHING, so calling
+  //    it again is exactly how an already-provisioned demo tenant gets its "Org
+  //    chart" (C-suite) backfilled once scripts/seed-test-env.ts has populated the
+  //    function's seed-source tenant (seedHqOrgChartSource()).
+  const orgChartCount = await seedOrgChart(tenantId);
+  console.log(`✅ org chart copied — agent_defs now ${orgChartCount} row(s) for this tenant`);
 
   // 6) All tenant-scoped content runs inside the tenant context so every lib helper
   //    (which reads tenantId() from AsyncLocalStorage) targets THIS demo tenant.

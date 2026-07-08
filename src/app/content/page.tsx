@@ -103,7 +103,7 @@ export default function ContentPage() {
                 <span className="text-sm max-w-md truncate block">{r.text_preview || '\u2014'}</span>
               )},
               { key: 'pillar', label: 'Pillar', render: (r: ContentPost) => (
-                r.pillar ? <span className="text-xs">{PILLAR_LABELS[r.pillar] || `P${r.pillar}`}</span> : <span>\u2014</span>
+                r.pillar ? <span className="text-xs">{PILLAR_LABELS[r.pillar] || `P${r.pillar}`}</span> : <span>{'\u2014'}</span>
               )},
               { key: 'format', label: 'Format', render: (r: ContentPost) => (
                 <span className="text-xs text-muted-foreground">{r.format.replace(/_/g, ' ')}</span>
@@ -151,7 +151,7 @@ export default function ContentPage() {
                 {day.posts.map(p => (
                   <div key={p.id} className="mt-1">
                     <div className="text-[10px] px-1 py-0.5 rounded bg-primary/20 text-primary truncate">
-                      {p.platform} \u2014 {p.text_preview?.slice(0, 20)}
+                      {p.platform} {'\u2014'} {p.text_preview?.slice(0, 20)}
                     </div>
                   </div>
                 ))}

@@ -1,6 +1,6 @@
 import { NextResponse, after } from 'next/server';
 import { verifyCron } from '@/lib/cron-auth';
-import { runDueJobs } from '@/lib/cron-runner';
+import { runDueJobs, reapStuckRunningJobs } from '@/lib/cron-runner';
 import { sweepStuckMissions } from '@/lib/waves';
 
 export const dynamic = 'force-dynamic';
@@ -13,6 +13,15 @@ export async function GET(request: Request) {
   const denied = verifyCron(request);
   if (denied) return denied;
   after(async () => {
+    // Self-heal FIRST: reset any job wedged in 'running' (a prior run killed by the
+    // time cap) so the board doesn't show it frozen forever, and its rescheduled
+    // next_run_at is respected by the due-scan below.
+    try {
+      const reap = await reapStuckRunningJobs();
+      if (reap.reaped > 0) console.log(`[cron:dispatch] reaped ${reap.reaped} stuck job(s)`);
+    } catch (err) {
+      console.error('[cron:dispatch] stuck-job reap failed:', (err as Error).message);
+    }
     try {
       const r = await runDueJobs();
       if (r.ran > 0) console.log(`[cron:dispatch] ran ${r.ran} job(s):`, r.results);

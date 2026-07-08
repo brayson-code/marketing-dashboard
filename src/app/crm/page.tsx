@@ -14,6 +14,7 @@ import { PageHeader } from '@/components/layout/page-header';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { useDashboard } from '@/store';
 import { timeAgo } from '@/lib/utils';
+import { toast } from '@/components/ui/toast';
 import type { Lead, FunnelStep } from '@/types';
 import { LeadDetailPanel } from '@/components/crm/lead-detail-panel';
 import { ActivateStaleLeadsBanner } from '@/components/cron/activate-stale-leads-banner';
@@ -216,14 +217,15 @@ export default function CrmPage() {
   async function markTaskDone(leadId: string) {
     if (!canEdit) return;
     try {
-      await fetch('/api/crm', {
+      const res = await fetch('/api/crm', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: leadId, next_action_at: null, task_done: true }),
       });
+      if (!res.ok) throw new Error('Update failed');
       setRefreshKey(k => k + 1);
     } catch {
-      // ignore
+      toast.error('Could not mark task done — check your connection and try again');
     }
   }
 
@@ -302,7 +304,10 @@ export default function CrmPage() {
       if (!res.ok) throw new Error('Update failed');
       setRefreshKey(k => k + 1);
     } catch {
-      // silently fail, will refresh on next poll
+      toast.error('Could not move lead — check your connection and try again');
+      // Force a refetch so the board re-renders from server truth (undoes any
+      // apparent move from the drag gesture itself).
+      setRefreshKey(k => k + 1);
     }
   }
 

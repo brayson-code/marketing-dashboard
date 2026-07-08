@@ -238,13 +238,66 @@ async function executeApproved(id: number, executedStatus: DraftStatus, note?: s
   return { ok: true, draft: await getDraft(id) };
 }
 
+/** Atomically claim an approved draft for publishing. Returns true iff THIS call
+ *  won the claim — i.e. no fresh publish lock was already held. This is the
+ *  double-publish guard: a Reel publish keeps the row 'approved' for minutes while
+ *  it polls Meta, so without a lock a concurrent request (double-click) or a
+ *  retry-after-timeout could post the same Reel twice. The lock lives in
+ *  metadata.publish_lock (a timestamp) and self-heals after ~6 min so a killed run
+ *  can't wedge the draft forever. */
+async function claimForPublish(id: number): Promise<boolean> {
+  const rows = await sql()`
+    UPDATE agent_drafts
+    SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('publish_lock', to_jsonb(now()))
+    WHERE id = ${id} AND tenant_id = ${tenantId()} AND status = 'approved'
+      AND (
+        metadata->>'publish_lock' IS NULL
+        OR (metadata->>'publish_lock')::timestamptz < now() - interval '6 minutes'
+      )
+    RETURNING id
+  `;
+  return (rows as unknown[]).length > 0;
+}
+
+/** Release the publish lock so a legitimate retry isn't blocked. Only meaningful
+ *  when the publish FAILED (the draft stays 'approved'); on success the status is
+ *  already terminal and the leftover lock is harmless. Best-effort. */
+async function releasePublishLock(id: number): Promise<void> {
+  await sql()`
+    UPDATE agent_drafts
+    SET metadata = COALESCE(metadata, '{}'::jsonb) - 'publish_lock'
+    WHERE id = ${id} AND tenant_id = ${tenantId()}
+  `.catch(() => {});
+}
+
 export async function publishContent(id: number, note?: string): Promise<ExecuteResult> {
   const draft = await getDraft(id);
   if (!draft) return { ok: false, error: `Draft ${id} not found` };
+  // Idempotent: a prior attempt already published this draft — never re-post it.
+  if (draft.status === 'published') return { ok: true, draft };
   if (draft.status !== 'approved') {
     return { ok: false, error: `Draft ${id} is ${draft.status}, must be 'approved' before execution` };
   }
 
+  // Claim the draft before the (possibly minutes-long) external publish so a
+  // concurrent request or a retry can't double-post. If we didn't win the claim,
+  // another attempt is already in flight (or just finished) — don't publish again.
+  if (!(await claimForPublish(id))) {
+    const cur = await getDraft(id);
+    if (cur?.status === 'published') return { ok: true, draft: cur };
+    return { ok: false, error: `Draft ${id} is already being published — give it a moment before retrying.` };
+  }
+
+  const result = await dispatchPublish(draft, note);
+  // On failure the draft stays 'approved' for a legitimate retry — release the lock
+  // so the retry isn't blocked. On success the status flip already guards re-posts.
+  if (!result.ok) await releasePublishLock(id);
+  return result;
+}
+
+/** Perform the real platform publish for an already-claimed, approved draft. */
+async function dispatchPublish(draft: DraftRow, note?: string): Promise<ExecuteResult> {
+  const id = draft.id;
   // Route by platform — read from metadata.platform (set when the draft was
   // created). Wired end-to-end today: YouTube + Instagram comment replies, and
   // top-level posts to X, LinkedIn (member feed), and Facebook Pages. Anything

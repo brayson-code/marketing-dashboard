@@ -148,6 +148,23 @@ export const DASHBOARD_WIDGETS: readonly WidgetDef[] = [
     defaultSpan: 1,
     component: 'DepartmentRoster',
   },
+  {
+    id: 'agent_chat',
+    title: 'Command Chat',
+    description: 'A full-width, Claude-style conversation with your command agent (or any of the squad) — the flagship surface of the overview, not a small tile.',
+    category: 'ops',
+    // Full board row. This widget is designed around a wide, centered
+    // conversation column (see agent-chat-widget.tsx) — at span 1 or 2 the
+    // centered max-w-3xl column would be squeezed against the tile's own
+    // edges and lose the generous line length that makes it feel like Claude's
+    // web app. defaultSpan only governs a NEW placement (added via the
+    // gallery or defaulted in a fresh layout); the per-widget resize control
+    // in widget-board.tsx is generic across all widgets and isn't overridden
+    // here, so a user COULD still manually cycle this down — out of scope for
+    // this registry-only change (widget-board.tsx wasn't touched).
+    defaultSpan: 3,
+    component: 'AgentChatWidget',
+  },
 ];
 
 /** Every valid widget id, in registry order. */

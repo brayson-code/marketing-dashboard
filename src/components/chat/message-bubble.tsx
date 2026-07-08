@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import type { ChatMessage } from '@/types';
 
 const AGENT_THEMES: Record<string, { bg: string; text: string; border: string }> = {
@@ -48,7 +49,21 @@ interface Props {
   isGrouped: boolean;
 }
 
-export function MessageBubble({ message, isHuman, isGrouped }: Props) {
+// MEMOIZATION NOTE: a message here always arrives complete (one JSON reply, no
+// token-by-token growth — see src/components/chat/markdown-memo.tsx for how
+// streaming actually arrives across this app's chat surfaces) and this list is
+// re-fetched once per agent switch, not on a recurring poll. So there's no
+// "growing tail" within a single message to split into stable/unstable blocks
+// — a static message keeps its current (unmemoized-inline) render path.
+//
+// What DOES churn a lot here: every send/receive flips `thinking`, and every new
+// message appended re-creates the `messages` array, both of which re-render the
+// WHOLE list — including every already-rendered bubble whose props never
+// changed. Without a memo boundary, React still re-invokes each bubble's render
+// (and re-parses its markdown) on every one of those ticks. Wrapping the export
+// in `memo` with a value comparator turns that into an O(1) bail-out for every
+// bubble except the one that actually changed.
+function MessageBubbleImpl({ message, isHuman, isGrouped }: Props) {
   const theme = getTheme(message.from_agent);
 
   if (message.message_type === 'system') {
@@ -111,3 +126,13 @@ export function MessageBubble({ message, isHuman, isGrouped }: Props) {
     </div>
   );
 }
+
+export const MessageBubble = memo(MessageBubbleImpl, (prev, next) =>
+  prev.message.id === next.message.id &&
+  prev.message.content === next.message.content &&
+  prev.message.pendingStatus === next.message.pendingStatus &&
+  prev.message.to_agent === next.message.to_agent &&
+  prev.message.from_agent === next.message.from_agent &&
+  prev.isHuman === next.isHuman &&
+  prev.isGrouped === next.isGrouped,
+);

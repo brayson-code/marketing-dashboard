@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Network, ArrowRight, Loader2, Send, ChevronRight, CheckCircle2, AlertTriangle, GitBranch } from 'lucide-react';
+import { hashBlock } from './markdown-memo';
 
 interface A2AParty { id: string; name: string; emoji: string }
 interface A2AMessage {
@@ -38,7 +39,21 @@ function clockTime(sec: number): string {
  * and extended with headings, bullet/numbered lists and blockquotes so an agent's
  * reply reads as a real chat message instead of raw `##` / `**` noise. Kept
  * line-based and client-safe (the docs <Markdown> is a server component that
- * touches the filesystem, which doesn't belong in this tight chat layout). */
+ * touches the filesystem, which doesn't belong in this tight chat layout).
+ *
+ * STREAMING MEMOIZATION: this is the one chat surface that actually re-renders
+ * full message text on a recurring tick — the Boardroom poll (`setInterval(load,
+ * 10_000)` below) refetches the WHOLE conversation transcript and replaces state
+ * wholesale, so every open thread's markdown would otherwise get re-parsed every
+ * 10s even though almost all of it is unchanged history. `parseBlocks` below
+ * turns a message's markdown into a "stable prefix" of block descriptors, and
+ * `MemoBlock` (a value-keyed React.memo, see markdown-memo.tsx) skips the actual
+ * parse+JSX build (`renderBlockContent`, which calls the inline formatter) for
+ * any block whose text didn't change — only genuinely new/changed blocks pay the
+ * parse cost. ReplyBubble/DispatchRow are additionally memoized per-message
+ * below, so unchanged historical messages skip this component entirely on most
+ * ticks; MemoBlock is the second line of defense for a message that DOES
+ * re-render (e.g. its `grouped` flag flipped because a neighbor was inserted). */
 function renderInline(text: string, keyBase: string): ReactNode[] {
   // Split out inline code first so ** / * inside code isn't touched.
   const parts = text.split(/(`[^`]+`)/g);
@@ -64,11 +79,23 @@ function renderInline(text: string, keyBase: string): ReactNode[] {
   });
 }
 
-function CompactMarkdown({ content }: { content: string }) {
-  const blocks: ReactNode[] = [];
+// A single markdown block, in RAW (unparsed) form. `parseBlocks` only ever
+// determines block BOUNDARIES (line-scanning, cheap); it never calls the inline
+// formatter — that's deferred to `renderBlockContent`, which only runs inside a
+// memoized `MemoBlock` so it's skippable per-block (see the memoization note
+// above `renderInline`).
+type Block =
+  | { kind: 'code'; text: string }
+  | { kind: 'heading'; text: string }
+  | { kind: 'hr' }
+  | { kind: 'quote'; text: string }
+  | { kind: 'ul' | 'ol'; items: string[] }
+  | { kind: 'para'; lines: string[] };
+
+function parseBlocks(content: string): Block[] {
+  const blocks: Block[] = [];
   const lines = content.replace(/\r\n/g, '\n').split('\n');
   let i = 0;
-  let key = 0;
 
   while (i < lines.length) {
     const line = lines[i];
@@ -79,29 +106,21 @@ function CompactMarkdown({ content }: { content: string }) {
       i++;
       while (i < lines.length && !/^```/.test(lines[i].trim())) { buf.push(lines[i]); i++; }
       i++; // closing fence
-      blocks.push(
-        <pre key={key++} className="my-1.5 overflow-x-auto whitespace-pre-wrap rounded-md bg-black/30 px-3 py-2 font-mono text-[12px] leading-relaxed">
-          {buf.join('\n')}
-        </pre>,
-      );
+      blocks.push({ kind: 'code', text: buf.join('\n') });
       continue;
     }
 
     // Headings → emphasised line (kept small to stay chat-compact)
     const h = /^(#{1,6})\s+(.*)$/.exec(line);
     if (h) {
-      blocks.push(
-        <div key={key++} className="mt-2 mb-0.5 text-[13px] font-semibold tracking-tight text-foreground first:mt-0">
-          {renderInline(h[2], `h${key}`)}
-        </div>,
-      );
+      blocks.push({ kind: 'heading', text: h[2] });
       i++;
       continue;
     }
 
     // Horizontal rule
     if (/^\s*([-*_])\1{2,}\s*$/.test(line)) {
-      blocks.push(<hr key={key++} className="my-2 border-border/50" />);
+      blocks.push({ kind: 'hr' });
       i++;
       continue;
     }
@@ -110,11 +129,7 @@ function CompactMarkdown({ content }: { content: string }) {
     if (/^>\s?/.test(line)) {
       const buf: string[] = [];
       while (i < lines.length && /^>\s?/.test(lines[i])) { buf.push(lines[i].replace(/^>\s?/, '')); i++; }
-      blocks.push(
-        <blockquote key={key++} className="my-1.5 border-l-2 border-primary/40 pl-3 text-foreground/75">
-          {renderInline(buf.join(' '), `q${key}`)}
-        </blockquote>,
-      );
+      blocks.push({ kind: 'quote', text: buf.join(' ') });
       continue;
     }
 
@@ -122,11 +137,7 @@ function CompactMarkdown({ content }: { content: string }) {
     if (/^\s*[-*+]\s+/.test(line)) {
       const items: string[] = [];
       while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) { items.push(lines[i].replace(/^\s*[-*+]\s+/, '')); i++; }
-      blocks.push(
-        <ul key={key++} className="my-1.5 ml-4 list-disc space-y-0.5 marker:text-muted-foreground">
-          {items.map((it, idx) => <li key={idx} className="leading-snug">{renderInline(it, `ul${key}-${idx}`)}</li>)}
-        </ul>,
-      );
+      blocks.push({ kind: 'ul', items });
       continue;
     }
 
@@ -134,11 +145,7 @@ function CompactMarkdown({ content }: { content: string }) {
     if (/^\s*\d+[.)]\s+/.test(line)) {
       const items: string[] = [];
       while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) { items.push(lines[i].replace(/^\s*\d+[.)]\s+/, '')); i++; }
-      blocks.push(
-        <ol key={key++} className="my-1.5 ml-4 list-decimal space-y-0.5 marker:text-muted-foreground">
-          {items.map((it, idx) => <li key={idx} className="leading-snug">{renderInline(it, `ol${key}-${idx}`)}</li>)}
-        </ol>,
-      );
+      blocks.push({ kind: 'ol', items });
       continue;
     }
 
@@ -157,20 +164,123 @@ function CompactMarkdown({ content }: { content: string }) {
       !/^\s*\d+[.)]\s+/.test(lines[i]) &&
       !/^\s*([-*_])\1{2,}\s*$/.test(lines[i])
     ) { buf.push(lines[i]); i++; }
-    blocks.push(
-      <p key={key++} className="my-1 leading-snug first:mt-0 last:mb-0">
-        {buf.map((ln, idx) => (
-          <span key={idx}>
-            {renderInline(ln, `p${key}-${idx}`)}
-            {idx < buf.length - 1 && <br />}
-          </span>
-        ))}
-      </p>,
-    );
+    blocks.push({ kind: 'para', lines: buf });
   }
 
-  return <div className="text-[13px] text-foreground/90">{blocks}</div>;
+  return blocks;
 }
+
+// The actual parse: inline formatting (`renderInline`) + JSX construction. This
+// is the work MemoBlock exists to skip for an unchanged block.
+function renderBlockContent(b: Block, keyBase: string): ReactNode {
+  switch (b.kind) {
+    case 'code':
+      return (
+        <pre className="my-1.5 overflow-x-auto whitespace-pre-wrap rounded-md bg-black/30 px-3 py-2 font-mono text-[12px] leading-relaxed">
+          {b.text}
+        </pre>
+      );
+    case 'heading':
+      return (
+        <div className="mt-2 mb-0.5 text-[13px] font-semibold tracking-tight text-foreground first:mt-0">
+          {renderInline(b.text, `${keyBase}-h`)}
+        </div>
+      );
+    case 'hr':
+      return <hr className="my-2 border-border/50" />;
+    case 'quote':
+      return (
+        <blockquote className="my-1.5 border-l-2 border-primary/40 pl-3 text-foreground/75">
+          {renderInline(b.text, `${keyBase}-q`)}
+        </blockquote>
+      );
+    case 'ul':
+      return (
+        <ul className="my-1.5 ml-4 list-disc space-y-0.5 marker:text-muted-foreground">
+          {b.items.map((it, idx) => <li key={idx} className="leading-snug">{renderInline(it, `${keyBase}-ul-${idx}`)}</li>)}
+        </ul>
+      );
+    case 'ol':
+      return (
+        <ol className="my-1.5 ml-4 list-decimal space-y-0.5 marker:text-muted-foreground">
+          {b.items.map((it, idx) => <li key={idx} className="leading-snug">{renderInline(it, `${keyBase}-ol-${idx}`)}</li>)}
+        </ol>
+      );
+    case 'para':
+      return (
+        <p className="my-1 leading-snug first:mt-0 last:mb-0">
+          {b.lines.map((ln, idx) => (
+            <span key={idx}>
+              {renderInline(ln, `${keyBase}-p-${idx}`)}
+              {idx < b.lines.length - 1 && <br />}
+            </span>
+          ))}
+        </p>
+      );
+  }
+}
+
+// Value-equality (not reference-equality) comparison: two block descriptors
+// built on separate parses of the SAME unchanged source text always compare
+// equal here, which is what lets MemoBlock bail out below.
+function blocksEqual(a: Block, b: Block): boolean {
+  if (a.kind !== b.kind) return false;
+  switch (a.kind) {
+    case 'hr':
+      return true;
+    case 'code':
+    case 'heading':
+    case 'quote':
+      return a.text === (b as typeof a).text;
+    case 'ul':
+    case 'ol': {
+      const bb = b as typeof a;
+      return a.items.length === bb.items.length && a.items.every((it, idx) => it === bb.items[idx]);
+    }
+    case 'para': {
+      const bb = b as typeof a;
+      return a.lines.length === bb.lines.length && a.lines.every((ln, idx) => ln === bb.lines[idx]);
+    }
+  }
+}
+
+function blockSourceText(b: Block): string {
+  switch (b.kind) {
+    case 'code':
+    case 'heading':
+    case 'quote':
+      return `${b.kind}:${b.text}`;
+    case 'hr':
+      return 'hr';
+    case 'ul':
+    case 'ol':
+      return `${b.kind}:${b.items.join(' ')}`;
+    case 'para':
+      return `para:${b.lines.join(' ')}`;
+  }
+}
+
+// The completed-block unit: memoized BY VALUE, so a re-render (e.g. the parent
+// message re-rendering because a sibling's `grouped` flag changed) skips
+// `renderBlockContent` — and the `renderInline` parse inside it — for every
+// block whose text is unchanged from last time.
+const MemoBlock = memo(
+  function MarkdownBlock({ block, blockKey }: { block: Block; blockKey: string }) {
+    return <>{renderBlockContent(block, blockKey)}</>;
+  },
+  (prev, next) => blocksEqual(prev.block, next.block),
+);
+
+const CompactMarkdown = memo(function CompactMarkdown({ content }: { content: string }) {
+  const blocks = parseBlocks(content);
+  return (
+    <div className="text-[13px] text-foreground/90">
+      {blocks.map((b, i) => (
+        <MemoBlock key={`${i}-${hashBlock(blockSourceText(b))}`} block={b} blockKey={`b${i}`} />
+      ))}
+    </div>
+  );
+});
 
 /* ---------- Decision / handoff detection ----------
  * Best-effort only: surface a chip when a *result* reads like the agent made a
@@ -208,8 +318,14 @@ function Avatar({ party, dim }: { party: A2AParty; dim?: boolean }) {
 }
 
 /* A "dispatch" message: KeyPlayer assigned a task to a sub-agent. The task body
- * is usually huge, so it's collapsed behind a "show task" expander by default. */
-function DispatchRow({ m }: { m: A2AMessage }) {
+ * is usually huge, so it's collapsed behind a "show task" expander by default.
+ *
+ * Memoized on the message's own identity+content: the Boardroom poll refetches
+ * the FULL transcript every 10s, so without this every already-rendered
+ * dispatch row (and its collapsed CompactMarkdown) would re-render on every
+ * tick even though its message never changes. `open` is local state, so
+ * toggling "show task" still re-renders normally — memo only compares props. */
+function DispatchRowImpl({ m }: { m: A2AMessage }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="my-2">
@@ -236,9 +352,16 @@ function DispatchRow({ m }: { m: A2AMessage }) {
     </div>
   );
 }
+const DispatchRow = memo(
+  DispatchRowImpl,
+  (prev, next) => prev.m.id === next.m.id && prev.m.content === next.m.content,
+);
 
-/* A normal "result"/"error" reply: rendered bubble, directional by sender. */
-function ReplyBubble({ m, grouped, isOrchestrator }: { m: A2AMessage; grouped: boolean; isOrchestrator: boolean }) {
+/* A normal "result"/"error" reply: rendered bubble, directional by sender.
+ * Memoized for the same reason as DispatchRow above — this is what actually
+ * skips CompactMarkdown (and, per-block, renderInline) for the bulk of a long
+ * thread's history on every 10s poll tick. */
+function ReplyBubbleImpl({ m, grouped, isOrchestrator }: { m: A2AMessage; grouped: boolean; isOrchestrator: boolean }) {
   const isError = m.phase === 'error';
   const decision = decisionKind(m);
   // Orchestrator replies hug the left; sub-agent replies hug the right.
@@ -284,6 +407,15 @@ function ReplyBubble({ m, grouped, isOrchestrator }: { m: A2AMessage; grouped: b
     </div>
   );
 }
+const ReplyBubble = memo(
+  ReplyBubbleImpl,
+  (prev, next) =>
+    prev.m.id === next.m.id &&
+    prev.m.content === next.m.content &&
+    prev.m.phase === next.m.phase &&
+    prev.grouped === next.grouped &&
+    prev.isOrchestrator === next.isOrchestrator,
+);
 
 export function A2AHistory() {
   const [convs, setConvs] = useState<A2AConversation[]>([]);

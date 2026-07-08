@@ -508,7 +508,7 @@ export function OnboardingWizard({ onDone }: { onDone?: () => void } = {}) {
   const showSkip = skippableKeys.has(meta.key);
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden bg-[#0a0a0f] text-foreground dark">
+    <div className="fixed inset-0 z-50 h-[100dvh] overflow-hidden bg-[#0a0a0f] text-foreground dark">
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
@@ -526,7 +526,7 @@ export function OnboardingWizard({ onDone }: { onDone?: () => void } = {}) {
       </div>
 
       <div className="relative z-10 flex h-full w-full flex-col md:flex-row">
-        <aside className="relative hidden w-2/5 shrink-0 flex-col justify-between overflow-hidden border-r border-border p-10 md:flex">
+        <aside className="relative hidden w-2/5 shrink-0 flex-col justify-between overflow-hidden border-r border-border p-8 md:flex">
           <div
             aria-hidden
             className="pointer-events-none absolute -left-24 top-1/3 h-96 w-96 rounded-full"
@@ -566,11 +566,16 @@ export function OnboardingWizard({ onDone }: { onDone?: () => void } = {}) {
           </div>
         </aside>
 
-        <main className="relative flex flex-1 items-center justify-center overflow-y-auto p-6 md:p-10">
-          <div className="w-full max-w-xl">
+        <main className="relative flex flex-1 justify-center overflow-y-auto p-4 md:p-6">
+          {/* `my-auto` (not `items-center` on the parent) so the panel centers when it
+              fits the viewport. The design goal is that every step — especially
+              Welcome — fits within ~1366x768 with no scrolling at all; `overflow-y-auto`
+              on <main> stays only as a safety net for edge cases (huge zoom, tiny
+              windows), not as the intended UX. */}
+          <div className="my-auto w-full max-w-xl">
             <div key={step} className="animate-slide-in">
-              <div className="panel p-6 md:p-8">
-                <div className="mb-4 inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-400 md:hidden">
+              <div className="panel p-4 md:p-6">
+                <div className="mb-2.5 inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-400 md:hidden">
                   <HeroIcon size={13} /> {meta.kicker}
                 </div>
 
@@ -618,7 +623,7 @@ export function OnboardingWizard({ onDone }: { onDone?: () => void } = {}) {
                   </div>
                 )}
 
-                <div className="mt-8 flex items-center justify-between gap-3">
+                <div className="mt-5 flex items-center justify-between gap-3">
                   <button
                     onClick={goBack}
                     disabled={step === 0 || submitting}
@@ -671,39 +676,30 @@ function ProvisionedIntro({ provisioning }: { provisioning: ProvisioningInfo }) 
   if (!provisioning.provisioned) return null;
   const industryLabel = provisioning.industry ? titleCase(provisioning.industry) : 'your business';
 
-  const facts: string[] = [];
-  if (provisioning.industry) facts.push(`Industry: ${industryLabel}`);
+  // Compact single-strip summary — one line of chips, no bulleted list, no quote.
+  // (The full playbook quote, if any, still surfaces later on the Seed step.)
+  const chips: string[] = [];
+  if (provisioning.industry) chips.push(industryLabel);
   if (provisioning.agentCount > 0) {
-    facts.push(`${provisioning.agentCount} custom agent${provisioning.agentCount === 1 ? '' : 's'} on your squad`);
+    chips.push(`${provisioning.agentCount} agent${provisioning.agentCount === 1 ? '' : 's'}`);
   }
-  if (provisioning.hasPlaybook) facts.push('Company brief already written');
+  if (provisioning.hasPlaybook) chips.push('brief written');
   if (provisioning.viewsConfigured) {
-    facts.push(`${provisioning.viewsOnCount} of ${provisioning.viewsTotalCount} nav views turned on`);
+    chips.push(`${provisioning.viewsOnCount}/${provisioning.viewsTotalCount} views on`);
   }
 
   return (
     <div
-      className="mb-5 space-y-3 rounded-xl border p-4"
+      className="flex items-center gap-2 rounded-lg border px-2.5 py-1.5"
       style={{ borderColor: 'rgba(16,217,130,0.35)', background: 'rgba(16,217,130,0.07)' }}
     >
-      <div className="flex items-start gap-2.5">
-        <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--primary)]/15 text-[var(--primary)]">
-          <SquareStack size={13} />
-        </span>
-        <p className="text-sm font-medium leading-snug">
-          Your command center was built for <span className="text-[var(--primary)]">{industryLabel}</span> from your
-          Key Matrix — here&apos;s what&apos;s already live and what&apos;s left.
-        </p>
-      </div>
-      {facts.length > 0 && (
-        <ul className="space-y-1.5 pl-8">
-          {facts.map((f) => (
-            <li key={f} className="flex items-center gap-2 text-xs text-muted-foreground">
-              <CheckCircle2 size={13} className="shrink-0 text-[var(--primary)]" /> {f}
-            </li>
-          ))}
-        </ul>
-      )}
+      <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--primary)]/15 text-[var(--primary)]">
+        <SquareStack size={11} />
+      </span>
+      <p className="truncate text-[11px] leading-snug text-muted-foreground">
+        <span className="font-medium text-foreground">Built from your Key Matrix</span>
+        {chips.length > 0 ? ` · ${chips.join(' · ')}` : ''}
+      </p>
     </div>
   );
 }
@@ -721,11 +717,11 @@ function WelcomeStep({
     { id: 'client', label: 'Setting this up for a client', desc: 'Agency / consultant configuring for someone else.' },
   ];
   return (
-    <div className="space-y-5">
+    <div className="space-y-2.5">
       <ProvisionedIntro provisioning={provisioning} />
-      <h1 className="text-xl font-semibold">Welcome to your Command Centre.</h1>
-      <p className="text-sm text-muted-foreground">First, who are you here? This tailors how we talk to you.</p>
-      <div className="space-y-2.5">
+      <h1 className="text-lg font-semibold">Welcome to your Command Centre.</h1>
+      <p className="text-xs text-muted-foreground">First, who are you here? This tailors how we talk to you.</p>
+      <div className="space-y-1.5">
         {options.map((o) => {
           const active = role === o.id;
           return (
@@ -733,35 +729,35 @@ function WelcomeStep({
               key={o.id}
               type="button"
               onClick={() => onPickRole(o.id)}
-              className="flex w-full items-center gap-3 rounded-xl border bg-[var(--surface-2)] p-3.5 text-left transition-all"
+              className="flex w-full items-center gap-2.5 rounded-lg border bg-[var(--surface-2)] p-2.5 text-left transition-all"
               style={{
                 borderColor: active ? 'var(--primary)' : 'var(--border)',
                 boxShadow: active ? '0 0 0 1px var(--primary), 0 0 18px rgba(16,217,130,0.15)' : undefined,
               }}
             >
               <span
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border"
+                className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border"
                 style={{
                   borderColor: active ? 'var(--primary)' : 'var(--border)',
                   background: active ? 'var(--primary)' : 'transparent',
                 }}
               >
-                {active && <Check size={12} className="text-[var(--primary-foreground)]" />}
+                {active && <Check size={10} className="text-[var(--primary-foreground)]" />}
               </span>
               <span className="flex-1">
-                <span className="flex items-center gap-2 text-sm font-medium">
-                  <UserCircle2 size={15} className="text-muted-foreground" /> {o.label}
+                <span className="flex items-center gap-1.5 text-xs font-medium">
+                  <UserCircle2 size={13} className="text-muted-foreground" /> {o.label}
                 </span>
-                <span className="mt-0.5 block text-xs text-muted-foreground">{o.desc}</span>
+                <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">{o.desc}</span>
               </span>
             </button>
           );
         })}
       </div>
 
-      <div className="space-y-2 pt-2">
-        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">How big is the team?</div>
-        <div className="grid grid-cols-3 gap-2">
+      <div className="space-y-1 pt-0.5">
+        <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">How big is the team?</div>
+        <div className="grid grid-cols-3 gap-1.5">
           {AGENCY_SIZES.map((o) => {
             const active = agencySize === o.id;
             return (
@@ -769,14 +765,14 @@ function WelcomeStep({
                 key={o.id}
                 type="button"
                 onClick={() => onPickSize(o.id)}
-                className="rounded-xl border bg-[var(--surface-2)] p-3 text-left transition-all"
+                className="rounded-lg border bg-[var(--surface-2)] p-2 text-left transition-all"
                 style={{
                   borderColor: active ? 'var(--primary)' : 'var(--border)',
                   boxShadow: active ? '0 0 0 1px var(--primary)' : undefined,
                 }}
               >
-                <div className="text-sm font-medium">{o.label}</div>
-                <div className="mt-1 text-[11px] text-muted-foreground">{o.desc}</div>
+                <div className="text-xs font-medium">{o.label}</div>
+                <div className="mt-0.5 text-[10px] leading-snug text-muted-foreground">{o.desc}</div>
               </button>
             );
           })}
@@ -799,8 +795,8 @@ function ProfileStep({
   // again — and instead of a <select> that would silently fail to display the value.
   const industryLocked = provisioning.provisioned && !!provisioning.industry && !!value.industry;
   return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Tell us about the business.</h1>
+    <div className="space-y-3">
+      <h1 className="text-lg font-semibold">Tell us about the business.</h1>
       <p className="text-xs text-muted-foreground">We&apos;ll use these to build your business brain.</p>
 
       <label className="block space-y-1 text-xs">
@@ -808,7 +804,7 @@ function ProfileStep({
         <input className={INPUT} value={value.businessName} onChange={(e) => set({ businessName: e.target.value })} placeholder="KeyPlayers HQ" />
       </label>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
         <div className="block space-y-1 text-xs">
           <span className="text-muted-foreground">Industry *</span>
           {industryLocked ? (
@@ -844,7 +840,7 @@ function ProfileStep({
         <input className={INPUT} value={value.website} onChange={(e) => set({ website: e.target.value })} placeholder="https://keyplayershq.com" />
       </label>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
         <label className="block space-y-1 text-xs">
           <span className="text-muted-foreground">LinkedIn (optional)</span>
           <input className={INPUT} value={value.linkedin} onChange={(e) => set({ linkedin: e.target.value })} placeholder="company/keyplayers" />
@@ -908,12 +904,17 @@ function BrandStep({ value, onChange }: { value: BrandData; onChange: (v: BrandD
 // ─── Step 4: Connect your stack ───────────────────────────────────────────────
 function StackStep() {
   return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Connect your stack.</h1>
+    <div className="space-y-3">
+      <h1 className="text-lg font-semibold">Connect your stack.</h1>
       <p className="text-xs text-muted-foreground">
         Link the channels your agents should watch and post to. You can connect more anytime from Settings → Connections.
       </p>
-      <ConnectPanel />
+      {/* Safety net: ConnectPanel's provider grid grows with the tenant's available
+          integrations, so it gets its own scroll region instead of pushing the whole
+          step (and the fixed nav row below it) out of the viewport. */}
+      <div className="max-h-[46vh] overflow-y-auto pr-0.5">
+        <ConnectPanel />
+      </div>
     </div>
   );
 }
@@ -924,8 +925,8 @@ function AutonomyStep({ value, onChange }: { value: Autonomy; onChange: (v: Auto
   const active = AUTONOMY_STOPS[activeIdx];
   const icons = [Eye, Lightbulb, Zap, Rocket];
   return (
-    <div className="space-y-5">
-      <h1 className="text-xl font-semibold">How much should it run on its own?</h1>
+    <div className="space-y-3">
+      <h1 className="text-lg font-semibold">How much should it run on its own?</h1>
       <p className="text-xs text-muted-foreground">You can change this anytime. We recommend starting at Propose.</p>
 
       <div className="grid grid-cols-4 gap-1.5 rounded-xl border border-border bg-[var(--surface-2)] p-1.5">
@@ -937,14 +938,14 @@ function AutonomyStep({ value, onChange }: { value: Autonomy; onChange: (v: Auto
               key={s.id}
               type="button"
               onClick={() => onChange(s.id)}
-              className="flex flex-col items-center gap-1.5 rounded-lg px-2 py-3 text-center transition-all"
+              className="flex flex-col items-center gap-1 rounded-lg px-2 py-2 text-center transition-all"
               style={{
                 background: isActive ? 'var(--primary)' : 'transparent',
                 color: isActive ? 'var(--primary-foreground)' : 'var(--muted-foreground)',
                 boxShadow: isActive ? '0 0 16px rgba(16,217,130,0.35)' : undefined,
               }}
             >
-              <Icon size={16} />
+              <Icon size={15} />
               <span className="text-[11px] font-semibold leading-tight">{s.label}</span>
             </button>
           );
@@ -961,7 +962,7 @@ function AutonomyStep({ value, onChange }: { value: Autonomy; onChange: (v: Auto
         ))}
       </div>
 
-      <div className="rounded-xl border border-border bg-[var(--surface-2)] p-4">
+      <div className="rounded-xl border border-border bg-[var(--surface-2)] p-3">
         <div className="text-sm font-semibold text-[var(--primary)]">{active.label}</div>
         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{active.desc}</p>
       </div>
@@ -973,8 +974,8 @@ function AutonomyStep({ value, onChange }: { value: Autonomy; onChange: (v: Auto
 function NorthStarStep({ value, onChange }: { value: NorthStar; onChange: (v: NorthStar) => void }) {
   const set = (patch: Partial<NorthStar>) => onChange({ ...value, ...patch });
   return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Set your North Star.</h1>
+    <div className="space-y-3">
+      <h1 className="text-lg font-semibold">Set your North Star.</h1>
       <p className="text-xs text-muted-foreground">
         One outcome to point every agent at. Skippable — but defining it here teaches the squad what &ldquo;winning&rdquo; looks like.
       </p>
@@ -992,7 +993,7 @@ function NorthStarStep({ value, onChange }: { value: NorthStar; onChange: (v: No
       <label className="block space-y-1 text-xs">
         <span className="text-muted-foreground">How will you know it&apos;s won?</span>
         <textarea
-          className={`${INPUT} min-h-[80px]`}
+          className={`${INPUT} min-h-[56px]`}
           value={value.success}
           onChange={(e) => set({ success: e.target.value })}
           placeholder="e.g. 50 booked discovery calls from new outbound by Sep 30"
@@ -1004,7 +1005,7 @@ function NorthStarStep({ value, onChange }: { value: NorthStar; onChange: (v: No
         <input type="date" className={INPUT} value={value.due} onChange={(e) => set({ due: e.target.value })} />
       </label>
 
-      <div className="flex items-center gap-2 rounded-xl border border-border bg-[var(--surface-2)] p-3 text-xs text-muted-foreground">
+      <div className="flex items-center gap-2 rounded-xl border border-border bg-[var(--surface-2)] p-2.5 text-xs text-muted-foreground">
         <Flag size={14} className="text-[var(--primary)]" />
         This becomes your North Star — pinned to the top of the Overview.
       </div>
@@ -1231,14 +1232,14 @@ function SeedStep({
   // more rather than being forced to re-type the whole thing.
   if (provisioning.provisioned && provisioning.hasPlaybook) {
     return (
-      <div className="space-y-4">
-        <h1 className="text-xl font-semibold">Your squad already has a voice.</h1>
+      <div className="space-y-3">
+        <h1 className="text-lg font-semibold">Your squad already has a voice.</h1>
         <p className="text-xs text-muted-foreground">
           Your company brief was written from your Key Matrix intake — every agent already reads it before it does
           anything. Nothing to do here.
         </p>
 
-        <div className="space-y-2 rounded-xl border border-[var(--primary)]/40 bg-[var(--primary)]/10 p-3.5">
+        <div className="space-y-1.5 rounded-xl border border-[var(--primary)]/40 bg-[var(--primary)]/10 p-2.5">
           <div className="flex items-center gap-2 text-sm font-medium">
             <CheckCircle2 size={14} className="shrink-0 text-[var(--primary)]" /> Company brief already written
           </div>
@@ -1246,7 +1247,7 @@ function SeedStep({
             Set up from your Key Matrix
           </div>
           {provisioning.playbookPreview && (
-            <p className="text-xs italic leading-relaxed text-muted-foreground">
+            <p className="truncate text-xs italic leading-relaxed text-muted-foreground">
               &ldquo;{provisioning.playbookPreview}&rdquo;
             </p>
           )}
@@ -1255,7 +1256,7 @@ function SeedStep({
         <label className="block space-y-1 text-xs">
           <span className="text-muted-foreground">Anything to add? (optional)</span>
           <textarea
-            className={`${INPUT} min-h-[100px] leading-relaxed`}
+            className={`${INPUT} min-h-[64px] leading-relaxed`}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder="Only fill this in if there's something the brief above doesn't already cover."
@@ -1266,8 +1267,8 @@ function SeedStep({
   }
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Give the squad a voice memo.</h1>
+    <div className="space-y-3">
+      <h1 className="text-lg font-semibold">Give the squad a voice memo.</h1>
       <p className="text-xs text-muted-foreground">
         Three paragraphs: who you serve, what you sell, the voice you want. We&apos;ll save it as
         the &ldquo;Agency profile&rdquo; knowledge doc so every agent — content-writer, outreach-sender —
@@ -1275,7 +1276,7 @@ function SeedStep({
       </p>
 
       <textarea
-        className={`${INPUT} min-h-[220px] leading-relaxed`}
+        className={`${INPUT} min-h-[130px] leading-relaxed`}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={`Who do you serve?\n\nWhat do you sell?\n\nWhat does your voice sound like — playful, blunt, formal, warm?`}
@@ -1340,19 +1341,19 @@ function DoneStep({ role }: { role: Role | null }) {
   const who =
     role === 'assistant' ? 'You’re set up to operate it.' : role === 'client' ? 'Your client’s centre is set up.' : 'Everything is wired and ready.';
   return (
-    <div className="space-y-5 text-center">
+    <div className="space-y-3 text-center">
       <div
-        className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl"
+        className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl"
         style={{ background: 'rgba(16,217,130,0.14)', border: '1px solid rgba(16,217,130,0.35)', boxShadow: '0 0 32px rgba(16,217,130,0.25)' }}
       >
-        <PartyPopper size={28} className="text-[var(--primary)]" />
+        <PartyPopper size={22} className="text-[var(--primary)]" />
       </div>
-      <h1 className="text-2xl font-semibold">Your command centre is ready.</h1>
-      <p className="mx-auto max-w-sm text-sm text-muted-foreground">
+      <h1 className="text-xl font-semibold">Your command centre is ready.</h1>
+      <p className="mx-auto max-w-sm text-xs text-muted-foreground">
         {who} Your agent squad is standing by. Run your first mission — or meet the squad first.
       </p>
 
-      <div className="flex flex-col items-center gap-2 pt-2 sm:flex-row sm:justify-center">
+      <div className="flex flex-col items-center gap-2 pt-1 sm:flex-row sm:justify-center">
         <Link href="/missions" className="btn btn-primary btn-sm">
           <Rocket size={13} /> Run your first mission
         </Link>

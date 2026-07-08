@@ -108,6 +108,15 @@ function parseAgentsResponse(payload: unknown): AgentItem[] {
 
 const ALL_AGENTS = '__all__';
 
+// Nav section labels are stored ALL-CAPS ("AGENTS", "MARKETING", …) for the rail's
+// own header styling. Reused verbatim here it produced "AGENTS agents" / "MARKETING
+// agents" — shouty and, for the Agents section, redundant ("AGENTS agents"). Title-case
+// the label and skip the trailing "agents" when the section is already named that.
+function chatHeaderLabel(sectionLabel: string): string {
+  const titled = sectionLabel.charAt(0).toUpperCase() + sectionLabel.slice(1).toLowerCase();
+  return titled.toLowerCase() === 'agents' ? titled : `${titled} agents`;
+}
+
 export function NavAgentChatWidget({ sectionLabel, accentVar, open, onClose }: Props) {
   const [allAgents, setAllAgents] = useState<AgentItem[]>([]);
   const [agentsLoading, setAgentsLoading] = useState(false);
@@ -295,11 +304,12 @@ export function NavAgentChatWidget({ sectionLabel, accentVar, open, onClose }: P
 
   const headerTint = `color-mix(in srgb, ${accentVar} 14%, transparent)`;
   const headerBorder = `color-mix(in srgb, ${accentVar} 30%, transparent)`;
+  const headerLabel = chatHeaderLabel(sectionLabel);
 
   return (
     <div
       role="dialog"
-      aria-label={`${sectionLabel} agents chat`}
+      aria-label={`${headerLabel} chat`}
       className="card glass-strong fixed bottom-6 left-[5.5rem] z-[90] flex w-[360px] flex-col overflow-hidden"
       style={{
         maxHeight: 'min(560px, calc(100vh - 3rem))',
@@ -317,7 +327,7 @@ export function NavAgentChatWidget({ sectionLabel, accentVar, open, onClose }: P
             style={{ background: accentVar, boxShadow: `0 0 8px ${accentVar}` }}
           />
           <h3 className="truncate text-sm font-semibold" style={{ color: accentVar }}>
-            {sectionLabel} agents
+            {headerLabel}
           </h3>
         </div>
         <button

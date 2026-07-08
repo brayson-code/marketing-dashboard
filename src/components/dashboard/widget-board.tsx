@@ -13,8 +13,10 @@
 // resolved layout reproduces today's page (the DEFAULT template) sees no visual change.
 //
 // EDIT MODE (the "Customize" toggle) reveals per-widget chrome (drag handle · span
-// cycler · remove ✕), a categorized "Add a widget" palette (<WidgetMenu>), and a
-// Save/Cancel bar. Reorder is dnd-kit sortable. Save persists via
+// cycler · remove ✕), a visual widget LIBRARY (<WidgetMenu> — live reduced-scale
+// previews of each available widget with mock data), and a Save/Cancel bar. Reorder
+// is dnd-kit sortable, with a fixed-size <DragOverlay> card as the drag ghost so
+// spanning tiles don't stretch. Save persists via
 // PUT /api/dashboard/layout using the CRM's optimistic-then-reconcile pattern: the new
 // layout is committed to the UI immediately, and only rolled back (with a toast) if the
 // server rejects it. Owners additionally get "Set as workspace default" which writes
@@ -30,6 +32,7 @@ import { Suspense, lazy, useMemo, useState } from 'react';
 import type { CSSProperties, ComponentType, LazyExoticComponent } from 'react';
 import {
   DndContext,
+  DragOverlay,
   closestCenter,
   KeyboardSensor,
   PointerSensor,
@@ -37,6 +40,7 @@ import {
   useSensors,
   MeasuringStrategy,
   type DragEndEvent,
+  type DragStartEvent,
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -45,13 +49,13 @@ import {
   sortableKeyboardCoordinates,
   useSortable,
 } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, X, LayoutGrid, Plus, Check, Loader2 } from 'lucide-react';
 import type { Department } from '@/components/agent-orb';
 import { LensTabs } from '@/components/dashboard/lens-tabs';
 import { WidgetMenu } from '@/components/dashboard/widget-menu';
 import { toast } from '@/components/ui/toast';
 import { widgetById } from '@/lib/dashboard-widgets';
+import { widgetMock } from '@/lib/dashboard-widget-mocks';
 import type { WidgetDef, WidgetSpan } from '@/lib/dashboard-widgets';
 import type { DashboardLayout, LayoutWidget } from '@/lib/dashboard-layout';
 
@@ -114,6 +118,10 @@ const COMPONENTS: Record<string, () => Promise<{ default: ComponentType<WidgetRe
     import('@/components/dashboard/department-roster').then((m) => ({
       default: m.DepartmentRoster as ComponentType<WidgetRenderProps>,
     })),
+  AgentChatWidget: () =>
+    import('@/components/dashboard/agent-chat-widget').then((m) => ({
+      default: m.AgentChatWidget as ComponentType<WidgetRenderProps>,
+    })),
 };
 
 // Span → grid-column span, clamped to the board's 3 columns. Below `lg` the grid is a
@@ -166,14 +174,26 @@ function SortableWidget({ item, def, department, editMode, onRemove, onCycleSpan
   const span = (item.span ?? def.defaultSpan) as WidgetSpan;
   const Widget = lazyWidget(def.component);
 
+  // TRANSLATE-ONLY transform. dnd-kit's CSS.Transform.toString() also emits
+  // scaleX/scaleY so a reflowing item morphs to the size of the slot it's over — in
+  // this mixed col-span grid that visibly STRETCHES spanning widgets (and their
+  // text). We drop the scale and keep only the translate, so tiles slide to make
+  // room without deforming. The moving preview is the compact <DragOverlay> card
+  // below (not this live node), and the source stays put as a dimmed placeholder.
   const style: CSSProperties = {
-    transform: CSS.Transform.toString(transform),
+    transform:
+      isDragging || !transform
+        ? undefined
+        : `translate3d(${Math.round(transform.x)}px, ${Math.round(transform.y)}px, 0)`,
     transition,
     zIndex: isDragging ? 30 : undefined,
+    ...(isDragging
+      ? { outline: '2px dashed color-mix(in srgb, var(--primary) 55%, transparent)', outlineOffset: 4, borderRadius: 12 }
+      : {}),
   };
 
   return (
-    <div ref={setNodeRef} style={style} className={`${SPAN_CLASS[span]} ${isDragging ? 'opacity-80' : ''}`}>
+    <div ref={setNodeRef} style={style} className={`${SPAN_CLASS[span]} ${isDragging ? 'opacity-40' : ''}`}>
       {editMode && (
         <div className="flex items-center gap-1.5 mb-1.5 px-0.5">
           <button
@@ -231,6 +251,32 @@ function SortableWidget({ item, def, department, editMode, onRemove, onCycleSpan
   );
 }
 
+// Compact, FIXED-SIZE drag preview rendered in the <DragOverlay>. It follows the
+// pointer at a constant size (icon + title) so the drag ghost never inherits the
+// live widget's width/height — the root cause of the stretch. The live tiles below
+// simply slide to make room while this small card floats.
+function DragCard({ def }: { def: WidgetDef }) {
+  const Icon = widgetMock(def.id)?.icon ?? LayoutGrid;
+  return (
+    <div
+      className="panel flex items-center gap-2.5 px-3.5 py-2.5 shadow-xl"
+      style={{ width: 240, cursor: 'grabbing', borderColor: 'color-mix(in srgb, var(--primary) 55%, var(--border))' }}
+    >
+      <span
+        className="grid place-items-center h-7 w-7 rounded-lg shrink-0"
+        style={{ background: 'color-mix(in srgb, var(--primary) 14%, transparent)', color: 'var(--primary)' }}
+      >
+        <Icon size={15} />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm font-medium truncate">{def.title}</span>
+        <span className="block text-[10px] text-muted-foreground">Drop to reorder</span>
+      </span>
+      <GripVertical size={14} className="ml-auto shrink-0 text-muted-foreground" />
+    </div>
+  );
+}
+
 interface WidgetBoardProps {
   /** Resolved layout: user override → tenant default → industry template → today's default. */
   initialLayout: DashboardLayout;
@@ -248,6 +294,8 @@ export function WidgetBoard({ initialLayout, canSetWorkspaceDefault }: WidgetBoa
   const [menuOpen, setMenuOpen] = useState(false);
   const [setAsDefault, setSetAsDefault] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Id of the widget currently being dragged — drives the <DragOverlay> preview.
+  const [activeId, setActiveId] = useState<string | null>(null);
 
   const sensors = useSensors(
     // Small distance gate so a click on the handle isn't read as a drag.
@@ -256,10 +304,13 @@ export function WidgetBoard({ initialLayout, canSetWorkspaceDefault }: WidgetBoa
   );
 
   const placedIds = useMemo(() => widgets.map((w) => w.id), [widgets]);
+  // The def for the widget being dragged — resolves the <DragOverlay> preview card.
+  const activeDef = activeId ? widgetById(activeId) ?? null : null;
 
   function enterEdit() {
     setSavedWidgets(widgets); // anchor the current committed layout for Cancel/revert
     setEditMode(true);
+    setMenuOpen(true); // "hitting Customize opens the visual widget library" straight away
   }
 
   function cancel() {
@@ -269,7 +320,12 @@ export function WidgetBoard({ initialLayout, canSetWorkspaceDefault }: WidgetBoa
     setSetAsDefault(false);
   }
 
+  function onDragStart(e: DragStartEvent) {
+    setActiveId(String(e.active.id));
+  }
+
   function onDragEnd(e: DragEndEvent) {
+    setActiveId(null);
     const { active, over } = e;
     if (!over || active.id === over.id) return;
     setWidgets((prev) => {
@@ -377,7 +433,9 @@ export function WidgetBoard({ initialLayout, canSetWorkspaceDefault }: WidgetBoa
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
+        onDragStart={onDragStart}
         onDragEnd={onDragEnd}
+        onDragCancel={() => setActiveId(null)}
         measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
       >
         <SortableContext items={placedIds} strategy={rectSortingStrategy}>
@@ -399,6 +457,12 @@ export function WidgetBoard({ initialLayout, canSetWorkspaceDefault }: WidgetBoa
             })}
           </div>
         </SortableContext>
+
+        {/* Fixed-size floating preview that follows the pointer — replaces the
+            live tile as the drag ghost, so spanning widgets never stretch. */}
+        <DragOverlay dropAnimation={null}>
+          {activeDef ? <DragCard def={activeDef} /> : null}
+        </DragOverlay>
       </DndContext>
 
       {widgets.length === 0 && !editMode && (
