@@ -26,6 +26,10 @@ export async function GET() {
     // agent as department:null / is_executive:false.
     department: a.department,
     is_executive: a.is_executive,
+    // agent_defs.source ('builtin' | 'custom') — lets the agent-chat-widget picker
+    // (item 2: KeyPlayer → Executives → Team → Custom) tell a tenant-created agent
+    // apart from the shipped/bundled squad. Additive; other consumers ignore it.
+    source: a.source,
     status: a.status,
     stats: {
       actions_today: 0,

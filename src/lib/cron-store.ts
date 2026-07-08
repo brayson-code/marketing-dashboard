@@ -123,9 +123,35 @@ export async function listCronJobs(): Promise<CronJobView[]> {
            last_error, last_result, next_run_at
     FROM public.cron_jobs
     WHERE tenant_id = ${tenantId()}
-    ORDER BY created_at ASC
+    ORDER BY display_order NULLS LAST, created_at ASC, id ASC
   `) as unknown as CronJobRow[];
   return rows.map(rowToView);
+}
+
+// ── Reorder (drag-to-reorder on the /cron board) ────────────────────────────
+//
+// Toggling/triggering a job only ever writes enabled/next_run_at/last_* — it never
+// touches display_order, so a drag stays put regardless of what the dispatcher does
+// to the row afterward. `ids` is the NEW order for the moved set (typically one
+// category section's worth of rows); each gets display_order = its 1-based index in
+// that list. Ids outside this tenant are impossible to touch (WHERE tenant_id scopes
+// every UPDATE) and unknown ids are silently skipped rather than erroring, so a
+// stale client list can't corrupt anything.
+export async function reorderCronJobs(idsInput: unknown): Promise<void> {
+  if (!Array.isArray(idsInput) || idsInput.length === 0) {
+    throw new Error('ids must be a non-empty array');
+  }
+  const ids = idsInput.map((x) => normalizeJobId(x)).filter((x): x is string => !!x);
+  if (ids.length === 0) throw new Error('No valid ids');
+
+  const tid = tenantId();
+  for (let i = 0; i < ids.length; i++) {
+    await sql()`
+      UPDATE public.cron_jobs
+      SET display_order = ${i + 1}, updated_at = now()
+      WHERE tenant_id = ${tid} AND id = ${ids[i]}
+    `;
+  }
 }
 
 // The editor sends the legacy nested shape: { id, name, agentId, skill,

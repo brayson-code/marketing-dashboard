@@ -7,7 +7,8 @@ import { ChatComposer } from '@/components/chat/chat-composer';
 import { AgentIcon } from '@/components/agent-icon';
 import { toast } from '@/components/ui/toast';
 import type { ChatMessage } from '@/types';
-import type { Department } from '@/components/agent-orb';
+import { colorForDepartment, type Department } from '@/components/agent-orb';
+import { compareExecOrder } from '@/lib/exec-order';
 
 // Overview board tile: the SAME agent chat experience as the left-nav chat panel
 // (NavAgentChatWidget), embedded inline in a board cell instead of a floating dialog.
@@ -49,8 +50,9 @@ import type { Department } from '@/components/agent-orb';
 //
 // Tenant isolation is enforced server-side; this component never touches sql().
 
-// The command-tile accent — on-brand primary (KeyPlayers green), tinting the header,
-// active picker entry, composer focus ring + send button. Matches the "ops" board category.
+// The command-tile's BRAND accent — on-brand primary (KeyPlayers green). Stays fixed
+// on the widget's own chrome (the title + its glow dot) so "Command Chat" always
+// reads as this app's own surface. Matches the "ops" board category.
 const ACCENT = 'var(--primary)';
 
 interface AgentItem {
@@ -60,6 +62,9 @@ interface AgentItem {
   role?: string;
   department?: string | null;
   is_executive?: boolean;
+  // agent_defs.source ('builtin' | 'custom') — how the picker tells a tenant-created
+  // agent apart from the shipped/bundled squad, so Custom agents group last (item 2).
+  source?: string;
 }
 
 // Agents that CANNOT be chatted with 1:1 (kept in lockstep with NavAgentChatWidget):
@@ -101,6 +106,7 @@ function parseAgentsResponse(payload: unknown): AgentItem[] {
         role: typeof a.role === 'string' ? a.role : undefined,
         department: typeof a.department === 'string' ? a.department : null,
         is_executive: a.is_executive === true,
+        source: typeof a.source === 'string' ? a.source : undefined,
       } satisfies AgentItem;
     })
     .filter((a) => a.id && !NON_CHATTABLE.has(a.id));
@@ -127,6 +133,31 @@ const DEPARTMENTS = new Set<string>([
 // color); anything unrecognized → undefined (AgentIcon falls back to the primary accent).
 function asDepartment(d: string | null | undefined): Department | undefined {
   return d && DEPARTMENTS.has(d) ? (d as Department) : undefined;
+}
+
+// ── Picker grouping (item 2: KeyPlayer → Executives → Team → Custom) ────────────
+// The dropdown reads like Claude's own model-picker: the Orchestrator always leads
+// (it's injected, not really "part of" the roster below), then the C-suite in real
+// seniority order (compareExecOrder — see lib/exec-order), then the rest of the
+// shipped/bundled roster, and finally anything the TENANT created itself
+// (agent_defs.source === 'custom') in its own group at the bottom. is_executive wins
+// over source — an exec is never tenant-custom in practice, but if one ever were,
+// it still reads as an exec first.
+interface PickerGroup {
+  label: string | null;
+  items: AgentItem[];
+}
+
+function groupPickerAgents(agents: AgentItem[]): PickerGroup[] {
+  const executives = agents.filter((a) => a.is_executive).sort(compareExecOrder);
+  const custom = agents.filter((a) => !a.is_executive && a.source === 'custom');
+  const team = agents.filter((a) => !a.is_executive && a.source !== 'custom');
+  return [
+    { label: null, items: [ORCHESTRATOR] },
+    { label: 'Executives', items: executives },
+    { label: 'Team', items: team },
+    { label: 'Custom', items: custom },
+  ].filter((g) => g.items.length > 0);
 }
 
 /** One boardroom_messages row as returned by GET /api/boardroom/messages. */
@@ -188,14 +219,22 @@ export function AgentChatWidget({ department }: { department: Department }) {
   // deliberate lens-change switch, not a fallback pick.
   const initializedRef = useRef(false);
 
-  // The picker's full option list: the Orchestrator first (injected — it's not in the
-  // /api/agents roster), then the chattable sub-agents. `agents` (sub-agents only) still
-  // drives the lens-lockstep resolution below, so a lens change never auto-picks the
+  // The picker's grouped option list — KeyPlayer first (injected — it's not in the
+  // /api/agents roster), then Executives, then Team, then Custom (see
+  // groupPickerAgents above). `agents` (sub-agents only) still drives the
+  // lens-lockstep resolution below, so a lens change never auto-picks the
   // orchestrator — it's a deliberate manual choice that then routes elsewhere.
-  const pickerAgents = useMemo<AgentItem[]>(() => [ORCHESTRATOR, ...agents], [agents]);
+  const pickerGroups = useMemo<PickerGroup[]>(() => groupPickerAgents(agents), [agents]);
+  const pickerAgents = useMemo<AgentItem[]>(() => pickerGroups.flatMap((g) => g.items), [pickerGroups]);
 
   const activeAgent = activeId ? pickerAgents.find((a) => a.id === activeId) ?? null : null;
   const isOrchestrator = activeAgent?.id === ORCHESTRATOR_ID;
+  // The active agent's department color (the same source AgentIcon uses) — the
+  // widget's CONTEXTUAL accent (item 1): header border, send button, active
+  // dropdown highlight, assistant bubble. Falls back to the brand primary when
+  // nothing's selected or the department is unrecognized (colorForDepartment's
+  // own default), so this never needs a separate fallback branch here.
+  const agentAccent = colorForDepartment(activeAgent ? asDepartment(activeAgent.department) : undefined);
 
   // Load the roster once on mount (same source as the nav panel).
   useEffect(() => {
@@ -448,8 +487,13 @@ export function AgentChatWidget({ department }: { department: Department }) {
     [activeAgent, thinking],
   );
 
-  const headerTint = `color-mix(in srgb, ${ACCENT} 10%, transparent)`;
-  const headerBorder = `color-mix(in srgb, ${ACCENT} 24%, transparent)`;
+  // Header tint/border track the ACTIVE AGENT's color (item 1: "chat theme follows
+  // the exec"), not the fixed brand accent — the dot/icon/title just below stay
+  // ACCENT so the widget's own identity never wavers. Transitioned (not
+  // `transition: all`) so switching execs eases the border/wash over instead of
+  // snapping.
+  const headerTint = `color-mix(in srgb, ${agentAccent} 10%, transparent)`;
+  const headerBorder = `color-mix(in srgb, ${agentAccent} 24%, transparent)`;
 
   return (
     <div className="card flex flex-col overflow-hidden" style={{ height: 'clamp(560px, 68vh, 820px)' }}>
@@ -458,7 +502,11 @@ export function AgentChatWidget({ department }: { department: Department }) {
           persistent chip row that would compete with the conversation. */}
       <div
         className="flex shrink-0 items-center gap-2 px-5 py-3.5"
-        style={{ background: headerTint, borderBottom: `1px solid ${headerBorder}` }}
+        style={{
+          background: headerTint,
+          borderBottom: `1px solid ${headerBorder}`,
+          transition: 'background-color var(--t-popover) var(--ease-out), border-color var(--t-popover) var(--ease-out)',
+        }}
       >
         <span
           className="h-2 w-2 shrink-0 rounded-full"
@@ -514,39 +562,53 @@ export function AgentChatWidget({ department }: { department: Department }) {
               aria-label="Choose an agent"
               className="glass-strong animate-in absolute right-0 top-[calc(100%+6px)] z-20 max-h-64 w-56 overflow-y-auto rounded-xl border border-border/60 p-1.5 shadow-xl"
             >
-              {pickerAgents.map((a) => {
-                const active = a.id === activeId;
-                const isOrch = a.id === ORCHESTRATOR_ID;
-                return (
-                  <button
-                    key={a.id}
-                    type="button"
-                    role="option"
-                    aria-selected={active}
-                    onClick={() => {
-                      setActiveId(a.id);
-                      setPickerOpen(false);
-                    }}
-                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs active:scale-[0.98]"
-                    style={{
-                      background: active ? `color-mix(in srgb, ${ACCENT} 14%, transparent)` : 'transparent',
-                      color: active ? ACCENT : 'var(--foreground)',
-                      transition: 'background-color var(--t-press) var(--ease-out)',
-                    }}
-                  >
-                    <AgentIcon id={a.id} role={a.role} department={asDepartment(a.department)} size="sm" />
-                    <span className="min-w-0 flex-1 truncate font-medium">
-                      {a.name}
-                      {isOrch && <span className="text-muted-foreground/70"> — Orchestrator</span>}
-                    </span>
-                    {isOrch ? (
-                      <span className="shrink-0 text-[9px] uppercase tracking-wide text-muted-foreground/60">orch</span>
-                    ) : a.is_executive ? (
-                      <span className="shrink-0 text-[9px] uppercase tracking-wide text-muted-foreground/60">exec</span>
-                    ) : null}
-                  </button>
-                );
-              })}
+              {pickerGroups.map((g, gi) => (
+                <div key={g.label ?? `group-${gi}`}>
+                  {g.label && (
+                    <div className="px-2.5 pb-1 pt-2 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground/50 first:pt-1">
+                      {g.label}
+                    </div>
+                  )}
+                  {g.items.map((a) => {
+                    const active = a.id === activeId;
+                    const isOrch = a.id === ORCHESTRATOR_ID;
+                    return (
+                      <button
+                        key={a.id}
+                        type="button"
+                        role="option"
+                        aria-selected={active}
+                        onClick={() => {
+                          setActiveId(a.id);
+                          setPickerOpen(false);
+                        }}
+                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs active:scale-[0.98]"
+                        style={{
+                          // The ACTIVE row's highlight follows that agent's own color —
+                          // since only the active row can show it, this is just
+                          // `agentAccent` (item 1's contextual accent, item 3's list).
+                          background: active ? `color-mix(in srgb, ${agentAccent} 14%, transparent)` : 'transparent',
+                          color: active ? agentAccent : 'var(--foreground)',
+                          transition: 'background-color var(--t-press) var(--ease-out), color var(--t-press) var(--ease-out)',
+                        }}
+                      >
+                        <AgentIcon id={a.id} role={a.role} department={asDepartment(a.department)} size="sm" />
+                        <span className="min-w-0 flex-1 truncate font-medium">
+                          {a.name}
+                          {isOrch && <span className="text-muted-foreground/70"> — Orchestrator</span>}
+                        </span>
+                        {isOrch ? (
+                          <span className="shrink-0 text-[9px] uppercase tracking-wide text-muted-foreground/60">orch</span>
+                        ) : a.is_executive ? (
+                          <span className="shrink-0 text-[9px] uppercase tracking-wide text-muted-foreground/60">exec</span>
+                        ) : a.source === 'custom' ? (
+                          <span className="shrink-0 text-[9px] uppercase tracking-wide text-muted-foreground/60">custom</span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -606,6 +668,9 @@ export function AgentChatWidget({ department }: { department: Department }) {
                         agentId={activeAgent.id}
                         agentRole={activeAgent.role}
                         agentDepartment={asDepartment(activeAgent.department)}
+                        // Tastefully tint just this agent's own bubbles with its department
+                        // color (item 1) — MessageBubble ignores this for human bubbles.
+                        accentVar={agentAccent}
                       />
                     ))}
                   </div>
@@ -644,12 +709,15 @@ export function AgentChatWidget({ department }: { department: Department }) {
               <div className="relative mx-auto w-full max-w-3xl">
                 <div
                   className="rounded-2xl"
-                  style={{ boxShadow: `0 12px 32px -16px color-mix(in srgb, ${ACCENT} 35%, transparent)` }}
+                  style={{
+                    boxShadow: `0 12px 32px -16px color-mix(in srgb, ${agentAccent} 35%, transparent)`,
+                    transition: 'box-shadow var(--t-popover) var(--ease-out)',
+                  }}
                 >
                   <ChatComposer
                     onSend={handleSend}
                     busy={thinking}
-                    accentVar={ACCENT}
+                    accentVar={agentAccent}
                     placeholder={`Message ${activeAgent.name}…`}
                   />
                 </div>

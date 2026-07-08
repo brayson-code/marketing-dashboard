@@ -14,6 +14,8 @@ import { smsToolDefinitions, handleSmsTool, smsAllowed, SMS_TOOL_NAMES } from '.
 import { firecrawlToolDefinitions, handleFirecrawlTool, firecrawlAllowed, FIRECRAWL_TOOL_NAMES } from './firecrawl-tools';
 import { jobberToolDefinitions, handleJobberTool, JOBBER_TOOL_NAMES } from './jobber-tools';
 import { jobberConnected } from './jobber';
+import { nativeToolDefinitions, handleNativeTool, NATIVE_TOOL_NAMES } from './native-tools';
+import { cronToolDefinitions, handleCronTool, cronWriteEnabled, CRON_TOOL_NAMES } from './cron-tools';
 import { parseAttachments, buildUserContent } from './vision';
 import { estimateCostUsd } from './usage';
 import { launchResearchCampaign } from './campaign-intake';
@@ -260,6 +262,17 @@ async function buildTools(gwAllowedArg?: boolean, smsOnArg?: boolean, fcOnArg?: 
     //    is included only when JOBBER_WRITE_ENABLED === 'true'. ─────────────────
     ...jobberToolDefinitions(),
 
+    // ── Native marketing-data tools — the client's OWN CRM, content, analytics,
+    //    ROI, documents, sequences and competitor intel. ALWAYS registered (no
+    //    connect-an-integration gate): reads are read-only, the few writes are
+    //    internal-state + audit-logged (external send stays behind the drafts flow).
+    ...nativeToolDefinitions(),
+
+    // ── Cron / scheduled jobs — reads always; create_cron_job only when
+    //    CRON_WRITE_ENABLED, and (via GATED_TOOLS) held for owner approval when
+    //    TOOL_APPROVALS_ENABLED is on. ──────────────────────────────────────────
+    ...cronToolDefinitions({ includeWrite: true }),
+
     {
       name: 'spawn_subagent',
       description:
@@ -450,6 +463,39 @@ async function callClaude(
           : 'Creating/drafting quotes is NOT enabled yet — you can only READ Jobber data, not write to it.'),
     });
   }
+  // Native marketing-data capability note — ALWAYS on (these tools are always
+  // registered). The bundled skills.md claims "read access (full)" to CRM/content/
+  // analytics but never named the tools; this makes the live tool names explicit so
+  // the model actually calls them instead of guessing or refusing.
+  systemBlocks.push({
+    type: 'text',
+    text:
+      "# The client's own marketing data is readable NOW\n" +
+      'You have LIVE tools over the native Command Center data — use them to ground every recommendation in ' +
+      "the client's real numbers instead of guessing:\n" +
+      '- CRM / pipeline: `list_leads`, `get_lead_funnel`; move a lead with `update_lead_status` (internal stage only — no message is sent).\n' +
+      '- Content: `list_content`, `read_content_calendar`; `update_content_status` (internal only — publishing stays behind the drafts→approval flow).\n' +
+      '- Analytics: `read_analytics`, `read_kpis`, `read_overview`.\n' +
+      '- ROI: `read_roi_summary` (hours + $ the agents reclaimed) — use it in status updates.\n' +
+      '- Documents / reports: `list_documents`, `read_document`, `write_report` (saved as a draft the owner promotes to Active), `append_to_doc`.\n' +
+      '- Outreach: `list_sequences`, `list_suppression` (always check suppression before drafting outreach), `update_sequence_status` (internal only — sending stays behind send_email_draft).\n' +
+      '- Competitor intel: `list_competitors`, `read_reels`, `read_trend_radar`, `add_competitor`.\n' +
+      '- Scheduled jobs: `list_cron_jobs`, `list_cron_runs`.\n' +
+      'Reads are free and safe; the writes above only change internal state and are audit-logged. They NEVER ' +
+      'send/publish anything externally — that always goes through save_draft / publish_content / send_email_draft.',
+  });
+  // Cron WRITE capability note — only when CRON_WRITE_ENABLED. Setting up standing
+  // autonomous work is high-impact, so name it separately and flag the approval gate.
+  if (cronWriteEnabled()) {
+    systemBlocks.push({
+      type: 'text',
+      text:
+        '# You can create scheduled jobs\n' +
+        'Use `create_cron_job` to set up a NEW recurring job (a sub-agent that runs on a cron schedule). Pass a ' +
+        '5-field cron expression, the sub-agent id, and the instruction. Because it creates standing autonomous ' +
+        'work it may be held for owner approval before it takes effect — never imply the schedule is live until it is.',
+    });
+  }
   const tools = await buildTools(gwAllowed, smsOn, fcOn);
 
   // MCP HUB — when the tenant has >=1 enabled MCP server, add mcp_servers + the
@@ -510,6 +556,11 @@ const CLIENT_TOOL_NAMES = new Set<string>([
   // the loop processes them (a registered-but-unrecognized tool ends the turn with
   // no text reply).
   ...JOBBER_TOOL_NAMES,
+  // Native marketing-data tools (CRM / content / analytics / ROI / documents /
+  // sequences / competitors) — always live. Recognize every name or the loop bails.
+  ...NATIVE_TOOL_NAMES,
+  // Cron tools (reads always + create_cron_job when enabled) — recognize all names.
+  ...CRON_TOOL_NAMES,
 ]);
 
 async function handleClientToolUse(
@@ -686,6 +737,37 @@ async function handleClientToolUse(
   // ── Jobber CRM tools (read always; write when enabled; shared handler) ───────
   if (JOBBER_TOOL_NAMES.has(toolUse.name)) {
     return handleJobberTool(toolUse, 'keyplayer');
+  }
+
+  // ── Native marketing-data tools (reads + safe internal writes; shared handler) ─
+  if (NATIVE_TOOL_NAMES.has(toolUse.name)) {
+    return handleNativeTool(toolUse, 'keyplayer');
+  }
+
+  // ── Cron tools (reads always; create_cron_job gated) ─────────────────────────
+  if (CRON_TOOL_NAMES.has(toolUse.name)) {
+    // create_cron_job sets up standing autonomous work → owner step-up when
+    // TOOL_APPROVALS_ENABLED is on (held ≠ failed: return a normal tool_result so
+    // the model acks the owner). Reads and the disabled/no-approvals paths run now.
+    if (toolUse.name === 'create_cron_job' && toolApprovalsEnabled() && isGatedTool(toolUse.name)) {
+      if (!cronWriteEnabled()) {
+        return { type: 'tool_result', tool_use_id: toolUse.id, content: 'create_cron_job is not enabled in this workspace.', is_error: true };
+      }
+      const input = toolUse.input as Record<string, unknown>;
+      const { createToolCallApproval } = await import('./pending-approvals');
+      const jobId = String(input.id ?? '(unnamed)');
+      const approvalId = await createToolCallApproval({
+        tool: 'create_cron_job',
+        input,
+        summary: `Create scheduled job "${jobId}" (${String(input.agent_id ?? '?')} on "${String(input.schedule ?? '?')}")`,
+      });
+      return {
+        type: 'tool_result',
+        tool_use_id: toolUse.id,
+        content: `Held for owner approval (#${approvalId}). The scheduled job will be created once the owner approves.`,
+      };
+    }
+    return handleCronTool(toolUse, 'keyplayer');
   }
 
   // ── Drafts tools ─────────────────────────────────────────────────────────

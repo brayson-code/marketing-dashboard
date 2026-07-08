@@ -315,6 +315,11 @@ export async function resolvePendingApproval(
         const r = await spawnSubAgent(type, task);
         if (!r.ok) throw new Error(`Sub-agent ${type} failed: ${r.error ?? 'unknown error'}`);
         toolResult = `Sub-agent ${type} completed.`;
+      } else if (tool === 'create_cron_job') {
+        // Replay the held cron-job creation. createCronJobFromToolInput validates the
+        // input (id / cron / agent / message) and throws on bad data → caught below.
+        const { createCronJobFromToolInput } = await import('@/lib/cron-tools');
+        toolResult = await createCronJobFromToolInput(input);
       } else {
         throw new Error(`Unsupported gated tool: ${tool}`);
       }

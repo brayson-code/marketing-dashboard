@@ -47,6 +47,11 @@ export interface SquadAgentMeta {
   // executive layer) vs "Specialists" (everything else).
   department: string | null;
   is_executive: boolean;
+  // agent_defs.source ('builtin' | 'custom') — how the agent-chat-widget picker
+  // tells a tenant-created agent apart from the shipped/bundled squad so it can
+  // group Custom agents last. Static-roster entries (keyplayer, sub-agents,
+  // fixer/improver) are never tenant-created, so they're always 'builtin' here.
+  source: string;
 }
 
 // Display metadata for agents that aren't in SUBAGENT_REGISTRY (orchestrator +
@@ -94,6 +99,7 @@ export function squadRoster(): SquadAgentMeta[] {
       description: 'The main agent. Talks to you over iMessage + the boardroom, plans the work, and dispatches the squad.',
       department: 'leadership',
       is_executive: false,
+      source: 'builtin',
     },
   ];
 
@@ -109,18 +115,19 @@ export function squadRoster(): SquadAgentMeta[] {
       description: spec.description,
       department: null,
       is_executive: false,
+      source: 'builtin',
     });
   }
 
   // fixer + improver are hq-only; only push them when allowed.
   if (isAudienceAllowed('fixer')) {
     roster.push(
-      { id: 'fixer', ...META.fixer, model: 'claude-sonnet-4-6', description: 'Reads the repo via GitHub, diagnoses bugs caught by KeyWatch, and opens draft PRs for review.', department: 'operations', is_executive: false },
+      { id: 'fixer', ...META.fixer, model: 'claude-sonnet-4-6', description: 'Reads the repo via GitHub, diagnoses bugs caught by KeyWatch, and opens draft PRs for review.', department: 'operations', is_executive: false, source: 'builtin' },
     );
   }
   if (isAudienceAllowed('improver')) {
     roster.push(
-      { id: 'improver', ...META.improver, model: 'claude-sonnet-4-6', description: 'Reviews the business + system state on a schedule and files improvement proposals as drafts.', department: 'operations', is_executive: false },
+      { id: 'improver', ...META.improver, model: 'claude-sonnet-4-6', description: 'Reviews the business + system state on a schedule and files improvement proposals as drafts.', department: 'operations', is_executive: false, source: 'builtin' },
     );
   }
 
@@ -131,10 +138,10 @@ export function squadRoster(): SquadAgentMeta[] {
  *  built-ins that haven't been seeded into the DB. Agent Studio additions
  *  (C-suite, custom agents) now show up here automatically. */
 async function liveRoster(): Promise<SquadAgentMeta[]> {
-  let dbRows: Array<{ id: string; name: string; role: string; role_title: string | null; model: string; description: string; department: string | null; is_executive: boolean }> = [];
+  let dbRows: Array<{ id: string; name: string; role: string; role_title: string | null; model: string; description: string; department: string | null; is_executive: boolean; source: string | null }> = [];
   try {
     dbRows = (await sql()`
-      SELECT id, name, role, role_title, model, description, department, is_executive
+      SELECT id, name, role, role_title, model, description, department, is_executive, source
       FROM public.agent_defs
       WHERE tenant_id = ${tenantId()} AND enabled = true
       ORDER BY id
@@ -158,6 +165,7 @@ async function liveRoster(): Promise<SquadAgentMeta[]> {
       description: r.description ?? '',
       department: r.department,
       is_executive: r.is_executive,
+      source: r.source ?? 'builtin',
     }));
 
   // Backfill anything in the static roster that the DB hasn't seeded yet

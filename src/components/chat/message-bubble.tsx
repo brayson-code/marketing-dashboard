@@ -56,6 +56,11 @@ interface Props {
   agentId?: string;
   agentRole?: string;
   agentDepartment?: Department | null;
+  // Optional CSS color (e.g. the active agent's department color) that tastefully
+  // accents THIS agent's own bubbles — a colored left edge + a faint background
+  // tint, never a full repaint. Ignored for human bubbles. Absent → the original
+  // flat zinc bubble, so every other MessageBubble caller is unaffected.
+  accentVar?: string;
 }
 
 // MEMOIZATION NOTE: a message here always arrives complete (one JSON reply, no
@@ -72,7 +77,7 @@ interface Props {
 // (and re-parses its markdown) on every one of those ticks. Wrapping the export
 // in `memo` with a value comparator turns that into an O(1) bail-out for every
 // bubble except the one that actually changed.
-function MessageBubbleImpl({ message, isHuman, isGrouped, agentId, agentRole, agentDepartment }: Props) {
+function MessageBubbleImpl({ message, isHuman, isGrouped, agentId, agentRole, agentDepartment, accentVar }: Props) {
   const theme = getTheme(message.from_agent);
   // Show the agent's distinct icon only for its own (non-human) bubbles when a caller
   // opts in by passing the agent's identity.
@@ -130,11 +135,23 @@ function MessageBubbleImpl({ message, isHuman, isGrouped, agentId, agentRole, ag
           </div>
         )}
 
-        <div className={`rounded-xl px-3 py-2 text-sm leading-relaxed ${
-          isHuman
-            ? 'bg-primary text-primary-foreground rounded-tr-sm'
-            : `bg-muted/30 text-foreground ${isGrouped ? 'rounded-tl-sm' : 'rounded-tl-sm'}`
-        } ${message.pendingStatus === 'sending' ? 'opacity-60' : ''}`}>
+        <div
+          className={`rounded-xl px-3 py-2 text-sm leading-relaxed ${
+            isHuman
+              ? 'bg-primary text-primary-foreground rounded-tr-sm'
+              : `bg-muted/30 text-foreground ${isGrouped ? 'rounded-tl-sm' : 'rounded-tl-sm'}`
+          } ${message.pendingStatus === 'sending' ? 'opacity-60' : ''}`}
+          style={
+            !isHuman && accentVar
+              ? {
+                  borderLeft: `2px solid color-mix(in srgb, ${accentVar} 45%, transparent)`,
+                  background: `color-mix(in srgb, ${accentVar} 7%, var(--muted))`,
+                  transition:
+                    'border-color var(--t-popover) var(--ease-out), background-color var(--t-popover) var(--ease-out)',
+                }
+              : undefined
+          }
+        >
           <div className="whitespace-pre-wrap break-words">{renderContent(message.content)}</div>
         </div>
         {message.pendingStatus === 'failed' && (
@@ -155,5 +172,6 @@ export const MessageBubble = memo(MessageBubbleImpl, (prev, next) =>
   prev.isGrouped === next.isGrouped &&
   prev.agentId === next.agentId &&
   prev.agentRole === next.agentRole &&
-  prev.agentDepartment === next.agentDepartment,
+  prev.agentDepartment === next.agentDepartment &&
+  prev.accentVar === next.accentVar,
 );

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { sql, tenantId } from '@/lib/db/client';
 import { latestHeartbeatsByAgent } from '@/lib/heartbeat';
+import { compareExecOrder } from '@/lib/exec-order';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -25,6 +26,11 @@ export async function GET(request: Request) {
 
     // Leadership lens = the executive org chart (all C-suite + orchestrator).
     // Every other lens = just that department's team (head + sub-agents).
+    // The leadership branch fetches unordered and sorts in JS below — see
+    // compareExecOrder (src/lib/exec-order.ts) for why: a plain `department` CASE
+    // here reads as CEO, CMO, CRO, COO, CXO (department alpha-ish order), which is
+    // NOT real C-suite seniority. The canonical rank list is the single sort layer
+    // shared with the Agents "Org chart" section and the Command Chat picker.
     const baseRows = validDept === 'leadership'
       ? await sql()`
           SELECT id, name, role_title, department, description, is_executive
@@ -32,13 +38,6 @@ export async function GET(request: Request) {
           WHERE tenant_id = ${tenantId()}
             AND (is_executive = true OR department = 'leadership')
             AND enabled = true
-          ORDER BY
-            CASE id WHEN 'keyplayer' THEN 0 WHEN 'ai-ceo' THEN 1 ELSE 2 END,
-            CASE department
-              WHEN 'leadership' THEN 0 WHEN 'marketing' THEN 1
-              WHEN 'revenue' THEN 2 WHEN 'operations' THEN 3
-              WHEN 'client_experience' THEN 4 ELSE 5
-            END
         `
       : await sql()`
           SELECT id, name, role_title, department, description, is_executive
@@ -51,6 +50,7 @@ export async function GET(request: Request) {
       id: string; name: string; role_title: string | null; department: string | null;
       description: string; is_executive: boolean;
     }>;
+    if (validDept === 'leadership') baseList.sort(compareExecOrder);
     const ids = baseList.map((r) => r.id);
     if (ids.length === 0) {
       return NextResponse.json({ department: validDept, agents: [] });

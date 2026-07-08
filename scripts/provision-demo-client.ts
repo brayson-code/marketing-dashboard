@@ -37,6 +37,7 @@ import { createCampaign, updateCampaign } from '../src/lib/campaigns';
 import { setEnabledViews, TOGGLEABLE_HREFS } from '../src/lib/command-center-views';
 import { saveCompanyPlaybook, type PlaybookAnswers } from '../src/lib/company-playbook';
 import { INDUSTRY_TEMPLATES } from '../src/lib/dashboard-layout';
+import { activateAndLaunchQuickMission } from '../src/lib/activation';
 import {
   assertTestProject,
   isUuid,
@@ -930,6 +931,26 @@ async function main() {
     // Draft mission = paused, inert campaign container.
     const campaignId = await upsertPausedCampaign(tenantId, spec.mission);
     console.log(`✅ campaign "${spec.mission.name}" ready (paused): ${campaignId}`);
+
+    // Quick-win activation. Real invited clients (src/app/api/clients) only get this
+    // when they finish the onboarding wizard (POST /api/onboarding) — but a demo
+    // tenant is stood up entirely by THIS script and nobody ever runs that wizard for
+    // it, so tenants.activation_started_at stayed null forever and the Overview's
+    // QuickWinCountdown card (src/components/dashboard/quick-win-countdown.tsx) never
+    // showed. Its hide condition is `!state.started`, and by design (see
+    // src/lib/activation.ts) the 72h clock only starts once a real mission is fired —
+    // "a countdown without an action is just pressure" — so the fix here is to pair
+    // them the same way onboarding does, not to show a bare countdown. Idempotent
+    // (gated on activation_quick_mission_id) and best-effort: needs a reachable
+    // Claude key, which is only guaranteed for local/dev runs of this TEST-only
+    // script (getAnthropicKey's platform-key fallback is HQ-tenant-or-dev-only) — a
+    // failure here never fails provisioning.
+    const activation = await activateAndLaunchQuickMission({ agencyName: spec.name, industry: spec.industry });
+    console.log(
+      activation.started
+        ? `✅ quick-win activation clock started (mission ${activation.missionId})`
+        : '  [warn] quick-win activation not started — retryable (likely no reachable Claude key for this run)',
+    );
   });
 
   // 7) Provenance row. Prefer HQ (DEFAULT_TENANT_ID) as the audit tenant like the

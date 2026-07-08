@@ -10,6 +10,8 @@ import { googleToolDefinitions, handleGoogleTool, googleActionsAllowed, GOOGLE_T
 import { smsToolDefinitions, handleSmsTool, smsAllowed, SMS_TOOL_NAMES } from './sms-tools';
 import { firecrawlToolDefinitions, handleFirecrawlTool, firecrawlAllowed, FIRECRAWL_TOOL_NAMES } from './firecrawl-tools';
 import { jobberToolDefinitions, handleJobberTool, JOBBER_TOOL_NAMES } from './jobber-tools';
+import { nativeToolDefinitions, handleNativeTool, NATIVE_TOOL_NAMES } from './native-tools';
+import { cronToolDefinitions, handleCronTool, CRON_READ_TOOL_NAMES } from './cron-tools';
 import { fetchToolDefinitions, handleFetchTool, FETCH_TOOL_NAMES } from './fetch-tools';
 import { clipToolDefinitions, handleClipTool, CLIP_TOOL_NAMES } from './clip-tools';
 import { chooseVariant } from './selection';
@@ -532,6 +534,12 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
     // included only when JOBBER_WRITE_ENABLED === 'true'. (This whole array is the
     // non-tool-free branch, so tool-free runs never see these.)
     ...jobberToolDefinitions(),
+    // Native marketing-data tools — the client's OWN CRM / content / analytics /
+    // ROI / documents / sequences / competitor intel (reads + internal-state writes).
+    ...nativeToolDefinitions(),
+    // Cron — sub-agents get READS ONLY; create_cron_job is orchestrator-only so its
+    // owner-approval gate can't be bypassed (includeWrite:false → write not registered).
+    ...cronToolDefinitions({ includeWrite: false }),
   ];
 
   // Cache the initial task message. Multi-turn agents (research runs a
@@ -709,7 +717,9 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
               (GOOGLE_TOOL_NAMES as readonly string[]).includes(b.name) ||
               (SMS_TOOL_NAMES as readonly string[]).includes(b.name) ||
               FIRECRAWL_TOOL_NAMES.has(b.name) ||
-              JOBBER_TOOL_NAMES.has(b.name)
+              JOBBER_TOOL_NAMES.has(b.name) ||
+              NATIVE_TOOL_NAMES.has(b.name) ||
+              (CRON_READ_TOOL_NAMES as readonly string[]).includes(b.name)
             ),
         );
         if (handledToolUses.length === 0) {
@@ -735,6 +745,8 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
           if ((SMS_TOOL_NAMES as readonly string[]).includes(tu.name)) return handleSmsTool(tu, type);
           if (FIRECRAWL_TOOL_NAMES.has(tu.name)) return handleFirecrawlTool(tu, type);
           if (JOBBER_TOOL_NAMES.has(tu.name)) return handleJobberTool(tu, type);
+          if (NATIVE_TOOL_NAMES.has(tu.name)) return handleNativeTool(tu, type);
+          if ((CRON_READ_TOOL_NAMES as readonly string[]).includes(tu.name)) return handleCronTool(tu, type);
           return handleKgTool(tu, type);
         }));
         // Merge the correction (if any) into the same user block as the tool

@@ -5,6 +5,7 @@ import { Bot, Loader2, Cpu, Activity, Coins, Crown, Users, FolderOpen } from 'lu
 import Link from 'next/link';
 import { type Department } from '@/components/agent-orb';
 import { AgentIcon } from '@/components/agent-icon';
+import { compareExecOrder } from '@/lib/exec-order';
 
 type Status = 'active' | 'idle' | 'error' | 'planned';
 
@@ -86,10 +87,12 @@ export default function SquadsPage() {
 
   const orchestrator = agents.find((a) => a.id === 'keyplayer');
   // "Org chart" = the executive layer (AI CEO + the rest of the C-suite). The
-  // orchestrator sits above this row as its own highlight card.
+  // orchestrator sits above this row as its own highlight card. Ordered by real
+  // C-suite seniority (see lib/exec-order), not alphabetically by name — that used
+  // to put COO after CMO/CRO instead of right behind the CEO.
   const orgChart = agents
     .filter((a) => a.is_executive && a.id !== 'keyplayer')
-    .sort((a, b) => (a.id === 'ai-ceo' ? -1 : b.id === 'ai-ceo' ? 1 : a.name.localeCompare(b.name)));
+    .sort(compareExecOrder);
   // "Specialists" = everyone else — the workers each exec dispatches.
   const specialists = agents.filter((a) => !a.is_executive && a.id !== 'keyplayer');
   const activeCount = agents.filter((a) => a.status === 'active').length;

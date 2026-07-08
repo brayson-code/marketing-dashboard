@@ -83,10 +83,14 @@ export const DEFAULT_TEMPLATE: DashboardLayout = makeLayout([
 // queues, the team, active automations, spend. Deliberately NO content_lab /
 // competitor_intel / engagement / knowledge_map (a landscaper doesn't want Content Labs
 // or competitor reels on their overview). Command Chat leads here too — same intentional
-// "on by default in every work space" call as DEFAULT_TEMPLATE.
+// "on by default in every work space" call as DEFAULT_TEMPLATE. quick_win is included
+// (same slot as DEFAULT_TEMPLATE, right after kpi_strip) — an ops-focused tenant still
+// gets the 72-hour first-win push; it wasn't a deliberate exclusion, just missed when
+// this template was written before quick_win existed.
 const OPS_TEMPLATE: DashboardLayout = makeLayout([
   w('agent_chat', 3),
   w('kpi_strip', 3),
+  w('quick_win', 3),
   w('north_star', 3),
   w('operator_queue', 1),
   w('todays_priorities', 1),

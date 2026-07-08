@@ -1,7 +1,27 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { RotateCcw, History, Pencil, Plus, Trash2, X, BookmarkPlus, Wand2 } from 'lucide-react';
+import type { CSSProperties } from 'react';
+import { RotateCcw, History, Pencil, Plus, Trash2, X, BookmarkPlus, Wand2, GripVertical } from 'lucide-react';
+import {
+  DndContext,
+  DragOverlay,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  MeasuringStrategy,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  verticalListSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from '@dnd-kit/sortable';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { toast } from '@/components/ui/toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -78,6 +98,10 @@ function formatRunTs(ts?: number | string | null) {
   return Number.isNaN(d.getTime()) ? String(ts) : d.toLocaleString();
 }
 
+// The shared row/column-header grid template. First column is the drag handle
+// (new — was just toggle · name · schedule · next-run · actions before).
+const ROW_GRID_COLUMNS = '1.25rem 2.5rem 1fr 14rem 10rem 6rem';
+
 // ── Schedule editor sub-component ─────────────────────────────────────────────
 
 function isSubHourMinuteStep(expr: string): boolean {
@@ -150,8 +174,348 @@ function ScheduleEditor({ value, onChange, tz }: ScheduleEditorProps) {
   );
 }
 
-// ── Schedule section in the JSON editor
-// When user edits the JSON textarea directly, we also show a helper above it.
+// ── Job row (sortable) ────────────────────────────────────────────────────────
+//
+// A stable, module-level component (like widget-board's SortableWidget) so dnd-kit's
+// useSortable keeps its DOM registration across parent re-renders — a component
+// redefined inside its parent's body loses identity every render and drag breaks.
+
+interface CronJobRowProps {
+  job: CronJob;
+  busy: boolean;
+  isOpen: boolean;
+  runList: CronRun[];
+  canWrite: boolean;
+  onToggle: () => void;
+  onTrigger: () => void;
+  onToggleRuns: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}
+
+function CronJobRow({ job, busy, isOpen, runList, canWrite, onToggle, onTrigger, onToggleRuns, onEdit, onDelete }: CronJobRowProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: job.id,
+    disabled: !canWrite,
+  });
+
+  // TRANSLATE-ONLY (no scale) — same reasoning as widget-board: dnd-kit's default
+  // CSS.Transform.toString() also emits scaleX/scaleY, which would visibly stretch
+  // this fixed-height row. The moving preview is the compact <DragOverlay> card
+  // below, not this live node — the source row just slides to make room.
+  const style: CSSProperties = {
+    transform: isDragging || !transform ? undefined : `translate3d(0, ${Math.round(transform.y)}px, 0)`,
+    transition,
+    position: 'relative',
+    zIndex: isDragging ? 30 : undefined,
+    background: isDragging ? 'var(--card)' : undefined,
+  };
+
+  const lastStatus = job.state?.lastStatus;
+  const running = lastStatus === 'running';
+  const ok = lastStatus === 'ok';
+  const isError = (!!lastStatus && !ok && !running) || !!job.state?.lastError;
+  const statusClass = running
+    ? 'status-pill status-neutral'
+    : ok
+      ? 'status-pill status-ok'
+      : isError
+        ? 'status-pill status-danger'
+        : 'status-pill status-neutral';
+  const statusLabel = running ? 'running…' : (lastStatus || 'idle');
+  const isDisabled = job.enabled === false;
+  const expr = job.schedule?.expr ?? '';
+  const tz = job.schedule?.tz;
+  const humanSchedule = expr ? cronToHuman(expr, tz) : '—';
+  const scheduleIsRaw = humanSchedule === expr && !!expr;
+
+  return (
+    <div ref={setNodeRef} style={style} className={isDragging ? 'opacity-60' : undefined}>
+      {/* Main row */}
+      <div
+        className="grid items-center gap-x-3 px-3 hover:bg-[color-mix(in_srgb,var(--muted)_40%,transparent)] transition-colors"
+        style={{
+          gridTemplateColumns: ROW_GRID_COLUMNS,
+          minHeight: '44px',
+          transitionProperty: 'background-color',
+          transitionDuration: 'var(--t-press)',
+          transitionTimingFunction: 'var(--ease-out)',
+        }}
+      >
+        {/* Drag handle */}
+        <div className="flex items-center justify-center">
+          {canWrite && (
+            <button
+              type="button"
+              className="p-1 -ml-1 rounded text-muted-foreground hover:text-foreground cursor-grab active:cursor-grabbing touch-none focus-ring"
+              aria-label={`Drag ${job.name || job.id} to reorder`}
+              {...attributes}
+              {...listeners}
+            >
+              <GripVertical size={12} />
+            </button>
+          )}
+        </div>
+
+        {/* Toggle */}
+        <div className="flex items-center justify-center">
+          <button
+            type="button"
+            onClick={onToggle}
+            disabled={busy}
+            aria-label={isDisabled ? 'Enable cron job' : 'Disable cron job'}
+            className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed"
+            style={{
+              backgroundColor: isDisabled
+                ? 'color-mix(in srgb, var(--border) 80%, transparent)'
+                : 'var(--primary)',
+              transitionProperty: 'background-color',
+              transitionDuration: 'var(--t-press)',
+              transitionTimingFunction: 'var(--ease-out)',
+            }}
+          >
+            <span
+              className="pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm"
+              style={{
+                transform: isDisabled ? 'translateX(0)' : 'translateX(1rem)',
+                transitionProperty: 'transform',
+                transitionDuration: 'var(--t-press)',
+                transitionTimingFunction: 'var(--ease-out)',
+              }}
+            />
+          </button>
+        </div>
+
+        {/* Name + agent */}
+        <div className="min-w-0 py-1">
+          <div className="text-xs font-medium truncate leading-tight">{job.name || job.id}</div>
+          {job.agentId && (
+            <div className="text-[10px] text-muted-foreground truncate leading-tight">{job.agentId}{job.skill ? ` · ${job.skill}` : ''}</div>
+          )}
+        </div>
+
+        {/* Human schedule */}
+        <div className="text-xs text-muted-foreground truncate" title={scheduleIsRaw ? expr : `${expr}${tz ? ` (${tz})` : ''}`}>
+          {scheduleIsRaw
+            ? <span className="font-mono text-[10px]">{expr}</span>
+            : humanSchedule}
+        </div>
+
+        {/* Next run / status */}
+        <div className="text-[10px] text-muted-foreground truncate">
+          {job.state?.nextRunAtMs
+            ? formatTime(job.state.nextRunAtMs)
+            : <span className={statusClass}>{statusLabel}</span>}
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-0.5 justify-end">
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm text-[10px] px-1.5"
+            onClick={onTrigger}
+            disabled={busy}
+            title="Run now"
+            aria-label="Run now"
+          >
+            <RotateCcw size={11} />
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm text-[10px] px-1.5"
+            onClick={onToggleRuns}
+            title="Run history"
+            aria-label="Run history"
+          >
+            <History size={11} />
+          </button>
+          {canWrite && (
+            <>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm text-[10px] px-1.5"
+                onClick={onEdit}
+                aria-label="Edit cron job"
+                title="Edit"
+              >
+                <Pencil size={11} />
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm text-[10px] px-1.5 text-destructive"
+                onClick={onDelete}
+                aria-label="Delete cron job"
+                title="Delete"
+              >
+                <Trash2 size={11} />
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Status/error drilldown (inline below the row) */}
+      {isError && (
+        <div className="mx-3 mb-1 bg-destructive/10 border border-destructive/30 rounded-md p-2 text-[11px] space-y-1">
+          <span className="text-destructive font-medium">Error · </span>
+          <span className="text-muted-foreground font-mono">{job.state?.lastStatus || 'unknown'}</span>
+          {job.state?.lastError && <div className="text-destructive">{job.state.lastError}</div>}
+        </div>
+      )}
+
+      {/* Run history drawer */}
+      {isOpen && (
+        <div className="mx-3 mb-2 bg-muted/20 border border-border/40 rounded-md p-3 text-xs space-y-2">
+          {runList.length === 0 ? (
+            <div className="text-muted-foreground">No recent runs</div>
+          ) : (
+            runList.map((r, idx) => (
+              <div key={idx} className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-mono text-[10px]">{formatRunTs(r.ts)}</div>
+                  {r.summary && (
+                    <div className="text-[11px] text-muted-foreground line-clamp-2">{r.summary}</div>
+                  )}
+                  {r.error && (
+                    <div className="text-[11px] text-destructive">{r.error}</div>
+                  )}
+                </div>
+                <div className="text-right shrink-0">
+                  <div className={r.status === 'ok' ? 'status-pill status-ok' : 'status-pill status-danger'}>{r.status || 'unknown'}</div>
+                  <div className="text-[10px] text-muted-foreground mt-1">
+                    {r.durationMs ? `${Math.round(r.durationMs / 1000)}s` : '—'}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Compact, FIXED-SIZE drag preview rendered in the <DragOverlay> — same pattern as
+// widget-board's DragCard. It follows the pointer at a constant size so the ghost
+// never inherits the live row's grid width, and the live rows below just slide.
+function CronDragCard({ job }: { job: CronJob }) {
+  return (
+    <div
+      className="panel flex items-center gap-2.5 px-3 py-2 shadow-xl"
+      style={{ width: 260, cursor: 'grabbing', borderColor: 'color-mix(in srgb, var(--primary) 55%, var(--border))' }}
+    >
+      <GripVertical size={13} className="shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1">
+        <span className="block text-xs font-medium truncate">{job.name || job.id}</span>
+        {job.agentId && <span className="block text-[10px] text-muted-foreground truncate">{job.agentId}</span>}
+      </span>
+    </div>
+  );
+}
+
+// ── Category section (its own sortable list + drag context) ─────────────────
+
+interface CategorySectionProps {
+  category: Category;
+  catJobs: CronJob[];
+  pending: Record<string, boolean>;
+  openRuns: Record<string, boolean>;
+  runs: Record<string, CronRun[]>;
+  canWrite: boolean;
+  onToggle: (id: string) => void;
+  onTrigger: (id: string) => void;
+  onToggleRuns: (id: string) => void;
+  onEdit: (job: CronJob) => void;
+  onDelete: (id: string) => void;
+  onReorder: (orderedIds: string[]) => void;
+}
+
+function CategorySection({
+  category, catJobs, pending, openRuns, runs, canWrite,
+  onToggle, onTrigger, onToggleRuns, onEdit, onDelete, onReorder,
+}: CategorySectionProps) {
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const ids = useMemo(() => catJobs.map((j) => j.id), [catJobs]);
+  const activeJob = activeId ? catJobs.find((j) => j.id === activeId) ?? null : null;
+
+  const sensors = useSensors(
+    // Small distance gate so a click on the handle isn't read as a drag.
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  function handleDragStart(e: DragStartEvent) {
+    setActiveId(String(e.active.id));
+  }
+
+  function handleDragEnd(e: DragEndEvent) {
+    setActiveId(null);
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const oldIndex = catJobs.findIndex((j) => j.id === active.id);
+    const newIndex = catJobs.findIndex((j) => j.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const reordered = arrayMove(catJobs, oldIndex, newIndex);
+    onReorder(reordered.map((j) => j.id));
+  }
+
+  return (
+    <div>
+      {/* Section header */}
+      <div className="flex items-center gap-2 px-3 py-1.5">
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{category}</span>
+        <span className="text-[10px] text-muted-foreground">({catJobs.length})</span>
+      </div>
+
+      {/* Column header row */}
+      <div
+        className="grid gap-x-3 px-3 pb-1 border-b border-border/60"
+        style={{ gridTemplateColumns: ROW_GRID_COLUMNS }}
+      >
+        <div />
+        <div />
+        <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60">Job</div>
+        <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60">Schedule</div>
+        <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60">Next run</div>
+        <div />
+      </div>
+
+      {/* Job rows */}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={() => setActiveId(null)}
+        measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+      >
+        <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+          <div className="divide-y divide-border/40">
+            {catJobs.map((job) => (
+              <CronJobRow
+                key={job.id}
+                job={job}
+                busy={!!pending[job.id]}
+                isOpen={!!openRuns[job.id]}
+                runList={runs[job.id] || []}
+                canWrite={canWrite}
+                onToggle={() => onToggle(job.id)}
+                onTrigger={() => onTrigger(job.id)}
+                onToggleRuns={() => onToggleRuns(job.id)}
+                onEdit={() => onEdit(job)}
+                onDelete={() => onDelete(job.id)}
+              />
+            ))}
+          </div>
+        </SortableContext>
+
+        <DragOverlay dropAnimation={null}>
+          {activeJob ? <CronDragCard job={activeJob} /> : null}
+        </DragOverlay>
+      </DndContext>
+    </div>
+  );
+}
 
 // ── CronBoard ─────────────────────────────────────────────────────────────────
 
@@ -163,6 +527,10 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
   );
   const [pending, setPending] = useState<Record<string, boolean>>({});
   const [optimisticEnabled, setOptimisticEnabled] = useState<Record<string, boolean>>({});
+  // Full-list id order applied optimistically right after a drag, before the PATCH
+  // round-trip lands. Cleared once a poll comes back matching it (see the effect
+  // below) — same optimistic-then-reconcile shape as optimisticEnabled.
+  const [orderOverride, setOrderOverride] = useState<string[] | null>(null);
   const [runs, setRuns] = useState<Record<string, CronRun[]>>({});
   const [openRuns, setOpenRuns] = useState<Record<string, boolean>>({});
   const [editOpen, setEditOpen] = useState(false);
@@ -189,9 +557,19 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
 
   const jobs = useMemo(() => {
     const base = data?.jobs ?? [];
-    if (Object.keys(optimisticEnabled).length === 0) return base;
-    return base.map((j) => (j.id in optimisticEnabled ? { ...j, enabled: optimisticEnabled[j.id] } : j));
-  }, [data?.jobs, optimisticEnabled]);
+    let list = base;
+    if (Object.keys(optimisticEnabled).length > 0) {
+      list = list.map((j) => (j.id in optimisticEnabled ? { ...j, enabled: optimisticEnabled[j.id] } : j));
+    }
+    if (orderOverride) {
+      const byId = new Map(list.map((j) => [j.id, j] as const));
+      const known = new Set(orderOverride);
+      const reordered = orderOverride.map((id) => byId.get(id)).filter((j): j is CronJob => !!j);
+      const extras = list.filter((j) => !known.has(j.id)); // newly-created/unknown ids, appended
+      list = [...reordered, ...extras];
+    }
+    return list;
+  }, [data?.jobs, optimisticEnabled, orderOverride]);
   const canWrite = !!data?.can_write;
   const canTemplatesWrite = !!data?.can_templates_write;
 
@@ -252,6 +630,14 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
     });
   }, [data?.jobs]);
 
+  // Reconcile the optimistic drag order once a poll reflects the persisted order.
+  useEffect(() => {
+    const fresh = data?.jobs;
+    if (!fresh || !orderOverride) return;
+    const freshIds = fresh.map((j) => j.id).join('|');
+    if (freshIds === orderOverride.join('|')) setOrderOverride(null);
+  }, [data?.jobs, orderOverride]);
+
   const runAction = async (id: string, action: 'toggle' | 'trigger') => {
     setPending((p) => ({ ...p, [id]: true }));
     let applied = false;
@@ -282,6 +668,31 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
     } finally {
       setPending((p) => ({ ...p, [id]: false }));
     }
+  };
+
+  // Drag-to-reorder: apply the new order to the UI immediately, then persist just
+  // the moved category's ids (in their new relative order) via PATCH /api/cron/order.
+  const handleReorder = (orderedCategoryIds: string[]) => {
+    const movedSet = new Set(orderedCategoryIds);
+    setOrderOverride((prev) => {
+      const base = prev ?? jobs.map((j) => j.id);
+      let ptr = 0;
+      return base.map((id) => (movedSet.has(id) ? orderedCategoryIds[ptr++] : id));
+    });
+    (async () => {
+      try {
+        const res = await fetch('/api/cron/order', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: orderedCategoryIds }),
+        });
+        if (!res.ok) throw new Error('Request failed');
+        setRefreshKey((k) => k + 1);
+      } catch {
+        setOrderOverride(null);
+        toast.error('Could not save the new order');
+      }
+    })();
   };
 
   const openCreate = () => {
@@ -440,211 +851,6 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
 
   const wrapperClass = variant === 'page' ? 'space-y-4 animate-in' : 'panel';
 
-  // ── Render a single job row ───────────────────────────────────────────────
-
-  function JobRow({ job }: { job: CronJob }) {
-    const lastStatus = job.state?.lastStatus;
-    const running = lastStatus === 'running';
-    const ok = lastStatus === 'ok';
-    const isError = (!!lastStatus && !ok && !running) || !!job.state?.lastError;
-    const statusClass = running
-      ? 'status-pill status-neutral'
-      : ok
-        ? 'status-pill status-ok'
-        : isError
-          ? 'status-pill status-danger'
-          : 'status-pill status-neutral';
-    const statusLabel = running ? 'running…' : (lastStatus || 'idle');
-    const busy = !!pending[job.id];
-    const isDisabled = job.enabled === false;
-    const runList = runs[job.id] || [];
-    const expr = job.schedule?.expr ?? '';
-    const tz = job.schedule?.tz;
-    const humanSchedule = expr ? cronToHuman(expr, tz) : '—';
-    const scheduleIsRaw = humanSchedule === expr && !!expr;
-
-    return (
-      <>
-        {/* Main row */}
-        <div
-          className="grid items-center gap-x-3 px-3 hover:bg-[color-mix(in_srgb,var(--muted)_40%,transparent)] transition-colors"
-          style={{
-            gridTemplateColumns: '2.5rem 1fr 14rem 10rem 6rem',
-            minHeight: '44px',
-            transitionProperty: 'background-color',
-            transitionDuration: 'var(--t-press)',
-            transitionTimingFunction: 'var(--ease-out)',
-          }}
-        >
-          {/* Toggle */}
-          <div className="flex items-center justify-center">
-            <button
-              type="button"
-              onClick={() => runAction(job.id, 'toggle')}
-              disabled={busy}
-              aria-label={isDisabled ? 'Enable cron job' : 'Disable cron job'}
-              className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-not-allowed"
-              style={{
-                backgroundColor: isDisabled
-                  ? 'color-mix(in srgb, var(--border) 80%, transparent)'
-                  : 'var(--primary)',
-                transitionProperty: 'background-color',
-                transitionDuration: 'var(--t-press)',
-                transitionTimingFunction: 'var(--ease-out)',
-              }}
-            >
-              <span
-                className="pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm"
-                style={{
-                  transform: isDisabled ? 'translateX(0)' : 'translateX(1rem)',
-                  transitionProperty: 'transform',
-                  transitionDuration: 'var(--t-press)',
-                  transitionTimingFunction: 'var(--ease-out)',
-                }}
-              />
-            </button>
-          </div>
-
-          {/* Name + agent */}
-          <div className="min-w-0 py-1">
-            <div className="text-xs font-medium truncate leading-tight">{job.name || job.id}</div>
-            {job.agentId && (
-              <div className="text-[10px] text-muted-foreground truncate leading-tight">{job.agentId}{job.skill ? ` · ${job.skill}` : ''}</div>
-            )}
-          </div>
-
-          {/* Human schedule */}
-          <div className="text-xs text-muted-foreground truncate" title={scheduleIsRaw ? expr : `${expr}${tz ? ` (${tz})` : ''}`}>
-            {scheduleIsRaw
-              ? <span className="font-mono text-[10px]">{expr}</span>
-              : humanSchedule}
-          </div>
-
-          {/* Next run / status */}
-          <div className="text-[10px] text-muted-foreground truncate">
-            {job.state?.nextRunAtMs
-              ? formatTime(job.state.nextRunAtMs)
-              : <span className={statusClass}>{statusLabel}</span>}
-          </div>
-
-          {/* Actions */}
-          <div className="flex items-center gap-0.5 justify-end">
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm text-[10px] px-1.5"
-              onClick={() => runAction(job.id, 'trigger')}
-              disabled={busy}
-              title="Run now"
-              aria-label="Run now"
-            >
-              <RotateCcw size={11} />
-            </button>
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm text-[10px] px-1.5"
-              onClick={() => toggleRuns(job.id)}
-              title="Run history"
-              aria-label="Run history"
-            >
-              <History size={11} />
-            </button>
-            {canWrite && (
-              <>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm text-[10px] px-1.5"
-                  onClick={() => openEdit(job)}
-                  aria-label="Edit cron job"
-                  title="Edit"
-                >
-                  <Pencil size={11} />
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm text-[10px] px-1.5 text-destructive"
-                  onClick={() => deleteJob(job.id)}
-                  aria-label="Delete cron job"
-                  title="Delete"
-                >
-                  <Trash2 size={11} />
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Status/error drilldown (inline below the row) */}
-        {isError && (
-          <div className="mx-3 mb-1 bg-destructive/10 border border-destructive/30 rounded-md p-2 text-[11px] space-y-1">
-            <span className="text-destructive font-medium">Error · </span>
-            <span className="text-muted-foreground font-mono">{job.state?.lastStatus || 'unknown'}</span>
-            {job.state?.lastError && <div className="text-destructive">{job.state.lastError}</div>}
-          </div>
-        )}
-
-        {/* Run history drawer */}
-        {openRuns[job.id] && (
-          <div className="mx-3 mb-2 bg-muted/20 border border-border/40 rounded-md p-3 text-xs space-y-2">
-            {runList.length === 0 ? (
-              <div className="text-muted-foreground">No recent runs</div>
-            ) : (
-              runList.map((r, idx) => (
-                <div key={idx} className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-mono text-[10px]">{formatRunTs(r.ts)}</div>
-                    {r.summary && (
-                      <div className="text-[11px] text-muted-foreground line-clamp-2">{r.summary}</div>
-                    )}
-                    {r.error && (
-                      <div className="text-[11px] text-destructive">{r.error}</div>
-                    )}
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className={r.status === 'ok' ? 'status-pill status-ok' : 'status-pill status-danger'}>{r.status || 'unknown'}</div>
-                    <div className="text-[10px] text-muted-foreground mt-1">
-                      {r.durationMs ? `${Math.round(r.durationMs / 1000)}s` : '—'}
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        )}
-      </>
-    );
-  }
-
-  // ── Category section ─────────────────────────────────────────────────────
-
-  function CategorySection({ category, catJobs }: { category: Category; catJobs: CronJob[] }) {
-    return (
-      <div>
-        {/* Section header */}
-        <div className="flex items-center gap-2 px-3 py-1.5">
-          <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{category}</span>
-          <span className="text-[10px] text-muted-foreground">({catJobs.length})</span>
-        </div>
-
-        {/* Column header row */}
-        <div
-          className="grid gap-x-3 px-3 pb-1 border-b border-border/60"
-          style={{ gridTemplateColumns: '2.5rem 1fr 14rem 10rem 6rem' }}
-        >
-          <div />
-          <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60">Job</div>
-          <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60">Schedule</div>
-          <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60">Next run</div>
-          <div />
-        </div>
-
-        {/* Job rows */}
-        <div className="divide-y divide-border/40">
-          {catJobs.map((job) => <JobRow key={job.id} job={job} />)}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className={wrapperClass}>
       {/* Modal editor */}
@@ -781,7 +987,7 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
           <div>
             <h2 className={variant === 'page' ? 'text-xl font-semibold' : 'text-sm font-medium'}>Cron Jobs</h2>
             {variant === 'page' && (
-              <p className="text-sm text-muted-foreground">Schedule recurring KeyPlayer sub-agent tasks. The dispatcher runs due jobs hourly.</p>
+              <p className="text-sm text-muted-foreground">Schedule recurring KeyPlayer sub-agent tasks. The dispatcher runs due jobs hourly. Drag the grip to reorder.</p>
             )}
           </div>
           <div className="flex items-center gap-2">
@@ -823,7 +1029,23 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
             {CATEGORY_ORDER.map((cat) => {
               const catJobs = grouped.get(cat) ?? [];
               if (catJobs.length === 0) return null;
-              return <CategorySection key={cat} category={cat} catJobs={catJobs} />;
+              return (
+                <CategorySection
+                  key={cat}
+                  category={cat}
+                  catJobs={catJobs}
+                  pending={pending}
+                  openRuns={openRuns}
+                  runs={runs}
+                  canWrite={canWrite}
+                  onToggle={(id) => runAction(id, 'toggle')}
+                  onTrigger={(id) => runAction(id, 'trigger')}
+                  onToggleRuns={toggleRuns}
+                  onEdit={openEdit}
+                  onDelete={deleteJob}
+                  onReorder={handleReorder}
+                />
+              );
             })}
           </div>
         )}

@@ -15,8 +15,11 @@
 // Kept deliberately tiny and DEPENDENCY-FREE so it can be imported from either side
 // (orchestrator gate OR pending-approvals resolve) with zero cycle risk.
 
-/** The orchestrator tools that require owner step-up approval when gating is enabled. */
-export const GATED_TOOLS = ['launch_campaign', 'spawn_subagent'] as const;
+/** The orchestrator tools that require owner step-up approval when gating is enabled.
+ *  `create_cron_job` is here because setting up standing autonomous work is high-impact
+ *  (it is ALSO default-off behind CRON_WRITE_ENABLED); the approval replay lives in
+ *  pending-approvals.ts. */
+export const GATED_TOOLS = ['launch_campaign', 'spawn_subagent', 'create_cron_job'] as const;
 
 export type GatedTool = (typeof GATED_TOOLS)[number];
 
