@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { tenantId, hasTenantContext } from '@/lib/tenant';
-import { getAnthropicKey } from '@/lib/anthropic-key';
 import { buildHelpContext } from '@/lib/help-context';
 import { rateLimit } from '@/lib/rate-limit';
 
@@ -11,11 +10,21 @@ export const runtime = 'nodejs';
 export const maxDuration = 30;
 
 // POST /api/help { messages: [{ role: 'user'|'assistant', content }] }
-// The in-app Help assistant. Answers strictly from the public docs (/docs),
-// which are stuffed into the system prompt by buildHelpContext(). Uses the
-// tenant's own Claude key when present, otherwise the platform key — help must
-// work even before a workspace has connected its own key (that's exactly when a
-// new user is most likely to be stuck).
+// The in-app Help assistant. Answers strictly from the PUBLIC docs (/docs),
+// which are stuffed into the system prompt by buildHelpContext().
+//
+// This is a PLATFORM support feature — docs-grounded help for using the product —
+// NOT per-client agent work. So it deliberately runs on the platform key
+// (process.env.ANTHROPIC_API_KEY) for EVERY tenant, and never on a client's BYO
+// key. Reasons:
+//   - Help must work identically for every workspace, especially brand-new ones
+//     that haven't connected their own Claude key yet — that's exactly when a user
+//     is most likely to be stuck and reach for Help. (A demo tenant, e.g. Bobby's
+//     Landscaping, has no BYO key — the old per-tenant-first path resolved to null
+//     for it.)
+//   - It must never silently spend a client's key/credits on support Q&A.
+//   - It only ever reads the public /docs, so there's no cross-tenant data to leak.
+// Tenant is still resolved (for rate-limiting) but is NOT used to pick the key.
 
 interface ChatMsg { role: 'user' | 'assistant'; content: string }
 
@@ -55,8 +64,8 @@ function systemPrompt(ctx: string): string {
 }
 
 export async function POST(request: Request) {
-  // The widget lives inside the authenticated app, so a tenant normally resolves —
-  // but never hard-fail help on tenant resolution; fall back to the platform key.
+  // Resolve the tenant only to key the rate limit (below). Help never hard-fails
+  // on tenant resolution and never uses the tenant to pick the Claude key.
   let hasTenant = false;
   try { enterTenant(await resolveTenant()); hasTenant = true; } catch { /* anonymous help */ }
 
@@ -84,11 +93,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Ask a question and I\'ll help.' }, { status: 400 });
   }
 
-  const apiKey =
-    (hasTenant ? await getAnthropicKey().catch(() => null) : null) ||
-    process.env.ANTHROPIC_API_KEY?.trim() ||
-    null;
+  // Platform key ONLY — help is a platform support feature, identical for every
+  // tenant, on the platform's dime. Never the per-tenant BYO key.
+  const apiKey = process.env.ANTHROPIC_API_KEY?.trim() || null;
   if (!apiKey) {
+    // Platform key is misconfigured (unset/blank). Surface a clear, user-visible
+    // message (never silence) and log loudly so the operator sees the real cause.
+    console.error('[api/help] platform ANTHROPIC_API_KEY is not set — help assistant disabled');
     return NextResponse.json({
       answer:
         'The help assistant is offline right now. In the meantime, the full documentation is at [the docs](/docs) — ' +
