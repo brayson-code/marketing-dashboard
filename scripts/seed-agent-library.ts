@@ -27,6 +27,7 @@ import { join } from 'node:path';
 import { sql } from '../src/lib/db/client';
 import { SUBAGENT_REGISTRY } from '../src/lib/subagent';
 import { EXEC_SPECS } from './lib/exec-specs';
+import { ARCHETYPE_SOULS } from './lib/archetype-souls';
 
 // keycommand-provisioning lives as a sibling repo. Resolve relative to this file
 // so the script works regardless of the process cwd.
@@ -284,6 +285,13 @@ function nicheRows(): LibRow[] {
       let n = 2;
       while (seen.has(id)) { id = `niche-${nichePrefix(ind.slug)}-${slugify(a.name)}-${n++}`; }
       seen.add(id);
+      // If the inferred archetype has authored prompt blocks (archetype-souls.ts),
+      // the niche agent inherits them and becomes RICH — at provision time the
+      // platform layers the niche/company context (brief + genes) on top. An
+      // archetype with no authored blocks (or the 'general' fallback) stays THIN
+      // (name + `does` only). Blocks are archetype-agnostic to the niche, so the
+      // same three strings serve every niche sharing that archetype.
+      const blocks = ARCHETYPE_SOULS[arch.tag];
       rows.push({
         id,
         name: a.name,
@@ -292,10 +300,12 @@ function nicheRows(): LibRow[] {
         department: null,
         is_executive: false,
         does: a.does,
-        soul: '', agent_md: '', skills: '',
+        soul: blocks?.soul ?? '',
+        agent_md: blocks?.agent_md ?? '',
+        skills: blocks?.skills ?? '',
         default_niches: [ind.slug],
         tags: ['niche', `niche:${ind.slug}`, `archetype:${arch.tag}`],
-        richness: 'thin' as Richness,
+        richness: blocks ? ('rich' as Richness) : ('thin' as Richness),
         source: 'niche',
       });
     }
