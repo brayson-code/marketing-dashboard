@@ -48,9 +48,19 @@ interface RoiSummary {
 }
 
 const INPUT = 'px-3 py-2 rounded-lg border border-border bg-background text-sm w-full';
-const fmtUsd = (n: number | null) => (n == null ? '—' : `$${Math.round(n).toLocaleString()}`);
-const fmtHrs = (n: number) => `${n.toFixed(n < 10 ? 1 : 0)} hrs`;
+const fmtUsd = (n: number | null) => (n == null || !Number.isFinite(n) ? '—' : `$${Math.round(n).toLocaleString()}`);
+const fmtHrs = (n: number) => { const h = Number.isFinite(n) ? n : 0; return `${h.toFixed(h < 10 ? 1 : 0)} hrs`; };
 const WEEKS = 52;
+
+// Read a human error message off a failed response without letting a non-JSON
+// body (empty / HTML error page) throw a confusing "Unexpected end of JSON input".
+async function errMsg(res: Response, fallback: string): Promise<string> {
+  try {
+    const raw = await res.text();
+    if (raw) { try { return (JSON.parse(raw) as { error?: string }).error || fallback; } catch { /* non-JSON */ } }
+  } catch { /* body already consumed / network */ }
+  return `${fallback} (${res.status})`;
+}
 
 // ─── Time Audit task catalog ────────────────────────────────────────────
 // The 8 most universal marketing tasks Brayson's audience burns time on. Each
@@ -85,7 +95,6 @@ function useCountUp(target: number, durationMs = 360): number {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reduced) { setValue(target); fromRef.current = target; return; }
 
     const from = fromRef.current;
     const start = performance.now();
@@ -93,7 +102,9 @@ function useCountUp(target: number, durationMs = 360): number {
     const ease = (t: number) => 1 - Math.pow(1 - t, 3);
 
     const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / durationMs);
+      // Reduced motion → snap to the target on the first frame (no animation).
+      // All setState happens inside rAF (never synchronously in the effect body).
+      const t = reduced ? 1 : Math.min(1, (now - start) / durationMs);
       const v = from + (target - from) * ease(t);
       setValue(v);
       if (t < 1) rafRef.current = requestAnimationFrame(tick);
@@ -146,7 +157,10 @@ function HoursStepper({ value, onChange }: { value: number; onChange: (n: number
 
 // ─── Big animated number ────────────────────────────────────────────────
 function StatNumber({ value, prefix = '', suffix = '', decimals = 0 }: { value: number; prefix?: string; suffix?: string; decimals?: number }) {
-  const v = useCountUp(value);
+  // Guard against a non-finite input (broken field entry) reaching the animator —
+  // otherwise the count-up would render a literal "NaN".
+  const safe = Number.isFinite(value) ? value : 0;
+  const v = useCountUp(safe);
   const display = decimals > 0 ? v.toFixed(decimals) : Math.round(v).toLocaleString();
   return (
     <span className="tabular-nums">
@@ -155,8 +169,33 @@ function StatNumber({ value, prefix = '', suffix = '', decimals = 0 }: { value: 
   );
 }
 
+// Empty ROI summary — the graceful default when the audit is untouched and no
+// agent actions have been logged yet (fresh / demo tenants). Rendering from this
+// (instead of null) means an API failure never traps the page on a skeleton: we
+// show the real UI in its "No ROI data yet" state plus an error banner.
+const EMPTY_SUMMARY: RoiSummary = {
+  audit: {
+    annual_revenue: null,
+    annual_profit: null,
+    hours_per_week: null,
+    admin_percentage: null,
+    presets: {},
+    updated_at: null,
+  },
+  hoursSavedAllTime: 0,
+  hoursSavedThisMonth: 0,
+  valueReclaimed: 0,
+  oldDollarPerHour: null,
+  newDollarPerHour: null,
+  projectedAnnualValue: null,
+  byAgent: [],
+  byMonth: [],
+  hasActuals: false,
+};
+
 export default function RoiPage() {
   const [data, setData] = useState<RoiSummary | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [form, setForm] = useState({ annual_revenue: '', annual_profit: '', hours_per_week: '', admin_percentage: '' });
@@ -189,18 +228,41 @@ export default function RoiPage() {
   const load = useCallback(async () => {
     try {
       const res = await fetch('/api/roi', { cache: 'no-store' });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Failed to load');
-      setData(json);
-      setPresets(json.audit.presets ?? {});
+      // Parse defensively: an error response may be empty or non-JSON (e.g. an
+      // infra 500 HTML page). res.json() would throw and mask the real status,
+      // so read text first and only JSON.parse when there's a body.
+      const raw = await res.text();
+      let json: unknown = null;
+      if (raw) { try { json = JSON.parse(raw); } catch { /* non-JSON body */ } }
+      const body = (json ?? {}) as Partial<RoiSummary> & { error?: string };
+      if (!res.ok) throw new Error(body.error || `Failed to load (${res.status})`);
+
+      // Merge onto EMPTY_SUMMARY so a partial/malformed 200 body can never throw
+      // on a missing `audit` (or null nested fields) downstream.
+      const summary: RoiSummary = {
+        ...EMPTY_SUMMARY,
+        ...body,
+        audit: { ...EMPTY_SUMMARY.audit, ...(body.audit ?? {}) },
+        byAgent: Array.isArray(body.byAgent) ? body.byAgent : [],
+        byMonth: Array.isArray(body.byMonth) ? body.byMonth : [],
+      };
+      setData(summary);
+      setPresets(summary.audit.presets ?? {});
       setForm({
-        annual_revenue: json.audit.annual_revenue?.toString() ?? '',
-        annual_profit: json.audit.annual_profit?.toString() ?? '',
-        hours_per_week: json.audit.hours_per_week?.toString() ?? '',
-        admin_percentage: json.audit.admin_percentage?.toString() ?? '',
+        annual_revenue: summary.audit.annual_revenue?.toString() ?? '',
+        annual_profit: summary.audit.annual_profit?.toString() ?? '',
+        hours_per_week: summary.audit.hours_per_week?.toString() ?? '',
+        admin_percentage: summary.audit.admin_percentage?.toString() ?? '',
       });
       setError(null);
-    } catch (e) { setError((e as Error).message); }
+    } catch (e) {
+      // Keep any previously-loaded data on screen; if we never loaded, the page
+      // still renders (from EMPTY_SUMMARY below) with the error banner instead
+      // of trapping on the skeleton forever.
+      setError((e as Error).message || 'Failed to load ROI data');
+    } finally {
+      setLoaded(true);
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -240,7 +302,7 @@ export default function RoiPage() {
           admin_percentage: form.admin_percentage ? Number(form.admin_percentage) : null,
         }),
       });
-      if (!res.ok) { const j = await res.json(); setError(j.error || 'Save failed'); }
+      if (!res.ok) { setError(await errMsg(res, 'Save failed')); }
       else { setError(null); setNotice('Key Audit saved'); await load(); }
     } catch (e) { setError((e as Error).message); }
     finally { setSaving(false); }
@@ -250,15 +312,20 @@ export default function RoiPage() {
     setSaving(true);
     try {
       const res = await fetch('/api/roi', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ presets }) });
-      if (!res.ok) { const j = await res.json(); setError(j.error || 'Save failed'); }
+      if (!res.ok) { setError(await errMsg(res, 'Save failed')); }
       else { setError(null); setNotice('Presets saved'); await load(); }
     } catch (e) { setError((e as Error).message); }
     finally { setSaving(false); }
   }
 
-  if (!data) return <div className="space-y-4 animate-in"><Skeleton className="h-8 w-48" /><div className="grid grid-cols-1 md:grid-cols-3 gap-3">{[0,1,2].map((i)=><Skeleton key={i} className="h-28 w-full" />)}</div><Skeleton className="h-64 w-full" /></div>;
+  // Show the skeleton only while the first load is genuinely in flight. Once
+  // we've attempted a load (success OR failure) we always render the real UI —
+  // with data on success, or EMPTY_SUMMARY + the error banner on failure — so a
+  // fetch error can never trap the page on an endless skeleton.
+  if (!loaded && !data) return <div className="space-y-4 animate-in"><Skeleton className="h-8 w-48" /><div className="grid grid-cols-1 md:grid-cols-3 gap-3">{[0,1,2].map((i)=><Skeleton key={i} className="h-28 w-full" />)}</div><Skeleton className="h-64 w-full" /></div>;
 
-  const maxMonth = Math.max(1, ...data.byMonth.map((m) => m.hours));
+  const summary = data ?? EMPTY_SUMMARY;
+  const maxMonth = Math.max(1, ...summary.byMonth.map((m) => m.hours));
 
   return (
     <div className="space-y-6 animate-in">
@@ -267,7 +334,7 @@ export default function RoiPage() {
           <h1 className="text-h1 flex items-center gap-2"><Timer size={18} className="text-primary" /> ROI · Time Audit</h1>
           <p className="text-xs text-muted-foreground">
             Find out where your week is going — and what an agent could give back.
-            <span className={`badge ml-2 ${data.hasActuals ? 'badge-success' : 'badge-warning'}`}>{data.hasActuals ? 'actual' : 'projected'}</span>
+            <span className={`badge ml-2 ${summary.hasActuals ? 'badge-success' : 'badge-warning'}`}>{summary.hasActuals ? 'actual' : 'projected'}</span>
           </p>
         </div>
       </div>
@@ -466,24 +533,43 @@ export default function RoiPage() {
         <p className="text-small">What your agents have actually given back so far.</p>
       </div>
 
+      {/* Designed empty state — a fresh/demo tenant has no logged actions yet, so
+          the hero stats below are all zeros/dashes. Say so plainly instead of
+          leaving the owner staring at an unexplained row of blanks. */}
+      {!summary.hasActuals && (
+        <div className="panel p-4 flex items-start gap-2.5 text-xs text-muted-foreground">
+          <Sparkles size={14} className="text-primary shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <div className="text-foreground font-medium">No ROI data yet</div>
+            <p>
+              This connects automatically as your agents complete work. Every action they
+              take logs the time it saved — the numbers below fill in from there.
+              {summary.audit.annual_profit == null && summary.audit.hours_per_week == null && (
+                <> Set your <span className="text-foreground">Key Audit</span> below to value each hour reclaimed.</>
+              )}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Hero stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div className="panel p-4 space-y-1">
           <div className="text-xs text-muted-foreground flex items-center gap-1.5"><Timer size={12} /> Hours saved</div>
-          <div className="text-2xl font-semibold tabular-nums">{fmtHrs(data.hoursSavedAllTime)}</div>
-          <div className="text-[11px] text-muted-foreground">{fmtHrs(data.hoursSavedThisMonth)} this month</div>
+          <div className="text-2xl font-semibold tabular-nums">{fmtHrs(summary.hoursSavedAllTime)}</div>
+          <div className="text-[11px] text-muted-foreground">{fmtHrs(summary.hoursSavedThisMonth)} this month</div>
         </div>
         <div className="panel p-4 space-y-1">
           <div className="text-xs text-muted-foreground flex items-center gap-1.5"><DollarSign size={12} /> Value reclaimed</div>
-          <div className="text-2xl font-semibold tabular-nums">{fmtUsd(data.valueReclaimed)}</div>
-          <div className="text-[11px] text-muted-foreground">projected annual {fmtUsd(data.projectedAnnualValue)}</div>
+          <div className="text-2xl font-semibold tabular-nums">{fmtUsd(summary.valueReclaimed)}</div>
+          <div className="text-[11px] text-muted-foreground">projected annual {fmtUsd(summary.projectedAnnualValue)}</div>
         </div>
         <div className="panel p-4 space-y-1">
           <div className="text-xs text-muted-foreground flex items-center gap-1.5"><TrendingUp size={12} /> Your $/hour</div>
           <div className="text-2xl font-semibold flex items-baseline gap-2 tabular-nums">
-            {fmtUsd(data.oldDollarPerHour)}
-            {data.newDollarPerHour != null && data.oldDollarPerHour != null && data.newDollarPerHour > data.oldDollarPerHour && (
-              <span className="text-sm text-emerald-500">→ {fmtUsd(data.newDollarPerHour)}</span>
+            {fmtUsd(summary.oldDollarPerHour)}
+            {summary.newDollarPerHour != null && summary.oldDollarPerHour != null && summary.newDollarPerHour > summary.oldDollarPerHour && (
+              <span className="text-sm text-emerald-500">→ {fmtUsd(summary.newDollarPerHour)}</span>
             )}
           </div>
           <div className="text-[11px] text-muted-foreground">old → projected new</div>
@@ -537,9 +623,9 @@ export default function RoiPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="panel p-4 space-y-2">
           <div className="section-title">By agent</div>
-          {data.byAgent.length === 0 ? (
+          {summary.byAgent.length === 0 ? (
             <div className="text-xs text-muted-foreground">No agent activity logged yet. As agents complete tasks, their time savings appear here.</div>
-          ) : data.byAgent.map((a) => (
+          ) : summary.byAgent.map((a) => (
             <div key={a.agent_id ?? 'unknown'} className="flex items-center justify-between text-xs">
               <span className="font-mono">{a.agent_id ?? 'unknown'}</span>
               <span className="text-muted-foreground tabular-nums">{fmtHrs(a.hours)} · {fmtUsd(a.value)}</span>
@@ -548,9 +634,9 @@ export default function RoiPage() {
         </div>
         <div className="panel p-4 space-y-2">
           <div className="section-title">Monthly trend</div>
-          {data.byMonth.length === 0 ? (
+          {summary.byMonth.length === 0 ? (
             <div className="text-xs text-muted-foreground">No history yet.</div>
-          ) : data.byMonth.map((m) => (
+          ) : summary.byMonth.map((m) => (
             <div key={m.month} className="space-y-0.5">
               <div className="flex justify-between text-[11px] text-muted-foreground"><span>{m.month}</span><span className="tabular-nums">{fmtHrs(m.hours)}</span></div>
               <div className="h-2 rounded bg-[var(--surface-2)] overflow-hidden">

@@ -51,6 +51,14 @@ function num(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Coerce a DB aggregate (numeric comes back as a string) to a finite number,
+ *  defaulting to 0. Guarantees the summary never carries NaN/Infinity into the
+ *  page or the read_roi_summary agent tool. */
+function finite(v: unknown): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
 /** The owner's current $/hr (value of their time): annual_profit ÷ annual hours worked. */
 export function oldDollarPerHour(a: KeyAudit): number | null {
   if (a.annual_profit == null || !a.hours_per_week) return null;
@@ -122,9 +130,13 @@ export async function logTimeSaving(input: {
   taskId?: number | null;
 }): Promise<void> {
   const audit = await getKeyAudit();
-  const minutes = input.minutes ?? audit.presets[input.actionType] ?? DEFAULT_PRESETS.task_completed;
+  // Resolve minutes from the explicit input → preset → fallback, and clamp to a
+  // finite, non-negative number. Postgres `numeric` accepts 'NaN', so an unguarded
+  // NaN here would silently poison every SUM in the summary.
+  const rawMinutes = input.minutes ?? audit.presets[input.actionType] ?? DEFAULT_PRESETS.task_completed;
+  const minutes = Number.isFinite(rawMinutes) && rawMinutes > 0 ? rawMinutes : DEFAULT_PRESETS.task_completed;
   const rate = oldDollarPerHour(audit) ?? 0;
-  const dollars = (minutes / 60) * rate;
+  const dollars = Number.isFinite((minutes / 60) * rate) ? (minutes / 60) * rate : 0;
   await sql()`
     INSERT INTO public.time_savings_log (tenant_id, agent_id, action_type, minutes_saved, dollar_value_saved, source, task_id)
     VALUES (${tenantId()}, ${input.agentId ?? null}, ${input.actionType}, ${minutes}, ${dollars},
@@ -144,10 +156,10 @@ export async function getRoiSummary(): Promise<RoiSummary> {
       COUNT(*) AS n
     FROM public.time_savings_log WHERE tenant_id = ${tenantId()}
   `) as unknown as Array<{ all_min: string; month_min: string; value: string; n: string }>;
-  const allMin = Number(totals[0]?.all_min ?? 0);
-  const monthMin = Number(totals[0]?.month_min ?? 0);
-  const valueReclaimed = Number(totals[0]?.value ?? 0);
-  const hasActuals = Number(totals[0]?.n ?? 0) > 0;
+  const allMin = finite(totals[0]?.all_min);
+  const monthMin = finite(totals[0]?.month_min);
+  const valueReclaimed = finite(totals[0]?.value);
+  const hasActuals = finite(totals[0]?.n) > 0;
 
   const hoursSavedAllTime = allMin / 60;
   const hoursSavedThisMonth = monthMin / 60;
@@ -155,7 +167,7 @@ export async function getRoiSummary(): Promise<RoiSummary> {
   const old = oldDollarPerHour(audit);
   const neu = newDollarPerHour(audit, hoursSavedAllTime);
   // Projected annual value = this-month hours × 12 × new $/hr.
-  const projectedAnnualValue = neu != null ? hoursSavedThisMonth * 12 * neu : null;
+  const projectedAnnualValue = neu != null && Number.isFinite(neu) ? hoursSavedThisMonth * 12 * neu : null;
 
   const agents = (await sql()`
     SELECT agent_id, COALESCE(SUM(minutes_saved),0) AS min, COALESCE(SUM(dollar_value_saved),0) AS value
@@ -179,8 +191,8 @@ export async function getRoiSummary(): Promise<RoiSummary> {
     oldDollarPerHour: old,
     newDollarPerHour: neu,
     projectedAnnualValue,
-    byAgent: agents.map((a) => ({ agent_id: a.agent_id, hours: Number(a.min) / 60, value: Number(a.value) })),
-    byMonth: months.map((m) => ({ month: m.month, hours: Number(m.min) / 60, value: Number(m.value) })),
+    byAgent: agents.map((a) => ({ agent_id: a.agent_id, hours: finite(a.min) / 60, value: finite(a.value) })),
+    byMonth: months.map((m) => ({ month: m.month, hours: finite(m.min) / 60, value: finite(m.value) })),
     hasActuals,
   };
 }
