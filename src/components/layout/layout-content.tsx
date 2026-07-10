@@ -23,8 +23,9 @@ export function LayoutContent({ children }: { children: React.ReactNode }) {
   const isAuthPath = AUTH_PATHS.some((p) => pathname.startsWith(p));
   const isAuthCallback = pathname.startsWith('/auth/'); // set-password, OAuth callbacks
   const isPublicDocs = pathname === '/docs' || pathname.startsWith('/docs/');
+  const isPublicLegal = pathname.startsWith('/legal/'); // /legal/privacy, /legal/data-deletion
   const isNoWorkspace = pathname === '/no-workspace';
-  const isStandalone = isAuthPath || isAuthCallback || isPublicDocs || isNoWorkspace;
+  const isStandalone = isAuthPath || isAuthCallback || isPublicDocs || isPublicLegal || isNoWorkspace;
 
   useEffect(() => {
     if (isStandalone) return;

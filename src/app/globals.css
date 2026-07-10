@@ -1036,3 +1036,39 @@ textarea:focus {
 /* Editable canvas title — transparent until hover/focus; kill the global input ring. */
 input.canvas-title-input:hover { background: color-mix(in srgb, var(--surface-2) 55%, transparent) !important; }
 input.canvas-title-input:focus { background: color-mix(in srgb, var(--surface-2) 55%, transparent) !important; box-shadow: none !important; outline: none; }
+
+/* ─── Legal pages (/legal/*) — clean light document typography ─────────────────
+   Hardcoded to the light palette (NOT theme-driven) so public legal pages read as
+   a plain, professional document regardless of the app theme, matching what Meta
+   and Google reviewers expect. Scoped to .legal-prose (see src/app/legal). */
+.legal-prose { color: #1f2937; font-size: 15px; line-height: 1.7; }
+.legal-prose .lead { font-size: 17px; line-height: 1.7; color: #111827; }
+.legal-prose p { margin: 1rem 0; }
+.legal-prose h2 {
+  margin: 2.5rem 0 0.75rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #0a1c12;
+  scroll-margin-top: 5rem;
+}
+.legal-prose h3 { margin: 1.75rem 0 0.5rem; font-size: 1.05rem; font-weight: 600; color: #0a1c12; }
+.legal-prose ul { margin: 1rem 0; padding-left: 1.35rem; list-style: disc; }
+.legal-prose ol { margin: 1rem 0; padding-left: 1.35rem; list-style: decimal; }
+.legal-prose li { margin: 0.35rem 0; }
+.legal-prose li::marker { color: #9ca3af; }
+.legal-prose strong { font-weight: 600; color: #0a1c12; }
+.legal-prose a { color: #1e5a3e; text-decoration: underline; text-underline-offset: 2px; text-decoration-color: #38a16955; }
+.legal-prose a:hover { text-decoration-color: #38a169; }
+.legal-prose code {
+  border-radius: 5px;
+  background: #f4f4f5;
+  border: 1px solid #e5e7eb;
+  padding: 0.1em 0.4em;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 0.85em;
+  color: #0a1c12;
+}
+.legal-prose table code { background: transparent; border: 0; padding: 0; }

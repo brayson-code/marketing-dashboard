@@ -47,6 +47,7 @@ const CRON_RUNNER_PATHS = new Set([
 function isPublicPath(pathname: string): boolean {
   if (pathname === '/login') return true;
   if (pathname === '/docs' || pathname.startsWith('/docs/')) return true; // public knowledge base
+  if (pathname.startsWith('/legal/')) return true; // public legal pages (privacy, data deletion) — required by Meta/Google app review, must be reachable without login
   if (pathname === '/walkthrough.html') return true; // public product-reveal deck (shareable / film aid)
   if (pathname.startsWith('/auth/')) return true; // Supabase OAuth/callback routes
   if (pathname === '/api/auth/reset-password') return true; // "Forgot password" — a logged-out user on /login must be able to call it
