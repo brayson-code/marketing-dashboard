@@ -6,10 +6,34 @@
 //   3. EXEC_SPECS (test-seed-common.ts)       → 5 rich C-suite executives
 //   4. keycommand-provisioning default-agents → 5 universal defaults (rich when a
 //                                               bundled cousin exists, else thin)
-//   5. keycommand-provisioning niche-config   → 110 thin niche custom agents
-//                                               (name + `does` only), tagged by
-//                                               niche + inferred archetype, with
-//                                               default_niches = [that industry]
+//   5. keycommand-provisioning niche-config   → 15 RICH archetype rows (was 110
+//                                               near-duplicate niche rows). The
+//                                               110 niche custom agents collapse
+//                                               into 15 authored archetypes; we
+//                                               now seed ONE row per archetype
+//                                               carrying default_niches = the
+//                                               UNION of every industry that uses
+//                                               it and alias:<name> tags for every
+//                                               niche display name it answers to.
+//                                               (See DEDUPE note below.)
+//
+// ── DEDUPE (2026-07) ──────────────────────────────────────────────────────────
+// The 110 per-niche rows were 15 authored, niche-agnostic archetype prompt-block
+// sets photocopied across 22 industries (with 5 names literally repeated). This
+// seed now emits 15 archetype rows instead — a 47-row catalog total, zero
+// duplicate prompt bodies. The LIVE CONTRACT the dedupe preserves:
+// keycommand-provisioning's resolveNicheSlugsByName() must still map every
+// (niche, name) pair inference can emit to a non-null library slug, and
+// agentsForNiche(niche) must still surface the row so the picker can pre-select
+// it. We keep that intact WITHOUT touching niche-config.json by:
+//   • Half A (this file): each archetype row's default_niches = UNION of every
+//     industry that used the archetype, and tags carry alias:<name> for every
+//     distinct niche display name the archetype answers to.
+//   • Half B (sibling repo): resolveNicheSlugsByName() indexes byName from BOTH
+//     the row `name` AND its alias:<name> tags, so a chosen niche name still
+//     reconciles to its archetype's single slug.
+// A cleanup DELETE (idempotent) removes the old source='niche' / id LIKE 'niche-%'
+// rows so a rerun leaves exactly the 47-row catalog.
 //
 // Idempotent: UPSERT on the slug PK, so a rerun refreshes content without
 // duplicating. Deterministic slugs (see slugify + nicheSlug) keep reruns stable.
@@ -64,44 +88,17 @@ function slugify(s: string): string {
     .slice(0, 60);
 }
 
-// Short, stable per-niche prefix so a niche agent's slug is deterministic AND
-// collision-free across the 22 industries (e.g. 'niche-pi-instant-intake-
-// responder'). Keyed on the industry slug from niche-config.json.
-const NICHE_PREFIX: Record<string, string> = {
-  personal_injury_law: 'pi',
-  real_estate: 're',
-  construction: 'construction',
-  beverage: 'beverage',
-  med_spa: 'medspa',
-  dental: 'dental',
-  hvac: 'hvac',
-  roofing: 'roofing',
-  mortgage: 'mortgage',
-  insurance: 'insurance',
-  property_mgmt: 'propmgmt',
-  financial_advisors: 'finadvisor',
-  accounting: 'accounting',
-  concierge_medicine: 'concierge',
-  solar: 'solar',
-  auto_dealership: 'auto',
-  staffing: 'staffing',
-  fitness: 'fitness',
-  restaurants: 'restaurants',
-  coaching: 'coaching',
-  vending: 'vending',
-  landscaping: 'landscaping',
-};
+// (The per-niche slug prefix map used by the old 110-row niche seeder was removed
+// in the 2026-07 dedupe — archetype rows use deterministic 'archetype-<tag>' ids.)
 
-function nichePrefix(industrySlug: string): string {
-  return NICHE_PREFIX[industrySlug] ?? slugify(industrySlug);
-}
-
-// ── archetype inference for the thin niche agents ─────────────────────────────
+// ── archetype inference (collapses the 110 niche agents into 15 archetypes) ────
 //
-// The 110 niche agents collapse into ~15 archetypes (see Scout B). We infer the
-// archetype from the name + `does` so the catalog is filterable ("show me every
-// Follow-up/Chaser") and so provisioning can map a thin niche agent to its rich
-// cousin later. Purely a tag — it never changes what gets seeded.
+// The 110 niche agents collapse into 15 authored archetypes. We infer the
+// archetype from the name + `does` so we can (a) fold every niche display name
+// into the single archetype row that serves it (via alias:<name> tags) and (b)
+// keep the catalog filterable ("show me every Follow-up/Chaser"). Purely a tag —
+// it drives which archetype row a niche name lands on, never the prompt bodies
+// (those come from ARCHETYPE_SOULS, keyed by the same tag).
 
 interface Archetype { tag: string; category: string; role: string; test: RegExp }
 
@@ -128,6 +125,56 @@ function inferArchetype(name: string, does: string): Archetype {
   for (const a of ARCHETYPES) if (a.test.test(hay)) return a;
   return { tag: 'general', category: 'general', role: 'general', test: /.^/ };
 }
+
+// ── editorial names for the 15 archetype rows ─────────────────────────────────
+//
+// Each archetype row gets ONE clean, niche-agnostic display name + one capability
+// line (the per-niche variants live on as alias:<name> tags for reconciliation +
+// the swap-browser's niche-specific card title). Keys are the 15 ARCHETYPE_SOULS
+// tags; every tag must appear here (asserted in archetypeRows()).
+const ARCHETYPE_DISPLAY: Record<string, string> = {
+  'speed-to-lead':   'Speed-to-Lead Responder',
+  'follow-up':       'Follow-up Chaser',
+  'reactivation':    'Dead-Lead Reactivator',
+  'scheduler':       'Appointment Scheduler',
+  'no-show':         'No-Show Filler',
+  'renewal':         'Renewal Nurturer',
+  'collections':     'Invoice & AR Chaser',
+  'referral':        'Referral Nurturer',
+  'research-scout':  'Research Scout',
+  'upsell':          'Upsell & Reorder Prompter',
+  'review':          'Review Generator',
+  'estimator':       'Estimate & Proposal Drafter',
+  'report-builder':  'Owner-Report Builder',
+  'doc-rag':         'Document & Records Organizer',
+  'monitor':         'Ops Monitor & Alerter',
+};
+
+const ARCHETYPE_DOES: Record<string, string> = {
+  'speed-to-lead':   'Catches a brand-new inbound the instant it lands and drafts a fast, human first reply (never auto-sends).',
+  'follow-up':       'Chases open estimates, proposals, documents, and quiet leads with polite, well-timed nudges until they move.',
+  'reactivation':    'Revives dead, aged, and lapsed leads/clients with a warm win-back sequence the owner approves.',
+  'scheduler':       'Books, coordinates, and reschedules appointments, showings, and jobs against the real calendar.',
+  'no-show':         'Backfills no-shows and empty slots by pulling from the waitlist so the schedule stays full.',
+  'renewal':         'Nurtures renewals, memberships, and maintenance plans toward on-time re-commitment.',
+  'collections':     'Chases unpaid invoices, rent, and AR with firm-but-friendly reminders and clean status tracking.',
+  'referral':        'Turns happy clients into referrals with well-timed, non-pushy asks and post-close nurture.',
+  'research-scout':  'Scouts expansion areas, new markets, and at-risk accounts, then hands the owner a decision-ready brief.',
+  'upsell':          'Spots reorder timing and upgrade openings and prompts the right cross-sell at the right moment.',
+  'review':          'Generates review requests and drafts on-brand responses to grow reputation.',
+  'estimator':       'Drafts estimates, bids, and proposals from the details on hand for the owner to price and approve.',
+  'report-builder':  'Assembles owner-ready status reports, meeting prep, and deadline/permit trackers across the business.',
+  'doc-rag':         'Collects, organizes, and answers questions over the business’s documents, records, and case files.',
+  'monitor':         'Watches for downtime, stockouts, and depletion and alerts the owner before it costs a sale.',
+};
+
+// The inference table falls back to a 'general' tag for a name no regex catches
+// (today: exactly one — fitness's "Trial Converter", a follow-up by intent). That
+// tag has no ARCHETYPE_SOULS block, so we route any such alias onto this authored
+// archetype instead of dropping it — otherwise its alias:<name> tag would never be
+// seeded and resolveNicheSlugsByName() could not reconcile the name. Any future
+// unmatched niche name lands here too (surfaced as a warning in archetypeRows()).
+const ARCHETYPE_FALLBACK_TAG = 'follow-up';
 
 // ── bundled file loaders ──────────────────────────────────────────────────────
 
@@ -268,55 +315,102 @@ function defaultRows(specialistsById: Map<string, LibRow>): LibRow[] {
   return rows;
 }
 
-// ── keycommand niche custom agents (110 thin, per-industry) ───────────────────
+// ── keycommand archetype rows (15 rich, deduped from the 110 niche agents) ─────
+//
+// The 110 per-niche custom agents in niche-config.json are 15 authored,
+// niche-agnostic archetype prompt-block sets (ARCHETYPE_SOULS) photocopied across
+// 22 industries. Instead of 110 near-duplicate rows we emit ONE rich row per
+// archetype, carrying:
+//   • default_niches = UNION of every industry that pre-selects the archetype
+//     (so agentsForNiche(niche) still surfaces it as "recommended for this niche"),
+//   • tags: alias:<name> for EVERY distinct niche display name the archetype
+//     answers to (so resolveNicheSlugsByName can still map a chosen niche name →
+//     this single slug — see Half B in the sibling repo).
+// niche-config.json is UNCHANGED: inference still emits the same 103 names; each
+// now reconciles to its archetype's row via an alias tag.
 
 interface Industry { slug: string; name: string; custom_agents: Array<{ name: string; does: string }> }
 
-function nicheRows(): LibRow[] {
-  const cfg = JSON.parse(readFileSync(join(KEYCOMMAND_DIR, 'config', 'niche-config.json'), 'utf-8')) as { industries: Industry[] };
-  const rows: LibRow[] = [];
-  const seen = new Set<string>();
+function loadNicheConfig(): { industries: Industry[] } {
+  return JSON.parse(readFileSync(join(KEYCOMMAND_DIR, 'config', 'niche-config.json'), 'utf-8')) as { industries: Industry[] };
+}
+
+function archetypeRows(): LibRow[] {
+  const cfg = loadNicheConfig();
+
+  // Fold the config into: per archetype tag, the union of niches it serves and
+  // the union of distinct niche display names it answers to.
+  const byArch = new Map<string, { niches: Set<string>; aliases: Set<string> }>();
   for (const ind of cfg.industries) {
     for (const a of ind.custom_agents ?? []) {
-      const arch = inferArchetype(a.name, a.does);
-      let id = `niche-${nichePrefix(ind.slug)}-${slugify(a.name)}`;
-      // Deterministic de-dup guard (slug collisions within a niche are unlikely
-      // but keep the PK safe).
-      let n = 2;
-      while (seen.has(id)) { id = `niche-${nichePrefix(ind.slug)}-${slugify(a.name)}-${n++}`; }
-      seen.add(id);
-      // If the inferred archetype has authored prompt blocks (archetype-souls.ts),
-      // the niche agent inherits them and becomes RICH — at provision time the
-      // platform layers the niche/company context (brief + genes) on top. An
-      // archetype with no authored blocks (or the 'general' fallback) stays THIN
-      // (name + `does` only). Blocks are archetype-agnostic to the niche, so the
-      // same three strings serve every niche sharing that archetype.
-      const blocks = ARCHETYPE_SOULS[arch.tag];
-      rows.push({
-        id,
-        name: a.name,
-        category: arch.category,
-        role: arch.role,
-        department: null,
-        is_executive: false,
-        does: a.does,
-        soul: blocks?.soul ?? '',
-        agent_md: blocks?.agent_md ?? '',
-        skills: blocks?.skills ?? '',
-        default_niches: [ind.slug],
-        tags: ['niche', `niche:${ind.slug}`, `archetype:${arch.tag}`],
-        richness: blocks ? ('rich' as Richness) : ('thin' as Richness),
-        source: 'niche',
-      });
+      let tag = inferArchetype(a.name, a.does).tag;
+      // Route any name whose inferred tag has no authored archetype blocks (the
+      // 'general' fallback) onto ARCHETYPE_FALLBACK_TAG so its alias is never
+      // dropped — otherwise the name could not reconcile to a slug.
+      if (!ARCHETYPE_SOULS[tag]) {
+        console.warn(
+          `  [archetype] "${a.name}" (${ind.slug}) inferred tag '${tag}' has no ARCHETYPE_SOULS block — ` +
+            `folding into '${ARCHETYPE_FALLBACK_TAG}' so its alias reconciles.`,
+        );
+        tag = ARCHETYPE_FALLBACK_TAG;
+      }
+      const e = byArch.get(tag) ?? { niches: new Set<string>(), aliases: new Set<string>() };
+      e.niches.add(ind.slug);
+      e.aliases.add(a.name);
+      byArch.set(tag, e);
     }
   }
-  return rows;
+
+  // One row per authored archetype (the 15 keys of ARCHETYPE_SOULS).
+  return Object.entries(ARCHETYPE_SOULS).map(([tag, blocks]) => {
+    const meta = ARCHETYPES.find((a) => a.tag === tag);
+    if (!meta) throw new Error(`ARCHETYPE_SOULS tag '${tag}' has no entry in the ARCHETYPES table.`);
+    const display = ARCHETYPE_DISPLAY[tag];
+    const does = ARCHETYPE_DOES[tag];
+    if (!display || !does) {
+      throw new Error(`Archetype '${tag}' is missing an ARCHETYPE_DISPLAY name and/or ARCHETYPE_DOES line.`);
+    }
+    const e = byArch.get(tag) ?? { niches: new Set<string>(), aliases: new Set<string>() };
+    const niches = [...e.niches].sort();
+    const aliases = [...e.aliases].sort();
+    return {
+      id: `archetype-${tag}`,
+      name: display,
+      category: meta.category,
+      role: meta.role,
+      department: null,
+      is_executive: false,
+      does,
+      soul: blocks.soul,
+      agent_md: blocks.agent_md,
+      skills: blocks.skills,
+      default_niches: niches,
+      tags: ['archetype', `archetype:${tag}`, ...aliases.map((n) => `alias:${n}`)],
+      richness: 'rich' as Richness,
+      source: 'archetype',
+    };
+  });
 }
 
 // ── util ──────────────────────────────────────────────────────────────────────
 
 function titleize(id: string): string {
   return id.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// Idempotent cleanup of the OLD per-niche rows (dedupe migration). Before this
+// change the seed wrote 110 rows with source='niche' / id like 'niche-%'. Those
+// are fully replaced by the 15 'archetype-%' rows, so on any rerun we delete the
+// leftovers. Matches on BOTH source and the id prefix so a partially-seeded table
+// (e.g. an interrupted old run) is cleaned regardless. Safe: the new rows use the
+// 'archetype-' prefix and source='archetype', so this never touches them.
+async function cleanupStaleNicheRows(): Promise<number> {
+  const rows = (await sql()`
+    DELETE FROM public.agent_library
+    WHERE source = 'niche' OR id LIKE 'niche-%'
+    RETURNING id
+  `) as unknown as Array<{ id: string }>;
+  return rows.length;
 }
 
 async function upsert(row: LibRow): Promise<void> {
@@ -346,7 +440,7 @@ async function main(): Promise<void> {
     ...specialists,
     ...execRows(),
     ...defaultRows(specialistsById),
-    ...nicheRows(),
+    ...archetypeRows(),
   ];
 
   // Guard against accidental duplicate slugs across sources before writing.
@@ -357,6 +451,10 @@ async function main(): Promise<void> {
   }
 
   for (const r of all) await upsert(r);
+
+  // Dedupe migration: remove the old 110 per-niche rows now that the 15 archetype
+  // rows have been written. Idempotent — a clean table deletes 0.
+  const deletedNiche = await cleanupStaleNicheRows();
 
   // ── report ──
   const bySource = new Map<string, { rich: number; thin: number }>();
@@ -376,8 +474,16 @@ async function main(): Promise<void> {
   }
   console.log('  ------------  ----  ----  -----');
   console.log(`  ${'TOTAL'.padEnd(12)}  ${String(totalRich).padStart(4)}  ${String(totalThin).padStart(4)}  ${String(all.length).padStart(5)}`);
+
+  // Alias coverage: every distinct niche display name must live on an archetype
+  // row's alias:<name> tags, else resolveNicheSlugsByName can't reconcile it.
+  const aliasCount = new Set(
+    all.flatMap((r) => r.tags).filter((t) => t.startsWith('alias:')).map((t) => t.slice('alias:'.length)),
+  ).size;
+
   console.log(`\n  distinct niches covered: ${new Set(all.flatMap((r) => r.default_niches)).size}`);
-  console.log(`  gap to 200: ${Math.max(0, 200 - all.length)} rows\n`);
+  console.log(`  niche display names aliased for reconciliation: ${aliasCount} (expect 103)`);
+  console.log(`  stale niche-* rows deleted this run: ${deletedNiche}\n`);
 
   await sql().end({ timeout: 5 });
 }
