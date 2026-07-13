@@ -55,6 +55,8 @@ hermes-seed-fix.bundle
 # runtime state
 /state/
 /.tmp/
+# reproducibility cache for scripts/import-agent-collections.ts (re-fetchable)
+/.cache/
 .docs-sync-last-sha
 /test-results/
 /playwright-report/
