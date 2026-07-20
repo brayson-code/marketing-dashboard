@@ -748,10 +748,18 @@ const HVAC_DEMO: NicheSpec = {
   },
 };
 
+// Jerv's Construction — a second construction demo (same niche spec, own tenant).
+const JERVS_CONSTRUCTION: NicheSpec = {
+  ...CONSTRUCTION_DEMO,
+  slug: 'jervs-construction',
+  name: "Jerv's Construction (DEMO)",
+};
+
 const PRESETS: Record<string, NicheSpec> = {
   'landscaping-bobby': LANDSCAPING_BOBBY,
   'construction-demo': CONSTRUCTION_DEMO,
   'hvac-demo': HVAC_DEMO,
+  'jervs-construction': JERVS_CONSTRUCTION,
 };
 
 // ── Spec resolution ───────────────────────────────────────────────────────────
