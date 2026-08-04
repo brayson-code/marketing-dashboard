@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   Heart, Plane, Gift, Home, Activity, ShoppingBag,
   Plus, Check, RotateCcw, Trash2, CalendarClock, User, Repeat, AlertCircle,
+  Bell, History,
 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Explainer } from '@/components/ui/explainer';
@@ -22,10 +23,33 @@ interface Item {
   details: string | null;
   person: string | null;
   due_at: string | null;
+  lead_days: number;
   recurrence: 'none' | 'weekly' | 'monthly' | 'yearly';
   status: 'open' | 'done';
   priority: 'low' | 'normal' | 'high';
 }
+
+interface Occurrence { id: number; item_id: number; occurred_at: string; note: string | null }
+
+/** When work must START — due date minus lead time. The whole point of this page: a
+ *  birthday on the 12th with a week of lead time is an action for the 5th. */
+function actBy(item: Item): Date | null {
+  if (!item.due_at) return null;
+  const due = new Date(item.due_at);
+  if (Number.isNaN(due.getTime())) return null;
+  return new Date(due.getTime() - item.lead_days * 86_400_000);
+}
+
+/** Open + the act-by date has arrived (or passed). This is "start this now". */
+function needsAttention(item: Item): boolean {
+  if (item.status !== 'open') return false;
+  const by = actBy(item);
+  return by !== null && by.getTime() <= Date.now();
+}
+
+const DEFAULT_LEAD: Record<Category, number> = {
+  travel: 21, dates: 7, family: 2, health: 7, errands: 0,
+};
 
 const TABS: ReadonlyArray<{
   key: Category; label: string; icon: typeof Plane; blurb: string;
@@ -58,6 +82,7 @@ function dueLabel(due: string | null): { text: string; tone: 'overdue' | 'soon' 
 
 const EMPTY_FORM = {
   title: '', person: '', due_at: '', details: '',
+  lead_days: '' as string,
   recurrence: 'none' as Item['recurrence'],
   priority: 'normal' as Item['priority'],
 };
@@ -65,6 +90,7 @@ const EMPTY_FORM = {
 export default function PersonalLifePage() {
   const [tab, setTab] = useState<Category>('travel');
   const [items, setItems] = useState<Item[]>([]);
+  const [history, setHistory] = useState<Record<number, Occurrence[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -79,9 +105,11 @@ export default function PersonalLifePage() {
       if (!res.ok) throw new Error(String(res.status));
       const data = await res.json();
       setItems(Array.isArray(data.items) ? data.items : []);
+      setHistory(data.history && typeof data.history === 'object' ? data.history : {});
     } catch {
       setError("Couldn't load this list. Refresh to try again.");
       setItems([]);
+      setHistory({});
     } finally {
       setLoading(false);
     }
@@ -114,6 +142,7 @@ export default function PersonalLifePage() {
         person: form.person || undefined,
         details: form.details || undefined,
         due_at: form.due_at ? new Date(form.due_at).toISOString() : null,
+        lead_days: form.lead_days === '' ? undefined : Number(form.lead_days),
         recurrence: form.recurrence,
         priority: form.priority,
       });
@@ -127,7 +156,10 @@ export default function PersonalLifePage() {
   };
 
   const active = TABS.find((t) => t.key === tab)!;
-  const open = items.filter((i) => i.status === 'open');
+  // Three groups, in the order an assistant actually needs them: what to start NOW
+  // (act-by has arrived), what's coming, what's finished.
+  const attention = items.filter(needsAttention);
+  const upcoming = items.filter((i) => i.status === 'open' && !needsAttention(i));
   const done = items.filter((i) => i.status === 'done');
 
   return (
@@ -211,6 +243,28 @@ export default function PersonalLifePage() {
               <option value="yearly">Every year</option>
             </select>
           </div>
+          {/* Lead time — the field that makes this useful. Defaulted per category so the
+              common case needs no thought, but always visible so it can be tuned. */}
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Bell size={12} className="shrink-0" />
+            Start working on it
+            <input
+              type="number"
+              min={0}
+              max={365}
+              value={form.lead_days}
+              onChange={(e) => setForm({ ...form, lead_days: e.target.value })}
+              placeholder={String(DEFAULT_LEAD[tab])}
+              className="input !w-16 text-center"
+              aria-label="Lead time in days"
+            />
+            days before it&apos;s due
+            {form.lead_days === '' && (
+              <span className="text-muted-foreground/70">
+                (default for {active.label.toLowerCase()}: {DEFAULT_LEAD[tab]})
+              </span>
+            )}
+          </label>
           <textarea
             value={form.details}
             onChange={(e) => setForm({ ...form, details: e.target.value })}
@@ -248,20 +302,35 @@ export default function PersonalLifePage() {
 
       {loading ? (
         <div className="panel p-4 text-xs text-muted-foreground text-center">Loading…</div>
-      ) : open.length === 0 && done.length === 0 ? (
+      ) : items.length === 0 ? (
         <div className="panel p-4 text-xs text-muted-foreground text-center">
           Nothing here yet. Add the first one so it stops living in someone&apos;s head.
         </div>
       ) : (
         <div className="space-y-2">
-          {open.map((item) => (
-            <Row key={item.id} item={item} onAct={act} />
-          ))}
+          {attention.length > 0 && (
+            <>
+              <p className="text-xs font-semibold text-[var(--warning)] flex items-center gap-1.5 pt-1">
+                <Bell size={12} /> Start these now
+              </p>
+              {attention.map((item) => (
+                <Row key={item.id} item={item} history={history[item.id]} onAct={act} />
+              ))}
+            </>
+          )}
+          {upcoming.length > 0 && (
+            <>
+              {attention.length > 0 && <p className="text-small pt-2">Coming up</p>}
+              {upcoming.map((item) => (
+                <Row key={item.id} item={item} history={history[item.id]} onAct={act} />
+              ))}
+            </>
+          )}
           {done.length > 0 && (
             <>
               <p className="text-small pt-2">Done</p>
               {done.map((item) => (
-                <Row key={item.id} item={item} onAct={act} />
+                <Row key={item.id} item={item} history={history[item.id]} onAct={act} />
               ))}
             </>
           )}
@@ -271,62 +340,118 @@ export default function PersonalLifePage() {
   );
 }
 
-function Row({ item, onAct }: { item: Item; onAct: (p: Record<string, unknown>) => Promise<void> }) {
+function Row({ item, history, onAct }: {
+  item: Item;
+  history?: Occurrence[];
+  onAct: (p: Record<string, unknown>) => Promise<void>;
+}) {
   const [busy, setBusy] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [note, setNote] = useState('');
   const due = dueLabel(item.due_at);
   const isDone = item.status === 'done';
+  const by = actBy(item);
+  const urgent = needsAttention(item);
+  const past = history ?? [];
 
   const run = async (payload: Record<string, unknown>) => {
     setBusy(true);
-    try { await onAct(payload); } finally { setBusy(false); }
+    try { await onAct(payload); } finally { setBusy(false); setClosing(false); setNote(''); }
   };
 
   return (
-    <div className={`panel p-3 flex items-start gap-3 ${isDone ? 'opacity-60' : ''}`}>
-      <div className="flex-1 min-w-0 space-y-1">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className={`text-sm font-medium ${isDone ? 'line-through' : ''}`}>{item.title}</span>
-          {item.priority === 'high' && !isDone && <span className="badge badge-warning">high</span>}
-          {item.recurrence !== 'none' && (
-            <span className="badge badge-neutral inline-flex items-center gap-1">
-              <Repeat size={10} /> {item.recurrence}
+    <div className={`panel p-3 space-y-2 ${isDone ? 'opacity-60' : ''} ${urgent ? 'border-[var(--warning)]/40' : ''}`}>
+      <div className="flex items-start gap-3">
+        <div className="flex-1 min-w-0 space-y-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`text-sm font-medium ${isDone ? 'line-through' : ''}`}>{item.title}</span>
+            {item.priority === 'high' && !isDone && <span className="badge badge-warning">high</span>}
+            {item.recurrence !== 'none' && (
+              <span className="badge badge-neutral inline-flex items-center gap-1">
+                <Repeat size={10} /> {item.recurrence}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1">
+              <CalendarClock size={11} />
+              <span className={
+                due.tone === 'overdue' ? 'text-destructive'
+                : due.tone === 'soon' ? 'text-[var(--warning)]'
+                : ''
+              }>{due.text}</span>
             </span>
-          )}
+            {/* The act-by date is the actionable one, so it's shown next to the due date
+                rather than hidden — "due Aug 12, start by Aug 5". */}
+            {by && !isDone && item.lead_days > 0 && (
+              <span className={`inline-flex items-center gap-1 ${urgent ? 'text-[var(--warning)] font-medium' : ''}`}>
+                <Bell size={11} />
+                {urgent ? 'start now' : `start ${by.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`}
+              </span>
+            )}
+            {item.person && (
+              <span className="inline-flex items-center gap-1"><User size={11} /> {item.person}</span>
+            )}
+          </div>
+          {item.details && <p className="text-xs text-muted-foreground">{item.details}</p>}
         </div>
-        <div className="flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1">
-            <CalendarClock size={11} />
-            <span className={
-              due.tone === 'overdue' ? 'text-destructive'
-              : due.tone === 'soon' ? 'text-[var(--warning)]'
-              : ''
-            }>{due.text}</span>
-          </span>
-          {item.person && (
-            <span className="inline-flex items-center gap-1"><User size={11} /> {item.person}</span>
+
+        <div className="flex items-center gap-1 shrink-0">
+          {isDone ? (
+            <button className="btn btn-ghost btn-sm" disabled={busy}
+              onClick={() => run({ action: 'reopen', id: item.id })} title="Reopen">
+              <RotateCcw size={13} />
+            </button>
+          ) : (
+            <button className="btn btn-success btn-sm" disabled={busy}
+              onClick={() => setClosing((v) => !v)}
+              title={item.recurrence === 'none' ? 'Mark done' : 'Done — rolls to the next one'}>
+              <Check size={13} />
+            </button>
           )}
+          <button className="btn btn-destructive btn-sm" disabled={busy}
+            onClick={() => run({ action: 'delete', id: item.id })} title="Delete">
+            <Trash2 size={13} />
+          </button>
         </div>
-        {item.details && <p className="text-xs text-muted-foreground">{item.details}</p>}
       </div>
 
-      <div className="flex items-center gap-1 shrink-0">
-        {isDone ? (
-          <button className="btn btn-ghost btn-sm" disabled={busy}
-            onClick={() => run({ action: 'reopen', id: item.id })} title="Reopen">
-            <RotateCcw size={13} />
+      {/* Completing asks what happened. That one line is what future-you reads next year
+          instead of guessing what was given last time. */}
+      {closing && (
+        <div className="flex items-center gap-2 pt-1">
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder={item.category === 'dates'
+              ? 'What did we give / do? (saved to history)'
+              : 'What happened? (optional, saved to history)'}
+            className="input"
+            aria-label="What happened"
+            autoFocus
+          />
+          <button className="btn btn-primary btn-sm shrink-0" disabled={busy}
+            onClick={() => run({ action: 'complete', id: item.id, note })}>
+            {item.recurrence === 'none' ? 'Done' : 'Done · roll forward'}
           </button>
-        ) : (
-          <button className="btn btn-success btn-sm" disabled={busy}
-            onClick={() => run({ action: 'complete', id: item.id })}
-            title={item.recurrence === 'none' ? 'Mark done' : 'Done — rolls to the next one'}>
-            <Check size={13} />
+          <button className="btn btn-ghost btn-sm shrink-0" onClick={() => { setClosing(false); setNote(''); }}>
+            Cancel
           </button>
-        )}
-        <button className="btn btn-destructive btn-sm" disabled={busy}
-          onClick={() => run({ action: 'delete', id: item.id })} title="Delete">
-          <Trash2 size={13} />
-        </button>
-      </div>
+        </div>
+      )}
+
+      {past.length > 0 && (
+        <div className="pt-1 border-t border-border/40 space-y-0.5">
+          <p className="text-[11px] font-medium text-muted-foreground inline-flex items-center gap-1">
+            <History size={10} /> Previously
+          </p>
+          {past.slice(0, 3).map((h) => (
+            <p key={h.id} className="text-[11px] text-muted-foreground">
+              {new Date(h.occurred_at).getFullYear()} — {h.note || 'done'}
+            </p>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

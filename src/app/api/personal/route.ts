@@ -6,6 +6,7 @@ import {
   completePersonalItem,
   reopenPersonalItem,
   deletePersonalItem,
+  historyForItems,
   isCategory,
   isRecurrence,
   isPriority,
@@ -24,7 +25,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unknown category' }, { status: 400 });
   }
   const category = raw === null ? undefined : raw;
-  return NextResponse.json({ items: await listPersonalItems(category) });
+  const items = await listPersonalItems(category);
+  // History comes back with the list in ONE query (not one per row) so the page can show
+  // "what did we do last year?" inline without an N+1.
+  const history = await historyForItems(items.map((i) => i.id));
+  return NextResponse.json({ items, history });
 }
 
 export async function POST(request: Request) {
@@ -38,8 +43,10 @@ export async function POST(request: Request) {
     details?: string;
     person?: string;
     due_at?: string | null;
+    lead_days?: number;
     recurrence?: string;
     priority?: string;
+    note?: string;
   };
   try { body = await request.json(); }
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
@@ -60,12 +67,17 @@ export async function POST(request: Request) {
     if (body.priority !== undefined && !isPriority(body.priority)) {
       return NextResponse.json({ error: 'Unknown priority' }, { status: 400 });
     }
+    if (body.lead_days !== undefined
+      && (!Number.isFinite(body.lead_days) || body.lead_days < 0 || body.lead_days > 365)) {
+      return NextResponse.json({ error: 'lead_days must be between 0 and 365' }, { status: 400 });
+    }
     const item = await createPersonalItem({
       category: body.category,
       title,
       details: body.details?.trim() || null,
       person: body.person?.trim() || null,
       due_at: body.due_at || null,
+      lead_days: body.lead_days,
       recurrence: isRecurrence(body.recurrence) ? body.recurrence : 'none',
       priority: isPriority(body.priority) ? body.priority : 'normal',
     });
@@ -77,7 +89,8 @@ export async function POST(request: Request) {
   }
 
   if (action === 'complete') {
-    const item = await completePersonalItem(body.id);
+    // The optional note is what turns completion into history ("gave her the bracelet").
+    const item = await completePersonalItem(body.id, body.note?.trim() || null);
     if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     return NextResponse.json({ item });
   }
