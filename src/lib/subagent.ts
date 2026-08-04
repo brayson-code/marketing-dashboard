@@ -11,6 +11,7 @@ import { smsToolDefinitions, handleSmsTool, smsAllowed, SMS_TOOL_NAMES } from '.
 import { firecrawlToolDefinitions, handleFirecrawlTool, firecrawlAllowed, FIRECRAWL_TOOL_NAMES } from './firecrawl-tools';
 import { jobberToolDefinitions, handleJobberTool, JOBBER_TOOL_NAMES } from './jobber-tools';
 import { nativeToolDefinitions, handleNativeTool, NATIVE_TOOL_NAMES } from './native-tools';
+import { personalToolDefinitions, handlePersonalTool, PERSONAL_TOOL_NAMES } from './personal-tools';
 import { cronToolDefinitions, handleCronTool, CRON_READ_TOOL_NAMES } from './cron-tools';
 import { fetchToolDefinitions, handleFetchTool, FETCH_TOOL_NAMES } from './fetch-tools';
 import { clipToolDefinitions, handleClipTool, CLIP_TOOL_NAMES } from './clip-tools';
@@ -547,6 +548,9 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
     // Native marketing-data tools — the client's OWN CRM / content / analytics /
     // ROI / documents / sequences / competitor intel (reads + internal-state writes).
     ...nativeToolDefinitions(),
+    // Personal Life — the founder's personal side (travel, birthdays, family, health,
+    // errands). Reads + internal create/complete; nothing here books, buys or sends.
+    ...personalToolDefinitions(),
     // Cron — sub-agents get READS ONLY; create_cron_job is orchestrator-only so its
     // owner-approval gate can't be bypassed (includeWrite:false → write not registered).
     ...cronToolDefinitions({ includeWrite: false }),
@@ -729,6 +733,7 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
               FIRECRAWL_TOOL_NAMES.has(b.name) ||
               JOBBER_TOOL_NAMES.has(b.name) ||
               NATIVE_TOOL_NAMES.has(b.name) ||
+              PERSONAL_TOOL_NAMES.has(b.name) ||
               (CRON_READ_TOOL_NAMES as readonly string[]).includes(b.name)
             ),
         );
@@ -756,6 +761,7 @@ export async function spawnSubAgent(type: string, task: string, parentTaskId?: n
           if (FIRECRAWL_TOOL_NAMES.has(tu.name)) return handleFirecrawlTool(tu, type);
           if (JOBBER_TOOL_NAMES.has(tu.name)) return handleJobberTool(tu, type);
           if (NATIVE_TOOL_NAMES.has(tu.name)) return handleNativeTool(tu, type);
+          if (PERSONAL_TOOL_NAMES.has(tu.name)) return handlePersonalTool(tu, type);
           if ((CRON_READ_TOOL_NAMES as readonly string[]).includes(tu.name)) return handleCronTool(tu, type);
           return handleKgTool(tu, type);
         }));

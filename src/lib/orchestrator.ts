@@ -15,6 +15,7 @@ import { firecrawlToolDefinitions, handleFirecrawlTool, firecrawlAllowed, FIRECR
 import { jobberToolDefinitions, handleJobberTool, JOBBER_TOOL_NAMES } from './jobber-tools';
 import { jobberConnected } from './jobber';
 import { nativeToolDefinitions, handleNativeTool, NATIVE_TOOL_NAMES } from './native-tools';
+import { personalToolDefinitions, handlePersonalTool, PERSONAL_TOOL_NAMES } from './personal-tools';
 import { cronToolDefinitions, handleCronTool, cronWriteEnabled, CRON_TOOL_NAMES } from './cron-tools';
 import { parseAttachments, buildUserContent } from './vision';
 import { estimateCostUsd } from './usage';
@@ -268,6 +269,13 @@ async function buildTools(gwAllowedArg?: boolean, smsOnArg?: boolean, fcOnArg?: 
     //    internal-state + audit-logged (external send stays behind the drafts flow).
     ...nativeToolDefinitions(),
 
+    // ── Personal Life — the founder's personal side (travel, birthdays, family,
+    //    health, errands). ALWAYS registered: reads are read-only and the two writes
+    //    create/complete an internal row the EA can see and undo. Nothing here books,
+    //    buys or sends. This is what lets "Olivia's birthday is the 12th, sort a gift"
+    //    in the group chat become a tracked item with the right lead time.
+    ...personalToolDefinitions(),
+
     // ── Cron / scheduled jobs — reads always; create_cron_job only when
     //    CRON_WRITE_ENABLED, and (via GATED_TOOLS) held for owner approval when
     //    TOOL_APPROVALS_ENABLED is on. ──────────────────────────────────────────
@@ -493,6 +501,28 @@ async function callClaude(
       'Reads are free and safe; the writes above only change internal state and are audit-logged. They NEVER ' +
       'send/publish anything externally — that always goes through save_draft / publish_content / send_email_draft.',
   });
+  // Personal Life capability note. Same prompt-awareness reason as the block above: the
+  // model won't reach for tools it hasn't been told exist, and this is the surface most
+  // likely to come up conversationally ("her birthday's the 12th") rather than as an
+  // explicit request — so it has to know to WRITE it down rather than just reply.
+  systemBlocks.push({
+    type: 'text',
+    text:
+      "# The founder's personal life is yours to keep track of\n" +
+      "You have LIVE tools over the founder's PERSONAL side — travel, birthdays and gifts, family and " +
+      'household, health routines, errands. This is separate from company work (tasks/goals).\n' +
+      '- Read: `list_personal_items`, `read_personal_upcoming` — check these before commenting on their ' +
+      'availability, travel or personal calendar.\n' +
+      '- Write: `add_personal_item`, `complete_personal_item`.\n' +
+      'IMPORTANT — when the founder or their assistant mentions something personal in passing ("Olivia\'s ' +
+      'birthday is the 12th", "we\'re in Phoenix in March"), RECORD IT with `add_personal_item` rather than ' +
+      'only replying. That is the whole point: things mentioned in chat are exactly the things that get ' +
+      'forgotten. Set `recurrence: yearly` for birthdays and anniversaries, and set `lead_days` so work starts ' +
+      'in time (a gift needs ordering the week before, not on the day).\n' +
+      'When completing something, always pass `note` describing what happened — it becomes the permanent ' +
+      'history, so next year you can say what was given last time instead of asking.\n' +
+      'These writes only create internal records. They never book, buy, message or spend anything.',
+  });
   // Cron WRITE capability note — only when CRON_WRITE_ENABLED. Setting up standing
   // autonomous work is high-impact, so name it separately and flag the approval gate.
   if (cronWriteEnabled()) {
@@ -568,6 +598,9 @@ const CLIENT_TOOL_NAMES = new Set<string>([
   // Native marketing-data tools (CRM / content / analytics / ROI / documents /
   // sequences / competitors) — always live. Recognize every name or the loop bails.
   ...NATIVE_TOOL_NAMES,
+  // Personal Life tools — always live. Must be listed here or the loop bails with
+  // "Orchestrator produced no text reply" and the tool silently never runs.
+  ...PERSONAL_TOOL_NAMES,
   // Cron tools (reads always + create_cron_job when enabled) — recognize all names.
   ...CRON_TOOL_NAMES,
 ]);
@@ -751,6 +784,11 @@ async function handleClientToolUse(
   // ── Native marketing-data tools (reads + safe internal writes; shared handler) ─
   if (NATIVE_TOOL_NAMES.has(toolUse.name)) {
     return handleNativeTool(toolUse, 'keyplayer');
+  }
+
+  // ── Personal Life (reads + internal create/complete; shared handler) ──────────
+  if (PERSONAL_TOOL_NAMES.has(toolUse.name)) {
+    return handlePersonalTool(toolUse, 'keyplayer');
   }
 
   // ── Cron tools (reads always; create_cron_job gated) ─────────────────────────
