@@ -9,7 +9,7 @@ import {
   FolderOpen, MessagesSquare, Activity, Target, Inbox, Network, DollarSign, Bug,
   Waves, TrendingUp, Dna, Timer, Link2, Sparkles, ChevronDown, ChevronRight,
   FlaskConical, BookOpen, ArrowUpRight, Boxes, ShieldCheck, PhoneCall, Blocks,
-  MessageCircle,
+  MessageCircle, UserRound, Heart,
 } from 'lucide-react';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { useDashboard } from '@/store';
@@ -33,98 +33,128 @@ interface NavItem {
   // the operator flips SALESOPS_ENABLED — the routes enforce the flag server-side too.
   flag?: 'salesops_enabled' | 'playground_enabled';
 }
-interface NavGroup { label: string; items: NavItem[]; collapsible?: boolean }
+interface NavGroup {
+  label: string; items: NavItem[]; collapsible?: boolean;
+  // Starts closed on a fresh browser (MORE). An explicit stored preference wins.
+  defaultCollapsed?: boolean;
+}
 
-// The nav is grouped by business DIVISION (not engineering intent): HOME for the
-// universal daily items, then Creative / Marketing / Revenue / Insights / Agents.
-// OPS is "things I check when something's broken" and starts collapsed. BOTTOM
-// stays pinned for setup/billing regardless of scroll.
+// The nav is grouped by the SIX North Star sections (see the KeyPlayers North Star,
+// §12 "The Executive Assistant Command Centre") — Founder Profile / Daily Operations /
+// Personal Life / Company Knowledge / Relationships / Your AI Team. The job of this
+// order is to read like an executive-support product to an assistant on day one, not
+// like a marketing console.
+//
+// IMPORTANT — hrefs are the stable contract. The per-tenant enabled-views map
+// (command-center-catalog.ts) is keyed by href, so regrouping and relabelling is safe
+// but CHANGING an href silently un-hides a view a client had switched off. Move rows
+// between sections freely; don't rewrite their hrefs.
+//
+// Anything that doesn't belong to the six lives in MORE (collapsed by default) so no
+// surface is lost — it's one click away rather than competing for attention.
 const PRIMARY: NavGroup[] = [
   {
-    label: 'HOME',
+    label: 'FOUNDER PROFILE',
     items: [
       { href: '/', label: 'Overview', icon: Gauge },
+      { href: '/founder', label: 'Founder Profile', icon: UserRound },
+    ],
+  },
+  {
+    label: 'DAILY OPERATIONS',
+    items: [
       { href: '/tasks', label: 'Tasks', icon: Activity },
       { href: '/drafts', label: 'Approvals', icon: Inbox, countKey: 'total_pending' },
       { href: '/goals', label: 'Goals', icon: Target },
+      { href: '/cron', label: 'Schedules', icon: Clock },
+      { href: '/activity', label: 'Activity Log', icon: List },
+    ],
+  },
+  // Company Knowledge sits ABOVE Personal Life — a deliberate swap against the North
+  // Star §12 ordering. The Second Brain is the highest-traffic surface in the product
+  // and a one-row section ahead of it pushed it below the fold on a 13" laptop. Personal
+  // Life loses nothing by sitting one row lower; the Second Brain loses a lot by being
+  // invisible without scrolling.
+  {
+    label: 'COMPANY KNOWLEDGE',
+    items: [
+      { href: '/kg', label: 'Second Brain', icon: Network },
+      { href: '/memory', label: 'Briefings', icon: FileText },
+      { href: '/agents/workspace', label: 'Files', icon: FolderOpen },
+      { href: '/learning', label: 'Learning', icon: TrendingUp },
+      { href: '/docs', label: 'How to use this', icon: BookOpen, newTab: true },
     ],
   },
   {
-    label: 'AGENTS',
+    label: 'PERSONAL LIFE',
     items: [
+      { href: '/personal', label: 'Personal Life', icon: Heart },
+    ],
+  },
+  {
+    label: 'RELATIONSHIPS',
+    items: [
+      { href: '/crm', label: 'Contacts', icon: Contact, countKey: 'new_leads' },
+      { href: '/outreach', label: 'Outreach', icon: Mail, countKey: 'outreach' },
+    ],
+  },
+  {
+    label: 'YOUR AI TEAM',
+    items: [
+      { href: '/boardroom', label: 'Ask the Team', icon: MessagesSquare, matchPrefixes: ['/boardroom'] },
       { href: '/agents/squads', label: 'Agents', icon: Bot, matchPrefixes: ['/agents/squads'] },
       { href: '/agents/skills', label: 'Skills', icon: Boxes, matchPrefixes: ['/agents/skills'] },
-      { href: '/boardroom', label: 'Boardroom', icon: MessagesSquare, matchPrefixes: ['/boardroom'] },
-    ],
-  },
-  {
-    label: 'MARKETING',
-    items: [
-      // Content Lab leads the marketing flow (creation → distribution). The Content hub
-      // fronts Ideas / Scripts / Hyperframes / Media / Competitors / Pipeline / Library /
-      // Engagement as tabs (see content-tabs.tsx). Folded in from the old one-item
-      // CREATIVE section (same marketing department + color).
-      { href: '/content/overview', label: 'Content Lab', icon: FlaskConical, countKey: 'content',
-        matchPrefixes: ['/content', '/content-lab', '/scripts', '/competitors', '/engagement'] },
-      { href: '/campaigns', label: 'Campaigns', icon: Waves },
+      { href: '/agents/comms', label: 'Messages', icon: MessageCircle, matchPrefixes: ['/agents/comms'] },
       { href: '/missions', label: 'Missions', icon: Rocket },
-      { href: '/outreach', label: 'Outreach', icon: Mail, countKey: 'outreach' },
-      { href: '/research', label: 'Research', icon: Search, countKey: 'signals_today' },
-    ],
-  },
-  {
-    label: 'REVENUE',
-    items: [
-      { href: '/crm', label: 'CRM', icon: Contact, countKey: 'new_leads' },
-      { href: '/roi', label: 'ROI', icon: Timer },
-      { href: '/salesops', label: 'SalesOps', icon: PhoneCall, flag: 'salesops_enabled' },
+      { href: '/autonomy', label: 'Autonomy', icon: Zap },
     ],
   },
 ];
 
-// INSIGHTS renders AFTER Ops (below it) for UI continuity — read-only analytics sit
-// beneath the operational tools. Same collapsible mechanism as every other section.
-const INSIGHTS: NavGroup = {
-  label: 'INSIGHTS',
+// MORE — everything outside the six sections. Collapsed by default so it stays out of
+// the way, but every surface remains reachable (nothing was deleted). Replaces the old
+// OPS + INSIGHTS + the marketing/revenue rows.
+const MORE: NavGroup = {
+  label: 'MORE',
   collapsible: true,
+  defaultCollapsed: true,
   items: [
+    // Content Lab fronts Ideas / Scripts / Hyperframes / Media / Competitors /
+    // Pipeline / Library / Engagement as tabs (see content-tabs.tsx).
+    { href: '/content/overview', label: 'Content Lab', icon: FlaskConical, countKey: 'content',
+      matchPrefixes: ['/content', '/content-lab', '/scripts', '/competitors', '/engagement'] },
+    { href: '/campaigns', label: 'Campaigns', icon: Waves },
+    { href: '/research', label: 'Research', icon: Search, countKey: 'signals_today' },
+    { href: '/roi', label: 'ROI', icon: Timer },
+    { href: '/salesops', label: 'SalesOps', icon: PhoneCall, flag: 'salesops_enabled' },
     { href: '/analytics', label: 'Analytics', icon: LineChart },
     { href: '/kpis', label: 'KPIs', icon: BarChart3 },
     { href: '/usage', label: 'Usage', icon: DollarSign },
-    { href: '/kg', label: 'Knowledge', icon: Network },
-  ],
-};
-
-const OPS: NavGroup = {
-  label: 'OPS',
-  collapsible: true,
-  items: [
-    { href: '/agents/workspace', label: 'Workspace', icon: FolderOpen },
+    { href: '/genes', label: 'Genes', icon: Dna },
     // Command Center Builder — OPTIONAL onboarding surface, hidden unless
     // PLAYGROUND_ENABLED is on (surfaced as playground_enabled from /api/auth/me). The
     // /playground page double-checks the flag server-perceived from /api/auth/me too.
     { href: '/playground', label: 'Playground', icon: Blocks, flag: 'playground_enabled' },
-    { href: '/memory', label: 'Reports', icon: FileText },
-    { href: '/learning', label: 'Learning', icon: TrendingUp },
-    { href: '/genes', label: 'Genes', icon: Dna },
     { href: '/issues', label: 'Issues', icon: Bug },
     { href: '/security', label: 'Security', icon: ShieldCheck },
-    { href: '/cron', label: 'Cron', icon: Clock },
-    { href: '/activity', label: 'Activity', icon: List },
   ],
 };
 
-// BOTTOM now splits into a collapsible "GENERAL" dropdown (Connections / Billing /
-// Autonomy / Docs) plus a standalone pinned Settings row (always visible, never in a
-// dropdown so a client can never collapse their way out of reach of Settings).
+// BOTTOM — collapsible "SETUP" dropdown (Connections / Billing) plus a standalone
+// pinned Settings row (always visible, never in a dropdown so a client can never
+// collapse their way out of reach of Settings).
+//
+// Closed by default: Connections and Billing are set-up-once surfaces, and the pinned
+// footer was costing ~250px of a 672px rail — enough to push Company Knowledge (the
+// Second Brain) below the fold on a laptop. Collapsing it hands that height back to
+// the six sections. Settings stays pinned and visible regardless.
 const BOTTOM_GROUP: NavGroup = {
-  label: 'GENERAL',
+  label: 'SETUP',
   collapsible: true,
+  defaultCollapsed: true,
   items: [
     { href: '/connections', label: 'Connections', icon: Link2 },
     { href: '/billing', label: 'Billing', icon: Sparkles },
-    { href: '/autonomy', label: 'Autonomy', icon: Zap },
-    { href: '/docs', label: 'Docs', icon: BookOpen, newTab: true },
   ],
 };
 
@@ -135,31 +165,40 @@ const SETTINGS_ITEM: NavItem = { href: '/settings', label: 'Settings', icon: Set
 // the accentVar handed to the floating chat widget. Unmapped labels fall back to
 // var(--muted-foreground) for the header and var(--primary) for the widget accent.
 const SECTION_COLOR_MAP: Record<string, string> = {
-  HOME: 'var(--primary)',
-  AGENTS: 'var(--dept-leadership)',
-  MARKETING: 'var(--dept-marketing)',
-  REVENUE: 'var(--dept-revenue)',
-  INSIGHTS: 'var(--dept-operations)',
-  OPS: 'var(--dept-operations)',
-  GENERAL: 'var(--primary)',
+  'FOUNDER PROFILE': 'var(--primary)',
+  'DAILY OPERATIONS': 'var(--dept-leadership)',
+  'PERSONAL LIFE': 'var(--dept-client-experience)',
+  'COMPANY KNOWLEDGE': 'var(--dept-operations)',
+  RELATIONSHIPS: 'var(--dept-revenue)',
+  'YOUR AI TEAM': 'var(--dept-marketing)',
+  MORE: 'var(--muted-foreground)',
+  SETUP: 'var(--primary)',
 };
 
-// Sections that get the inline agent-chat widget. INSIGHTS is included — pointed at the
-// operations/analyst agents so you can ask about the numbers right there. HOME (overview/
-// tasks) and GENERAL (connections/billing/docs — no agents) stay excluded: no chat there.
-const CHAT_SECTIONS: ReadonlySet<string> = new Set(['AGENTS', 'MARKETING', 'REVENUE', 'OPS', 'INSIGHTS']);
+// Sections that get the inline agent-chat widget. Each label must also be handled by
+// sectionFilterFor() in nav-agent-chat-widget.tsx, which decides WHICH agents that
+// section's chat talks to — an unrecognised label silently falls back to executives
+// only, so keep the two lists in step. FOUNDER PROFILE, PERSONAL LIFE and SETUP stay
+// excluded (no agents behind them): no chat there.
+const CHAT_SECTIONS: ReadonlySet<string> = new Set([
+  'DAILY OPERATIONS', 'COMPANY KNOWLEDGE', 'RELATIONSHIPS', 'YOUR AI TEAM', 'MORE',
+]);
 
-// Per-user persisted open/closed state for a section. Sections default OPEN, so a
-// missing key reads as open — only an explicit "false" collapses one. Keyed by the
-// section label so it survives reloads and never collides with other UI state.
+// Per-user persisted open/closed state for a section. Most sections default OPEN; a
+// group marked defaultCollapsed (MORE) starts closed until the user opens it. Either
+// way an explicit stored value always wins, so a preference survives reloads. Keyed by
+// the section label so it never collides with other UI state.
 const collapseKey = (section: string) => `nav:collapsed:${section}`;
 
-function readCollapsed(section: string): boolean {
-  if (typeof window === 'undefined') return false;
+function readCollapsed(section: string, fallback = false): boolean {
+  if (typeof window === 'undefined') return fallback;
   try {
-    return window.localStorage.getItem(collapseKey(section)) === 'closed';
+    const stored = window.localStorage.getItem(collapseKey(section));
+    if (stored === 'closed') return true;
+    if (stored === 'open') return false;
+    return fallback;
   } catch {
-    return false;
+    return fallback;
   }
 }
 
@@ -240,13 +279,13 @@ export function NavRail() {
             viewEnabled={viewEnabled}
             openChatSection={openChatSection}
             setOpenChatSection={setOpenChatSection}
-            className={idx > 0 ? 'mt-3 pt-3 border-t border-border/40' : ''}
+            className={idx > 0 ? 'mt-2 pt-2 border-t border-border/40' : ''}
           />
         ))}
 
-        {/* OPS — same collapsible mechanism as every other section now. */}
+        {/* MORE — everything outside the six sections, collapsed by default. */}
         <CollapsibleSection
-          group={OPS}
+          group={MORE}
           counts={counts ?? null}
           pathname={pathname}
           flags={flags}
@@ -255,26 +294,12 @@ export function NavRail() {
           viewEnabled={viewEnabled}
           openChatSection={openChatSection}
           setOpenChatSection={setOpenChatSection}
-          className="mt-3 pt-3 border-t border-border/40"
-        />
-
-        {/* INSIGHTS — below Ops for UI continuity. */}
-        <CollapsibleSection
-          group={INSIGHTS}
-          counts={counts ?? null}
-          pathname={pathname}
-          flags={flags}
-          hqOnly={HQ_ONLY}
-          isHq={isHq}
-          viewEnabled={viewEnabled}
-          openChatSection={openChatSection}
-          setOpenChatSection={setOpenChatSection}
-          className="mt-3 pt-3 border-t border-border/40"
+          className="mt-2 pt-2 border-t border-border/40"
         />
       </div>
 
-      {/* BOTTOM — collapsible GENERAL dropdown (Connections / Billing / Autonomy /
-          Docs) + a standalone pinned Settings row that's ALWAYS visible. */}
+      {/* BOTTOM — collapsible SETUP dropdown (Connections / Billing) + a standalone
+          pinned Settings row that's ALWAYS visible. */}
       <div className="border-t border-border/60 px-2 py-2">
         <CollapsibleSection
           group={BOTTOM_GROUP}
@@ -328,13 +353,13 @@ function CollapsibleSection({
     (!i.flag || flags?.[i.flag]) &&
     viewEnabled(i.href),
   );
-  // Hydration-safe: render OPEN on the server / first client paint (matching the
-  // default), then reconcile with the persisted preference after mount so SSR markup
-  // matches and we never read localStorage during render.
-  const [open, setOpen] = useState(true);
+  // Hydration-safe: render the group's default on the server / first client paint,
+  // then reconcile with the persisted preference after mount so SSR markup matches and
+  // we never read localStorage during render.
+  const [open, setOpen] = useState(!group.defaultCollapsed);
   useEffect(() => {
-    setOpen(!readCollapsed(group.label));
-  }, [group.label]);
+    setOpen(!readCollapsed(group.label, !!group.defaultCollapsed));
+  }, [group.label, group.defaultCollapsed]);
 
   // Auto-open when you navigate into one of this section's (visible) items, so the
   // active route is never hidden behind a collapsed header.

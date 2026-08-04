@@ -5,9 +5,11 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Gauge, Bot, Mail, Contact, MoreHorizontal,
-  PenLine, MessageCircle, FlaskConical, Search,
-  BarChart3, LineChart, BrainCircuit, Rocket, Clock, List, Settings,
-  FolderOpen,
+  MessageCircle, FlaskConical, Search,
+  BarChart3, LineChart, Rocket, Clock, List, Settings,
+  FolderOpen, UserRound, Heart, Activity, Inbox, Target, Network, FileText,
+  TrendingUp, BookOpen, MessagesSquare, Boxes, Zap, Link2, Sparkles, Waves,
+  Timer, PhoneCall, DollarSign, Dna,
 } from 'lucide-react';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { useDashboard } from '@/store';
@@ -35,36 +37,86 @@ interface NavGroup {
   items: NavItem[];
 }
 
+// Mirrors the desktop rail (nav-rail.tsx) — same six North Star sections, same labels,
+// same hrefs. Keep the two in step: they drifted badly before (mobile had its own
+// Core/Operate/Observe grouping with rows desktop never showed), which meant the app
+// taught an assistant one structure on a laptop and a different one on a phone.
+//
+// `priority: true` promotes a row into the fixed bottom bar; everything else lives in
+// the "More" sheet, grouped by section.
 const NAV_GROUPS: NavGroup[] = [
   {
-    label: 'Core',
+    label: 'Founder Profile',
     items: [
       { href: '/', label: 'Overview', icon: Gauge, priority: true },
-      { href: '/agents/squads', label: 'Squads', icon: Bot, priority: true },
-      { href: '/outreach', label: 'Outreach', icon: Mail, countKey: 'outreach', priority: true },
-      { href: '/crm', label: 'CRM', icon: Contact, countKey: 'new_leads', priority: true },
+      { href: '/founder', label: 'Profile', icon: UserRound },
     ],
   },
   {
-    label: 'Operate',
+    label: 'Daily Operations',
     items: [
-      { href: '/agents/comms', label: 'Comms', icon: MessageCircle },
-      { href: '/agents/workspace', label: 'Workspace', icon: FolderOpen },
-      { href: '/content', label: 'Content', icon: PenLine, countKey: 'content' },
-      { href: '/engagement', label: 'Engagement', icon: MessageCircle },
-      { href: '/experiments', label: 'Experiments', icon: FlaskConical },
+      { href: '/tasks', label: 'Tasks', icon: Activity, priority: true },
+      { href: '/drafts', label: 'Approvals', icon: Inbox, countKey: 'total_pending', priority: true },
+      { href: '/goals', label: 'Goals', icon: Target },
+      { href: '/cron', label: 'Schedules', icon: Clock },
+      { href: '/activity', label: 'Activity Log', icon: List },
+    ],
+  },
+  // Company Knowledge above Personal Life — mirrors the desktop rail (see nav-rail.tsx
+  // for why the North Star §12 order is deliberately swapped here).
+  {
+    label: 'Company Knowledge',
+    items: [
+      { href: '/kg', label: 'Second Brain', icon: Network },
+      { href: '/memory', label: 'Briefings', icon: FileText },
+      { href: '/agents/workspace', label: 'Files', icon: FolderOpen },
+      { href: '/learning', label: 'Learning', icon: TrendingUp },
+      { href: '/docs', label: 'How to use this', icon: BookOpen },
     ],
   },
   {
-    label: 'Observe',
+    label: 'Personal Life',
     items: [
+      { href: '/personal', label: 'Personal Life', icon: Heart },
+    ],
+  },
+  {
+    label: 'Relationships',
+    items: [
+      { href: '/crm', label: 'Contacts', icon: Contact, countKey: 'new_leads' },
+      { href: '/outreach', label: 'Outreach', icon: Mail, countKey: 'outreach' },
+    ],
+  },
+  {
+    label: 'Your AI Team',
+    items: [
+      { href: '/boardroom', label: 'Ask the Team', icon: MessagesSquare, priority: true },
+      { href: '/agents/squads', label: 'Agents', icon: Bot },
+      { href: '/agents/skills', label: 'Skills', icon: Boxes },
+      { href: '/agents/comms', label: 'Messages', icon: MessageCircle },
+      { href: '/missions', label: 'Missions', icon: Rocket },
+      { href: '/autonomy', label: 'Autonomy', icon: Zap },
+    ],
+  },
+  {
+    label: 'More',
+    items: [
+      { href: '/content/overview', label: 'Content Lab', icon: FlaskConical, countKey: 'content' },
+      { href: '/campaigns', label: 'Campaigns', icon: Waves },
       { href: '/research', label: 'Research', icon: Search, countKey: 'signals_today' },
-      { href: '/kpis', label: 'KPIs', icon: BarChart3 },
+      { href: '/roi', label: 'ROI', icon: Timer },
+      { href: '/salesops', label: 'SalesOps', icon: PhoneCall },
       { href: '/analytics', label: 'Analytics', icon: LineChart },
-      { href: '/memory', label: 'Memory', icon: BrainCircuit },
-      { href: '/deploy', label: 'Deploy', icon: Rocket },
-      { href: '/cron', label: 'Cron', icon: Clock },
-      { href: '/activity', label: 'Activity', icon: List },
+      { href: '/kpis', label: 'KPIs', icon: BarChart3 },
+      { href: '/usage', label: 'Usage', icon: DollarSign },
+      { href: '/genes', label: 'Genes', icon: Dna },
+    ],
+  },
+  {
+    label: 'Setup',
+    items: [
+      { href: '/connections', label: 'Connections', icon: Link2 },
+      { href: '/billing', label: 'Billing', icon: Sparkles },
       { href: '/settings', label: 'Settings', icon: Settings },
     ],
   },

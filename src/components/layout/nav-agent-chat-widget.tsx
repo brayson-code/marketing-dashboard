@@ -50,16 +50,26 @@ function sectionFilterFor(label: string): SectionFilter {
   switch (key) {
     case 'creative':
     case 'marketing':
+    // MORE carries the marketing surfaces (Content Lab / Campaigns / Research), so it
+    // talks to the marketing department.
+    case 'more':
       return { departments: ['marketing'] };
     case 'revenue':
+    // RELATIONSHIPS is Contacts + Outreach — the revenue department's agents.
+    case 'relationships':
       return { departments: ['revenue'] };
     case 'insights':
     case 'ops':
     case 'operations':
+    // The two North Star sections backed by the operations agents.
+    case 'daily operations':
+    case 'company knowledge':
       return { departments: ['operations'] };
     case 'agents':
     case 'home':
     case 'general':
+    // YOUR AI TEAM is the leadership-flavoured section — the C-suite.
+    case 'your ai team':
     default:
       // Executives (the C-suite) reachable from leadership-flavored sections;
       // "All agents" always offers the rest.

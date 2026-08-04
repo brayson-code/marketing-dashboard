@@ -24,66 +24,74 @@ export const VIEW_SECTIONS: ReadonlyArray<{
   items: ReadonlyArray<{ href: string; label: string }>;
 }> = [
   {
-    section: 'Home',
+    section: 'Founder Profile',
+    items: [
+      { href: '/founder', label: 'Founder Profile' },
+    ],
+  },
+  {
+    section: 'Daily Operations',
     items: [
       { href: '/tasks', label: 'Tasks' },
       { href: '/drafts', label: 'Approvals' },
       { href: '/goals', label: 'Goals' },
+      { href: '/cron', label: 'Schedules' },
+      { href: '/activity', label: 'Activity Log' },
     ],
   },
   {
-    section: 'Agents',
+    section: 'Company Knowledge',
     items: [
+      { href: '/kg', label: 'Second Brain' },
+      { href: '/memory', label: 'Briefings' },
+      { href: '/agents/workspace', label: 'Files' },
+      { href: '/learning', label: 'Learning' },
+      { href: '/docs', label: 'How to use this' },
+    ],
+  },
+  {
+    section: 'Personal Life',
+    items: [
+      { href: '/personal', label: 'Personal Life' },
+    ],
+  },
+  {
+    section: 'Relationships',
+    items: [
+      { href: '/crm', label: 'Contacts' },
+      { href: '/outreach', label: 'Outreach' },
+    ],
+  },
+  {
+    section: 'Your AI Team',
+    items: [
+      { href: '/boardroom', label: 'Ask the Team' },
       { href: '/agents/squads', label: 'Agents' },
       { href: '/agents/skills', label: 'Skills' },
-      { href: '/boardroom', label: 'Boardroom' },
+      { href: '/agents/comms', label: 'Messages' },
+      { href: '/missions', label: 'Missions' },
+      { href: '/autonomy', label: 'Autonomy' },
     ],
   },
   {
-    section: 'Marketing',
+    section: 'More',
     items: [
       { href: '/content/overview', label: 'Content Lab' },
       { href: '/campaigns', label: 'Campaigns' },
-      { href: '/missions', label: 'Missions' },
-      { href: '/outreach', label: 'Outreach' },
       { href: '/research', label: 'Research' },
-    ],
-  },
-  {
-    section: 'Revenue',
-    items: [
-      { href: '/crm', label: 'CRM' },
       { href: '/roi', label: 'ROI' },
       { href: '/salesops', label: 'SalesOps' },
-    ],
-  },
-  {
-    section: 'Insights',
-    items: [
       { href: '/analytics', label: 'Analytics' },
       { href: '/kpis', label: 'KPIs' },
       { href: '/usage', label: 'Usage' },
-      { href: '/kg', label: 'Knowledge' },
-    ],
-  },
-  {
-    section: 'Ops',
-    items: [
-      { href: '/agents/workspace', label: 'Workspace' },
-      { href: '/memory', label: 'Reports' },
-      { href: '/learning', label: 'Learning' },
       { href: '/genes', label: 'Genes' },
-      { href: '/cron', label: 'Cron' },
-      { href: '/activity', label: 'Activity' },
     ],
   },
   {
-    section: 'General',
+    section: 'Setup',
     items: [
       { href: '/connections', label: 'Connections' },
       { href: '/billing', label: 'Billing' },
-      { href: '/autonomy', label: 'Autonomy' },
-      { href: '/docs', label: 'Docs' },
     ],
   },
 ] as const;
