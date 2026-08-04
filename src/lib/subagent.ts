@@ -251,6 +251,16 @@ async function loadSubAgentSystemPrompt(type: string, task?: string): Promise<st
     const ctx = await companyContextBlock();
     if (ctx) combined = `${ctx}\n${combined}`;
   } catch { /* never block a run on context load */ }
+  // Prepend the founder profile — the PERSON, where the playbook covers the business:
+  // working hours, how they write, what an assistant may approve, what must escalate.
+  // Prepended AFTER the playbook so it ends up ABOVE it: how this human operates
+  // outranks generic business context when the two ever pull apart. Empty until the
+  // profile is filled in, so behavior is unchanged. Best-effort.
+  try {
+    const { founderContextBlock } = await import('./founder-profile');
+    const fc = await founderContextBlock();
+    if (fc) combined = `${fc}\n${combined}`;
+  } catch { /* never block a run on context load */ }
   // Also prepend Active documents (status="wiki") — standing SOPs every sub-agent
   // must follow. Empty when none are active, so behavior is unchanged until then.
   try {

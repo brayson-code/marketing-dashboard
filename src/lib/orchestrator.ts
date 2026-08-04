@@ -370,6 +370,15 @@ async function callClaude(
     const ctx = await companyContextBlock();
     if (ctx) systemBlocks.push({ type: 'text', text: ctx });
   } catch { /* best-effort context */ }
+  // The founder profile — how this specific person works: hours, communication, writing
+  // style, approval limits, escalation rules. The orchestrator is what the founder and
+  // EA actually talk to, so this is the block that decides whether it sounds like it
+  // knows them. Empty until the profile is filled in.
+  try {
+    const { founderContextBlock } = await import('./founder-profile');
+    const fc = await founderContextBlock();
+    if (fc) systemBlocks.push({ type: 'text', text: fc });
+  } catch { /* best-effort context */ }
   // Active documents (status="wiki") the owner marked as standing SOPs — injected
   // as long-term context so the orchestrator follows them. Empty when none active.
   try {
