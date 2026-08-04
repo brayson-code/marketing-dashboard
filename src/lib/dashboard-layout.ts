@@ -62,21 +62,25 @@ function makeLayout(widgets: LayoutWidget[]): DashboardLayout {
 // only unconfigured workspaces see the new default. (LensTabs is a board control, not a
 // widget, so it isn't listed.) Spans are explicit so the contract can't silently drift
 // if a registry defaultSpan is ever tuned.
+// TRIMMED 2026-08-04 (Mitch's call): this was 14 widgets and read as "everything at
+// once" — the single loudest complaint about the Command Centre. The Overview should
+// answer one question for an Executive Assistant opening it in the morning: what does
+// the founder need from me today? So the default now carries the daily-decision widgets
+// only, and the marketing/analytics tiles (competitor_intel, content_lab, engagement,
+// knowledge_map, automation_flow, usage) plus hero_agents come OFF the default board.
+//
+// Nothing was deleted: every one of them is still in the registry and one click away via
+// Customize → the widget library. And this template only applies to workspaces that have
+// NOT saved a layout — resolveLayout prefers a per-user or per-tenant layout, so no
+// existing customised board changes.
 export const DEFAULT_TEMPLATE: DashboardLayout = makeLayout([
   w('agent_chat', 3),
   w('kpi_strip', 3),
   w('quick_win', 3),
-  w('north_star', 3),
-  w('hero_agents', 3),
   w('operator_queue', 1),
   w('todays_priorities', 1),
   w('weekly_snapshot', 1),
-  w('competitor_intel', 1),
-  w('content_lab', 1),
-  w('engagement', 1),
-  w('automation_flow', 3),
-  w('usage', 3),
-  w('knowledge_map', 3),
+  w('north_star', 3),
 ]);
 
 // OPS-FOCUSED — for trades like landscaping/construction: KPIs, goals, the owner's
