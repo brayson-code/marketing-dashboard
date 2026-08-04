@@ -54,6 +54,14 @@
   --surface-1: #fafafa;
   --surface-2: #f4f4f5;
   --surface-3: #e5e7eb;
+  /* Second Brain instrument palette. Option A: the spec's structure and motion in
+     KeyPlayers colour. brain-1 is the live inner ring (brand), 2 the middle tier,
+     3 the outer boundary — three steps of emphasis in one family, so the rings read
+     as tiers rather than as three different things. */
+  --brain-1: #38a169;
+  --brain-2: #6b9e83;
+  --brain-3: #9ca3af;
+
   /* OPAQUE elevated surface for OVERLAYS (modals, dropdown popups, popovers).
      Page panels stay frosted/translucent over the solid body bg; overlays sit over
      dimmed content and MUST be opaque or the page bleeds through (unreadable). */
@@ -109,6 +117,11 @@
   --claude-tint: rgba(234, 88, 12, 0.10);
   --claude-grid: rgba(255, 255, 255, 0.08);
   --claude-shadow: 0 18px 40px -12px rgba(234, 88, 12, 0.35), 0 10px 22px -8px rgba(0, 0, 0, 0.30);
+
+  /* Second Brain instrument palette — dark. */
+  --brain-1: #10d982;
+  --brain-2: #5ec9a4;
+  --brain-3: #6b7280;
 
   /* Per-department signature colors — used by AgentOrb + lens tabs + hero cards.
      One color per department head; sub-agents inherit their head's color so the
@@ -1072,3 +1085,42 @@ input.canvas-title-input:focus { background: color-mix(in srgb, var(--surface-2)
   color: #0a1c12;
 }
 .legal-prose table code { background: transparent; border: 0; padding: 0; }
+
+
+/* ─── Second Brain instrument ──────────────────────────────────────────────
+   Three rings, three speeds, and the MIDDLE ONE REVERSED — the counter-rotation
+   is what makes it read as machinery instead of a spinner. Every speed is below
+   conscious perception (the slowest is 220s): the eye registers "alive" without
+   ever resolving "spinning". The core breathes only 3.5%.
+   Nodes never move independently — whole rings rotate, which is three animations
+   for the entire instrument. */
+.brain-ring { transform-origin: 260px 260px; }
+.brain-ring.r1 { animation: brain-spin 80s linear infinite; }
+.brain-ring.r2 { animation: brain-spin 140s linear infinite reverse; }
+.brain-ring.r3 { animation: brain-spin 220s linear infinite; }
+.brain-sweep { transform-origin: 260px 260px; animation: brain-spin 9s linear infinite; }
+.brain-core-pulse { transform-origin: 260px 260px; animation: brain-core 3.2s ease-in-out infinite; }
+
+@keyframes brain-spin { to { transform: rotate(360deg); } }
+@keyframes brain-core {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.035); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brain-ring, .brain-sweep, .brain-core-pulse { animation: none; }
+}
+
+/* ─── Status dots ──────────────────────────────────────────────────────────
+   Square, 6px, and they blink with steps() — a hard LED blink, not a soft pulse.
+   Unknown states must map to `off`, never to `ok`: showing green for a state we
+   don't understand is how a dashboard lies. */
+.dot { width: 6px; height: 6px; border-radius: 0; display: inline-block; }
+.dot.ok { background: var(--success); }
+.dot.warn { background: var(--warning); }
+.dot.err { background: var(--destructive); }
+.dot.off { background: transparent; border: 1px solid var(--muted-foreground); }
+
+.dot.ok.pulse { animation: led-blink 2.6s steps(1) infinite; }
+@keyframes led-blink { 0%, 70%, 100% { opacity: 1; } 85% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) { .dot.ok.pulse { animation: none; } }
