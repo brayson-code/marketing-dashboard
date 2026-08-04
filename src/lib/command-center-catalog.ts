@@ -46,7 +46,7 @@ export const VIEW_SECTIONS: ReadonlyArray<{
       { href: '/memory', label: 'Briefings' },
       { href: '/agents/workspace', label: 'Files' },
       { href: '/learning', label: 'Learning' },
-      { href: '/docs', label: 'How to use this' },
+      { href: '/how-it-works', label: 'How to use this' },
     ],
   },
   {

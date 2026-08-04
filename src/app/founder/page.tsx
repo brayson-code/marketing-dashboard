@@ -113,6 +113,7 @@ export default function FounderProfilePage() {
         what="Everything you write here is given to every AI agent and the orchestrator before they do any work — so they answer as if they know the founder, not a stranger."
         when="Fill it in during onboarding, then add to it every time you learn something new about how they like things done."
         example="“Never book meetings before 9am.” “Approve anything under $500 without asking.” “Always confirm travel by text, not email.”"
+        say={<>&ldquo;Add to my profile: never book anything before 9am.&rdquo;</>}
       />
 
       {stats && (

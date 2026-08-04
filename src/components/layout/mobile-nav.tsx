@@ -71,7 +71,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/memory', label: 'Briefings', icon: FileText },
       { href: '/agents/workspace', label: 'Files', icon: FolderOpen },
       { href: '/learning', label: 'Learning', icon: TrendingUp },
-      { href: '/docs', label: 'How to use this', icon: BookOpen },
+      { href: '/how-it-works', label: 'How to use this', icon: BookOpen },
     ],
   },
   {

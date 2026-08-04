@@ -181,6 +181,7 @@ export default function PersonalLifePage() {
         what="The personal responsibilities you carry for the founder — travel, appointments, gifts, family logistics, errands."
         when="Anything that isn't company work but still takes up the founder's attention. Company tasks belong in Tasks."
         example="Book the flight to Phoenix. Olivia's birthday on the 12th. Renew the passport before March."
+        say={<>&ldquo;Olivia&rsquo;s birthday is the 12th &mdash; sort a gift.&rdquo;</>}
       />
 
       {/* Tabs — one per part of their life. */}

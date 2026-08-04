@@ -82,7 +82,10 @@ const PRIMARY: NavGroup[] = [
       { href: '/memory', label: 'Briefings', icon: FileText },
       { href: '/agents/workspace', label: 'Files', icon: FolderOpen },
       { href: '/learning', label: 'Learning', icon: TrendingUp },
-      { href: '/docs', label: 'How to use this', icon: BookOpen, newTab: true },
+      // Points at the in-app guide, NOT /docs: the docs site opens in a new tab, and
+      // sending someone out of the app to learn the app is the reason nobody read them.
+      // The guide links on to /docs for depth.
+      { href: '/how-it-works', label: 'How to use this', icon: BookOpen },
     ],
   },
   {
