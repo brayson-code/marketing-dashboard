@@ -9,6 +9,7 @@ import { Explainer } from '@/components/ui/explainer';
 import { WorkspaceLifecyclePanel } from '@/components/portal/workspace-lifecycle-panel';
 import { OnboardingCaptureForm } from '@/components/portal/onboarding-capture-form';
 import { OperatorsPanel } from '@/components/portal/operators-panel';
+import { OperatorAuditPanel } from '@/components/portal/operator-audit-panel';
 
 // HQ-only editor behind /portal. Two jobs: fill in a workspace's assistant details, and
 // publish announcements/events that every workspace sees.
@@ -145,8 +146,10 @@ export function PortalAdminPageClient() {
           details matter. */}
       <WorkspaceLifecyclePanel />
 
-      {/* Who can do any of this. Last on the page — read occasionally, not daily. */}
+      {/* Who can do any of this, and what has been done. Both read occasionally rather
+          than daily, so they sit below the work. */}
       <OperatorsPanel />
+      <OperatorAuditPanel />
 
       {loading ? (
         <div className="panel p-8 flex items-center justify-center gap-2 text-sm text-muted-foreground">
