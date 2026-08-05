@@ -107,6 +107,9 @@ export interface GrantResult {
 /**
  * Give one person access to a workspace: auth user, membership, JWT claim, sign-in link.
  *
+ * Exported so operator provisioning (operators.ts) reuses the SAME path rather than
+ * growing a second, subtly different way to create a login.
+ *
  * Mirrors /api/invite rather than reimplementing it — same recovery-token style link,
  * which /auth/confirm exchanges for a session and lands on /auth/set-password. No
  * temporary password is ever generated: a link expires, a password ends up in a Slack
@@ -114,7 +117,7 @@ export interface GrantResult {
  *
  * Idempotent. Re-running for someone who already has access refreshes their link.
  */
-async function grantAccess(
+export async function grantAccess(
   tenantId: string, email: string, role: 'owner' | 'va', origin: string,
   /** ISO instant until which this person reads but cannot act. null CLEARS prep, which
    *  is what day one does. Always written, never left as-is, so activation reliably
