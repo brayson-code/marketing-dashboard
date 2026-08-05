@@ -5,9 +5,12 @@ import { getFounderProfile } from '@/lib/founder-profile';
 import { sql } from '@/lib/db/client';
 import { tenantId } from '@/lib/tenant';
 import { firstRunCard, type Viewer } from '@/lib/first-run';
+import { dailyBrief, briefTitle } from '@/lib/daily-brief';
+import { upcomingPersonalItems } from '@/lib/personal';
 import OnboardingGate from '@/components/onboarding/onboarding-gate';
 import { WidgetBoard } from '@/components/dashboard/widget-board';
 import { FirstRunCard } from '@/components/home/first-run-card';
+import { DailyBriefPanel } from '@/components/home/daily-brief-panel';
 
 // The Overview is now a customizable widget board ("Lobsterboard").
 //
@@ -64,12 +67,41 @@ export default async function OverviewPage() {
   // showed the assistant's card to operators and anyone mid-provisioning.
   const viewer: Viewer = subject.isMember ? (subject.role as Viewer) : 'owner';
 
-  const card = firstRunCard({
-    viewer,
-    answers,
-    captured,
-    founderName: (answers as Record<string, string>).name ?? null,
-  });
+  const founderName = (answers as Record<string, string>).name ?? null;
+
+  const card = firstRunCard({ viewer, answers, captured, founderName });
+
+  // What actually needs doing today. Every source already exists — the approval queue,
+  // contact decay, and the personal-life ACT-BY dates — so this adds no new storage.
+  // Resolved here, in the page body, for the tenant-context reason above.
+  let brief: ReturnType<typeof dailyBrief> = [];
+  try {
+    const [approvalRows, contactRows, personal] = await Promise.all([
+      sql()`
+        SELECT
+          (SELECT count(*) FROM public.content_posts
+            WHERE tenant_id = ${tenantId()} AND status = 'pending_approval')
+        + (SELECT count(*) FROM public.sequences
+            WHERE tenant_id = ${tenantId()} AND status = 'pending_approval') AS n
+      `,
+      sql()`
+        SELECT id, first_name, last_name, company, title, notes,
+               last_touch_at, next_action_at, pause_outreach
+        FROM public.leads WHERE tenant_id = ${tenantId()}
+      `,
+      upcomingPersonalItems(10),
+    ]);
+
+    brief = dailyBrief(viewer === 'va' ? 'va' : 'client', {
+      approvals: Number((approvalRows as unknown as Array<{ n: string }>)[0]?.n ?? 0),
+      contacts: contactRows as never,
+      personal,
+      founderName,
+      now: Date.now(),
+    });
+  } catch {
+    // The board is the page; a failed brief must not take the Overview down with it.
+  }
 
   return (
     <div className="space-y-5">
@@ -77,6 +109,11 @@ export default async function OverviewPage() {
       {/* Role-aware, and renders nothing once the essentials are answered. Above the
           board because on day one it IS the thing to do. */}
       <FirstRunCard card={card} />
+      {/* Above the board: the board shows what EXISTS, this says what needs doing. */}
+      <DailyBriefPanel
+        title={briefTitle(viewer === 'va' ? 'va' : 'client', founderName)}
+        items={brief}
+      />
       <WidgetBoard initialLayout={layout} canSetWorkspaceDefault={canSetWorkspaceDefault} />
     </div>
   );
