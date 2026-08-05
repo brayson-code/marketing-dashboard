@@ -52,6 +52,7 @@ import { sql } from '../src/lib/db/client';
 import { SUBAGENT_REGISTRY } from '../src/lib/subagent';
 import { EXEC_SPECS } from './lib/exec-specs';
 import { ARCHETYPE_SOULS } from './lib/archetype-souls';
+import { departmentFor } from '../src/lib/agent-department';
 
 // keycommand-provisioning lives as a sibling repo. Resolve relative to this file
 // so the script works regardless of the process cwd.
@@ -222,7 +223,10 @@ function bundledSpecialists(): LibRow[] {
       name: titleize(id),
       category: meta.category,
       role: meta.role,
-      department: null,
+      // Was hardcoded null, which is why bundled specialists landed in the org chart's
+      // "General" bucket. Derived from category where production data is unanimous;
+      // still null where it genuinely is not (see agent-department.ts).
+      department: departmentFor({ id, category: meta.category }),
       is_executive: false,
       does: SUBAGENT_REGISTRY[id].description,
       soul, agent_md, skills,
