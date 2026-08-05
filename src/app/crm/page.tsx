@@ -511,9 +511,9 @@ export default function CrmPage() {
           <input
             type="text"
             name="search"
-            aria-label="Search leads"
+            aria-label="Search contacts"
             autoComplete="off"
-            placeholder="Search leads..."
+            placeholder="Search contacts…"
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="w-full pl-9 pr-3"
@@ -526,7 +526,7 @@ export default function CrmPage() {
           aria-label="Tier filter"
           className="px-3"
         >
-          <option value="">All Tiers</option>
+          <option value="">All priorities</option>
           <option value="A">Tier A</option>
           <option value="B">Tier B</option>
           <option value="C">Tier C</option>
@@ -673,7 +673,7 @@ export default function CrmPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2 space-y-2">
             {sorted.length === 0 ? (
-              <div className="panel p-8 text-center text-sm text-muted-foreground">No leads found</div>
+              <div className="panel p-8 text-center text-sm text-muted-foreground">No contacts found</div>
             ) : (
               sorted.map(lead => (
                 <LeadRow
@@ -704,7 +704,7 @@ export default function CrmPage() {
             ) : (
               <div className="panel p-8 text-center text-sm text-muted-foreground sticky top-24">
                 <Contact size={32} className="mx-auto mb-3 opacity-30" />
-                <p>Select a lead to view details</p>
+                <p>Pick someone to see the full record</p>
               </div>
             )}
           </div>

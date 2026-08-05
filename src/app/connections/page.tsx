@@ -5,6 +5,7 @@ import ConnectPanel from '@/components/connections/connect-panel';
 import { IntegrationsPanel } from '@/components/connections/integrations-panel';
 import { McpPanel } from '@/components/connections/mcp-panel';
 import { Explainer } from '@/components/ui/explainer';
+import { AgentRecommendations } from '@/components/agents/recommendations';
 
 // Single home for everything the workspace connects to:
 //  1. Social accounts — one-tap OAuth (Nango) → ConnectPanel
@@ -20,6 +21,8 @@ export default function ConnectionsPage() {
         when="Connect the Claude key first: your agents stay paused until it is in place."
         example="Connecting Gmail is what lets an agent draft a reply in your inbox."
       />
+
+      <AgentRecommendations />
       <div className="space-y-1">
         <h1 className="text-h1 flex items-center gap-2">
           <Link2 size={18} className="text-primary" /> Connections

@@ -139,7 +139,7 @@ export default function OutreachPage() {
               value={tierFilter}
               onChange={e => setTierFilter(e.target.value)}
             >
-              <option value="">All Tiers</option>
+              <option value="">All priorities</option>
               <option value="A">Tier A</option>
               <option value="B">Tier B</option>
               <option value="C">Tier C</option>

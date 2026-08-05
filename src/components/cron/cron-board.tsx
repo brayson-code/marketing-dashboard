@@ -985,9 +985,9 @@ export function CronBoard({ variant = 'embedded' }: { variant?: 'page' | 'embedd
       <div className={variant === 'page' ? 'panel' : 'panel-header'}>
         <div className={variant === 'page' ? 'panel-header flex items-center justify-between flex-wrap gap-3' : 'flex items-center justify-between flex-wrap gap-3'}>
           <div>
-            <h2 className={variant === 'page' ? 'text-xl font-semibold' : 'text-sm font-medium'}>Cron Jobs</h2>
+            <h2 className={variant === 'page' ? 'text-xl font-semibold' : 'text-sm font-medium'}>Scheduled work</h2>
             {variant === 'page' && (
-              <p className="text-sm text-muted-foreground">Schedule recurring KeyPlayer sub-agent tasks. The dispatcher runs due jobs hourly. Drag the grip to reorder.</p>
+              <p className="text-sm text-muted-foreground">Work that runs on its own on a repeating schedule. Due jobs run every hour. Drag the grip to reorder.</p>
             )}
           </div>
           <div className="flex items-center gap-2">

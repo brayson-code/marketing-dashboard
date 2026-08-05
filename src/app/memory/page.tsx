@@ -209,7 +209,7 @@ export default function MemoryPage() {
           <p className="text-xs text-muted-foreground">Filed outputs — mission research reports and scheduled-job results, stored as markdown. (Your AI team&apos;s live knowledge lives in Knowledge; the Company brief moved to Settings.)</p>
         </div>
         <div className="flex items-center gap-1 border-b border-border">
-          <button onClick={() => setView('docs')} className={`tab ${view === 'docs' ? 'active' : ''}`}>Reports</button>
+          <button onClick={() => setView('docs')} className={`tab ${view === 'docs' ? 'active' : ''}`}>Briefings</button>
           <button onClick={() => setView('health')} className={`tab ${view === 'health' ? 'active' : ''}`}>Health</button>
         </div>
       </div>
@@ -606,7 +606,7 @@ function HealthView() {
         </div>
         {data.kg.by_source.length > 0 && (
           <div className="panel p-3 mt-3">
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2">Facts by source agent</div>
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2">What each agent learned</div>
             <div className="space-y-1.5">
               {data.kg.by_source.map((s) => (
                 <div key={s.source} className="flex items-center justify-between text-xs">
@@ -619,7 +619,7 @@ function HealthView() {
         )}
       </div>
       <div>
-        <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Compacted memory</div>
+        <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Summarised history</div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <Stat label="Rollups" value={data.memory.rollups} />
           <Stat label="Last rollup" value={data.memory.last_rollup ? new Date(data.memory.last_rollup).toLocaleDateString() : '—'} />
