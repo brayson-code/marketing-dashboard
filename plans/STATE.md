@@ -34,6 +34,7 @@ changes, visual/UX only unless agreed, never break functionality.
 
 | Tag | What |
 |---|---|
+| `day-one-clarity-v1` | **Two mislabels fixed:** nav "Files" actually opened Agent Studio (a prompt editor) — renamed + moved to Your AI Team; `/memory` said "Reports" while the nav said "Briefings". Plus explainers on the 7 day-one pages, 18 → 25 of 71 |
 | `capture-extract-v1` | Paste onboarding call notes → drafts the capture form. Drafts only, never saves; told not to infer approval limits. ⚠️ Needs a working Anthropic key |
 | `readiness-v1` | Per-workspace day-one checklist in Portal Admin. "Open" deliberately does NOT count as ready. Sorts live-and-unfinished first. 8 tests |
 | `second-brain-browse-v1` | Focusing an area hub lists **everything** in it with a filter, not just the 18 drawn. Fixed in the inspector, not the layout — the cap stays |
@@ -138,7 +139,8 @@ Client workspaces BYO their own key (`anthropic-key.ts`), so this is HQ-specific
    from `plans/second-brain-graph-templates.md`: angular-sector level-of-detail
    (currently a crude cap of 18/hub, which visibly lies at 656), synapse sparks,
    idle throttling.
-3. **Explainers — 16 of 69 pages.** Worse coverage than previously recorded. 53 pages
+3. **Explainers — 25 of 71 pages.** The day-one path is now covered; the rest are
+   secondary surfaces. Original note: Worse coverage than previously recorded. 53 pages
    still have no on-page guidance at all.
 4. **Overview** — trimmed to 7 widgets but never rebuilt around the actual question,
    "what does the founder need from me today?"
@@ -181,6 +183,10 @@ wizard is hard-dark).
   and pass it down. This nearly shipped HQ's founder profile to every client.
 - **`subject.role === 'va'` is also the fail-closed default for a NON-member.** Gate any
   assistant-specific UI on `subject.isMember` too.
+- **Inserting JSX by regex is how you get valid code in the wrong place.** Two passes at
+  adding explainers put one inside a `PageHeader` `actions` prop and five inside helper
+  components at the bottom of the file. **Both passed tsc.** Anchor on a verified line
+  and assert on it, or hand-place.
 - **Client components render nothing to curl** — content hydrates. Verify UI in a
   browser, not with `curl | grep`.
 - **eslint baseline is 121 problems (41 errors, 80 warnings).** Keep parity; if it
