@@ -20,11 +20,47 @@ export interface Extraction {
   missing: string[];
 }
 
+const INSTRUCTIONS =
+  'These are notes from a client onboarding call. Pull out the answers to the fields in ' +
+  'the tool.\n\n' +
+  'Rules:\n' +
+  "- Use the CLIENT'S OWN WORDS wherever you can. These answers go into an AI system " +
+  'prompt as binding instructions, so a tidy paraphrase can quietly change what an ' +
+  'assistant is allowed to do.\n' +
+  '- OMIT any field the notes do not actually answer. A plausible guess is worse than a ' +
+  'blank: a blank gets asked about, a guess gets trusted.\n' +
+  '- Do not infer approval limits, escalation rules or spend authority from anything ' +
+  'less than an explicit statement.\n';
+
+/**
+ * Translate an SDK failure into something the person reading it can act on.
+ *
+ * The SDK throws with the raw upstream JSON attached, and surfacing that put
+ * `401 {"type":"error","error":{"type":"authentication_error"…}}` in front of a Client
+ * Success operator — which names no cause and suggests no fix.
+ */
+function friendlyError(err: unknown): Error {
+  const status = (err as { status?: number })?.status;
+  if (status === 401 || status === 403) {
+    return new Error(
+      'The Anthropic key on this workspace is being rejected. Reconnect it in ' +
+      'Connections → Anthropic, then try again. You can still type the answers in.',
+    );
+  }
+  if (status === 429) {
+    return new Error('Anthropic is rate limiting right now. Wait a moment and try again.');
+  }
+  if (typeof status === 'number' && status >= 500) {
+    return new Error('Anthropic is having trouble. Try again shortly, or type the answers in.');
+  }
+  return new Error('Could not read those notes. Type the answers in, or try again.');
+}
+
 /**
  * Pull capture answers out of free-form notes.
  *
- * The schema is built FROM the catalog rather than restated, so adding a capture field
- * cannot silently fail to be extracted.
+ * The tool schema is built FROM the catalog rather than restated, so adding a capture
+ * field cannot silently fail to be extracted.
  */
 export async function extractFromNotes(notes: string): Promise<Extraction> {
   const text = String(notes ?? '').trim();
@@ -40,37 +76,30 @@ export async function extractFromNotes(notes: string): Promise<Extraction> {
     properties[f.key] = {
       type: 'string',
       // The QUESTION is the best description of the field — it is what was actually
-      // asked on the call, so it matches the shape of the notes.
+      // asked on the call, so it matches the shape the notes are already in.
       description: `${f.label}. The question asked was: "${f.ask}". Omit entirely if the notes do not answer it.`,
     };
   }
 
   const client = new Anthropic({ apiKey, maxRetries: 3 });
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 2048,
-    tools: [{
-      name: 'emit_capture',
-      description: 'Emit the onboarding answers found in the notes.',
-      input_schema: { type: 'object', properties },
-    }],
-    tool_choice: { type: 'tool', name: 'emit_capture' },
-    messages: [{
-      role: 'user',
-      content:
-        'These are notes from a client onboarding call. Pull out the answers to the ' +
-        'fields in the tool.\n\n' +
-        'Rules:\n' +
-        '- Use the CLIENT\'S OWN WORDS wherever you can. These answers go into an AI ' +
-        'system prompt as binding instructions, so a tidy paraphrase can quietly change ' +
-        'what an assistant is allowed to do.\n' +
-        '- OMIT any field the notes do not actually answer. A plausible guess is worse ' +
-        'than a blank: a blank gets asked about, a guess gets trusted.\n' +
-        '- Do not infer approval limits, escalation rules or spend authority from ' +
-        'anything less than an explicit statement.\n\n' +
-        `NOTES:\n${text}`,
-    }],
-  });
+
+  let response: Anthropic.Messages.Message;
+  try {
+    response = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 2048,
+      tools: [{
+        name: 'emit_capture',
+        description: 'Emit the onboarding answers found in the notes.',
+        input_schema: { type: 'object', properties },
+      }],
+      tool_choice: { type: 'tool', name: 'emit_capture' },
+      messages: [{ role: 'user', content: `${INSTRUCTIONS}\nNOTES:\n${text}` }],
+    });
+  } catch (err) {
+    console.error('capture extraction failed:', err);
+    throw friendlyError(err);
+  }
 
   const block = response.content.find(c => c.type === 'tool_use');
   const raw = (block && block.type === 'tool_use' ? block.input : {}) as Record<string, unknown>;
