@@ -1,41 +1,21 @@
 import Link from 'next/link';
 import { ArrowRight, ClipboardCheck, Sparkles } from 'lucide-react';
-import { getFounderProfile } from '@/lib/founder-profile';
-import { getSubject } from '@/lib/authz';
-import { sql } from '@/lib/db/client';
-import { tenantId } from '@/lib/tenant';
-import { firstRunCard, type Viewer } from '@/lib/first-run';
+import type { FirstRunCard as Card } from '@/lib/first-run';
 
-// The first thing each person sees on day one. SERVER component, so it renders with the
-// page rather than fetching after paint — a "you have not set this up" card that flashes
-// in a second late is worse than not having one.
+// The first thing each person sees on day one. PRESENTATIONAL ONLY.
 //
-// Reads the role from the already-resolved subject, so the client is sent to confirm
-// what was captured and the assistant is given the questions still worth asking.
+// ── WHY THIS TAKES A PROP INSTEAD OF FETCHING ───────────────────────────────
+// It used to call getSubject() and getFounderProfile() itself, which was wrong in a way
+// that produced no error. The tenant context is established with enterTenant() in the
+// PAGE body and lives in AsyncLocalStorage; a child server component renders outside
+// that scope, so currentUserId() came back null (silently downgrading every viewer to
+// the least-privilege 'va' branch) and tenantId() fell through to DEFAULT_TENANT_ID —
+// meaning every client would have been shown HQ's founder profile.
 //
-// Renders nothing once the essentials are answered. The caller must already be inside
-// enterTenant(await resolveTenant()).
+// Anything needing tenant scope must be resolved in the page, where the context exists,
+// and handed down. Nothing here touches the database.
 
-export async function FirstRunCard() {
-  const [profile, subject] = await Promise.all([getFounderProfile(), getSubject()]);
-
-  let captured = false;
-  try {
-    const rows = (await sql()`
-      SELECT business_profile -> 'onboarding_capture' AS c
-      FROM public.tenants WHERE id = ${tenantId()} LIMIT 1
-    `) as unknown as Array<{ c: { at?: string } | null }>;
-    captured = typeof rows[0]?.c?.at === 'string';
-  } catch { /* treated as not captured — the card still renders the cold version */ }
-
-  const answers = profile.answers ?? {};
-  const card = firstRunCard({
-    viewer: (subject.role as Viewer) ?? 'owner',
-    answers,
-    captured,
-    founderName: (answers as Record<string, string>).name ?? null,
-  });
-
+export function FirstRunCard({ card }: { card: Card | null }) {
   if (!card) return null;
 
   const Icon = card.tone === 'confirm' ? ClipboardCheck : Sparkles;
