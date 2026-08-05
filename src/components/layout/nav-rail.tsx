@@ -9,7 +9,7 @@ import {
   FolderOpen, MessagesSquare, Activity, Target, Inbox, Network, DollarSign, Bug,
   Waves, TrendingUp, Dna, Timer, Link2, Sparkles, ChevronDown, ChevronRight,
   FlaskConical, BookOpen, ArrowUpRight, Boxes, ShieldCheck, PhoneCall, Blocks,
-  MessageCircle, UserRound, Heart, Building2,
+  MessageCircle, UserRound, Heart, Building2, Layers,
 } from 'lucide-react';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { useDashboard } from '@/store';
@@ -141,6 +141,9 @@ const MORE: NavGroup = {
     { href: '/playground', label: 'Playground', icon: Blocks, flag: 'playground_enabled' },
     { href: '/issues', label: 'Issues', icon: Bug },
     { href: '/security', label: 'Security', icon: ShieldCheck },
+    // Industry Templates — HQ-only, read-only preview of the niche agent rosters in
+    // agent_library. Operator tooling for client setup, never client-facing.
+    { href: '/templates', label: 'Industry Templates', icon: Layers },
   ],
 };
 
@@ -221,7 +224,7 @@ export function NavRail() {
   // KeyWatch / Issues and the Security Console are HQ-only (both read across tenants
   // and can act on the platform). Hide them from client workspaces — the APIs enforce
   // it server-side too. Default false so they're hidden until proven HQ.
-  const HQ_ONLY = new Set(['/issues', '/security']);
+  const HQ_ONLY = new Set(['/issues', '/security', '/templates']);
   const [isHq, setIsHq] = useState(false);
   // Feature flags that hide/show nav items. Keyed by the NavItem.flag value. Default
   // all-off so a flag-gated item (SalesOps) stays hidden until /api/auth/me reports it

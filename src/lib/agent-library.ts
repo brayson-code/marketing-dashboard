@@ -126,6 +126,71 @@ export async function agentsForNiche(nicheSlug: string): Promise<LibraryAgentLis
   return rows.map(toListItem);
 }
 
+/**
+ * Every industry the catalog knows about, with how many agents each pre-selects.
+ *
+ * Read from the data rather than a hardcoded list: the niches come from
+ * keycommand-provisioning's niche-config via the seed script, so a hardcoded copy here
+ * would silently drift the moment that seed is rerun with a new industry.
+ */
+export async function listNiches(): Promise<Array<{ slug: string; agents: number }>> {
+  const rows = (await sql()`
+    SELECT n AS slug, count(*)::int AS agents
+    FROM public.agent_library, unnest(default_niches) AS n
+    GROUP BY n
+    ORDER BY n
+  `) as unknown as Array<{ slug: string; agents: number }>;
+  return rows;
+}
+
+/**
+ * What a workspace HAS versus what an industry template OFFERS.
+ *
+ * Read-only, and the reason this whole surface starts as preview: it turns "clients
+ * aren't getting niche agents" from an assertion into something an operator can see per
+ * workspace before anyone writes a row.
+ *
+ * Matching is by agent_defs.id ↔ agent_library.id (both are the same deterministic
+ * slug), NOT by name — names are display copy and get edited per workspace.
+ *
+ * CROSS-TENANT: callers MUST be HQ-gated (requireHq) before invoking this with a
+ * tenant other than the active one. It is deliberately explicit about the tenant rather
+ * than reading tenantId() so the cross-tenant read is visible at the call site.
+ */
+export async function workspaceGap(targetTenantId: string, nicheSlug: string): Promise<{
+  present: string[];
+  missing: string[];
+}> {
+  const slug = String(nicheSlug ?? '').trim().toLowerCase();
+  const rows = (await sql()`
+    SELECT l.id,
+           EXISTS (
+             SELECT 1 FROM public.agent_defs d
+             WHERE d.tenant_id = ${targetTenantId} AND d.id = l.id
+           ) AS has_it
+    FROM public.agent_library l
+    WHERE l.default_niches @> ARRAY[${slug}]::text[]
+       OR l.source IN ('default', 'exec')
+  `) as unknown as Array<{ id: string; has_it: boolean }>;
+
+  return {
+    present: rows.filter(r => r.has_it).map(r => r.id),
+    missing: rows.filter(r => !r.has_it).map(r => r.id),
+  };
+}
+
+/** Workspaces an operator can preview a template against. HQ-gated callers only. */
+export async function listWorkspaces(): Promise<Array<{ id: string; name: string; agents: number }>> {
+  const rows = (await sql()`
+    SELECT t.id, t.name, count(d.*)::int AS agents
+    FROM public.tenants t
+    LEFT JOIN public.agent_defs d ON d.tenant_id = t.id
+    GROUP BY t.id, t.name
+    ORDER BY t.name
+  `) as unknown as Array<{ id: string; name: string; agents: number }>;
+  return rows;
+}
+
 /** Count rows grouped by source + richness — for the sales console header/QA. */
 export async function libraryStats(): Promise<Array<{ source: string; richness: string; n: number }>> {
   const rows = (await sql()`

@@ -126,7 +126,7 @@ const NAV_GROUPS: NavGroup[] = [
 
 // HQ-only surfaces. Mirrors nav-rail.tsx — the APIs enforce this server-side too, but
 // a client should never SEE them.
-const HQ_ONLY = new Set(['/issues', '/security']);
+const HQ_ONLY = new Set(['/issues', '/security', '/templates']);
 
 export function MobileNav() {
   const pathname = usePathname();
