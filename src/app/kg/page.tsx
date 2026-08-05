@@ -3,8 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Network, Search, ArrowRight, ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
 import KnowledgeGraph from '@/components/kg-graph';
-import { BrainCore } from '@/components/kg/brain-core';
-import { foldClusters, brainHealth } from '@/lib/brain-viz';
 import { timeAgo } from '@/lib/utils';
 
 interface Entity { id: number; kind: string; name: string; attributes: Record<string, unknown>; created_at: string; updated_at: string }
@@ -86,23 +84,6 @@ function KgContent() {
     return copy;
   }, [entities, sort, degreeMap]);
 
-  // Feed the core instrument. Both numbers come from data the page already has, so
-  // this costs one pass over the relations rather than another request.
-  const brain = useMemo(() => {
-    const byKind = new Map<string, number>();
-    for (const e of entities) byKind.set(e.kind, (byKind.get(e.kind) ?? 0) + 1);
-    const clusters = foldClusters(
-      [...byKind.entries()].map(([label, count]) => ({ label, count })),
-    );
-    const linked = new Set<number>();
-    for (const r of relations) { linked.add(r.from_id); linked.add(r.to_id); }
-    return {
-      clusters,
-      connected: linked.size,
-      health: brainHealth(entities.length, linked.size),
-    };
-  }, [entities, relations]);
-
   const totalPages = Math.max(1, Math.ceil(sortedEntities.length / PAGE_SIZE));
   const pageStart = page * PAGE_SIZE;
   const pageEnd = Math.min(pageStart + PAGE_SIZE, sortedEntities.length);
@@ -121,35 +102,11 @@ function KgContent() {
         </div>
       </div>
 
-      {/* ── The core instrument. Reads as a gauge: how much of what we know is
-          actually connected to anything else. ─────────────────────────────── */}
-      <div className="panel">
-        <div className="panel-body flex flex-col md:flex-row items-center gap-6">
-          <BrainCore
-            clusters={brain.clusters}
-            health={brain.health}
-            totalEntities={entities.length}
-            size={300}
-          />
-          <div className="flex-1 min-w-0 space-y-3">
-            <div className="space-y-1">
-              <h3 className="section-title">Knowledge health</h3>
-              <p className="text-small">
-                {brain.health === null
-                  ? 'Nothing recorded yet. As agents work, what they learn lands here.'
-                  : `${brain.connected} of ${entities.length} things you know are linked to something else. The rest are recorded but isolated — they were noted once and never connected.`}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {brain.clusters.map((c) => (
-                <span key={c.label} className="badge badge-neutral">
-                  {c.label} {c.count}
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* The core instrument (components/kg/brain-core.tsx) was mounted here and has
+          been pulled back out: a radar gauge stacked on top of the old force-graph
+          canvas read as two unrelated visuals on one page. It stays in the codebase
+          for a summary tile elsewhere; this page needs ONE coherent visualisation,
+          which is the graph rebuild. */}
 
       <div className="panel">
         <div className="panel-header">
