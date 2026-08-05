@@ -34,6 +34,7 @@ changes, visual/UX only unless agreed, never break functionality.
 
 | Tag | What |
 |---|---|
+| `first-run-v1` | **Role-aware landing.** Client gets "check what we wrote"/"your AI team doesn't know you yet"; assistant gets "things to ask Dana" with the actual questions. Renders nothing once essentials are answered. 9 tests |
 | `prep-mode-v1` | **Assistant reads before day one, cannot act.** `prep_until` on the JWT, enforced in the middleware (reads pass, writes 403) so it works on the Edge and regardless of AUTHZ_ENFORCE. Day one clears it. 9 tests |
 | `onboarding-capture-v1` | **Client Success captures the call**, writing the founder profile + playbook for that workspace. `/business-setup` then reads "we filled this in, correct anything wrong" instead of showing a blank form. The fix for 0-of-14 |
 | `lifecycle-v1` | **Provisioning separated from access.** Workspace states provisioned/active/paused/offboarded; enforcement is the AUTH ROWS (no user = no way in), not a request filter. `/api/lifecycle` + controls in `/portal-admin`. Migration **0062**, 10 tests |
@@ -152,6 +153,13 @@ wizard is hard-dark).
   `*-catalog.ts` (pure) / `*.ts` (server) splits. **tsc will not catch this.**
 - **Stale Turbopack CSS**: if a `globals.css` change appears to do nothing, check
   `.next` for the rule; `rm -rf .next` fixes it.
+- **⚠️ A CHILD server component renders OUTSIDE the page's AsyncLocalStorage scope.**
+  `enterTenant()` is called in the page body; a child calling `tenantId()` silently gets
+  `DEFAULT_TENANT_ID` (HQ) and a child calling `getSubject()` silently gets the
+  least-privilege subject. **Neither throws.** Resolve anything tenant-scoped in the page
+  and pass it down. This nearly shipped HQ's founder profile to every client.
+- **`subject.role === 'va'` is also the fail-closed default for a NON-member.** Gate any
+  assistant-specific UI on `subject.isMember` too.
 - **Client components render nothing to curl** — content hydrates. Verify UI in a
   browser, not with `curl | grep`.
 - **eslint baseline is 121 problems (41 errors, 80 warnings).** Keep parity; if it
