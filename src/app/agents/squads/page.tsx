@@ -100,6 +100,14 @@ export default function SquadsPage() {
 
   return (
     <div className="space-y-6 animate-in">
+      <Explainer
+        id="agents"
+        title="What this is"
+        what="Your AI team, grouped the way a company is — leadership, marketing, revenue, operations, client experience."
+        when="When you want to see who does what, or open one up to check its memory and current work."
+        example="Opening the CRO agent to see which deals it flagged this week."
+        say="Or just ask: “Who on the team handles follow-ups?”"
+      />
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="space-y-1">
           <h1 className="text-h1 flex items-center gap-2"><Bot size={18} className="text-primary" /> Agents</h1>
@@ -112,15 +120,6 @@ export default function SquadsPage() {
           </Link>
         </div>
       </div>
-
-      <Explainer
-        id="agents"
-        title="What this is"
-        what="Your AI team, grouped the way a company is — leadership, marketing, revenue, operations, client experience."
-        when="When you want to see who does what, or open one up to check its memory and current work."
-        example="Opening the CRO agent to see which deals it flagged this week."
-        say="Or just ask: “Who on the team handles follow-ups?”"
-      />
 
       {loading && agents.length === 0 ? (
         <div className="panel p-8 flex items-center justify-center gap-2 text-sm text-muted-foreground">

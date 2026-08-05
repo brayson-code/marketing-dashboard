@@ -38,11 +38,6 @@ export default function LearningPage() {
 
   return (
     <div className="space-y-4 animate-in">
-      <div className="space-y-1">
-        <h1 className="text-h1 flex items-center gap-2"><TrendingUp size={18} className="text-primary" /> Learning</h1>
-        <p className="text-xs text-muted-foreground">What&apos;s working across the agents. Each completed run is scored with the owner-weighted blend (Reliability · Approval · Outcome) and accumulated per agent.</p>
-      </div>
-
       <Explainer
         id="learning"
         title="What this is"
@@ -50,6 +45,10 @@ export default function LearningPage() {
         when="When something feels off and you want to see whether it is getting better or worse, rather than guessing."
         example="Outreach drafts scoring lower this week than last, so the prompt needs a look."
       />
+      <div className="space-y-1">
+        <h1 className="text-h1 flex items-center gap-2"><TrendingUp size={18} className="text-primary" /> Learning</h1>
+        <p className="text-xs text-muted-foreground">What&apos;s working across the agents. Each completed run is scored with the owner-weighted blend (Reliability · Approval · Outcome) and accumulated per agent.</p>
+      </div>
 
       <div className="panel p-2.5 text-[11px] text-muted-foreground flex items-start gap-2">
         <Info size={13} className="mt-0.5 shrink-0" />

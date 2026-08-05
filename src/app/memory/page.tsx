@@ -204,6 +204,14 @@ export default function MemoryPage() {
 
   return (
     <div className="space-y-4 animate-in">
+      <Explainer
+        id="briefings"
+        title="What this is"
+        what="Written summaries your agents produce — research, weekly reviews, anything worth reading rather than skimming a chat for."
+        when="When you want the thinking behind a decision, or something to forward to someone else."
+        example="A weekly state-of-the-business brief you can send to a partner without rewriting it."
+        say="Or just ask: “Write me a summary of what happened this week.”"
+      />
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <div className="space-y-1">
           <h1 className="text-h1 flex items-center gap-2"><FileText size={18} className="text-primary" /> Briefings</h1>
@@ -214,15 +222,6 @@ export default function MemoryPage() {
           <button onClick={() => setView('health')} className={`tab ${view === 'health' ? 'active' : ''}`}>Health</button>
         </div>
       </div>
-
-      <Explainer
-        id="briefings"
-        title="What this is"
-        what="Written summaries your agents produce — research, weekly reviews, anything worth reading rather than skimming a chat for."
-        when="When you want the thinking behind a decision, or something to forward to someone else."
-        example="A weekly state-of-the-business brief you can send to a partner without rewriting it."
-        say="Or just ask: “Write me a summary of what happened this week.”"
-      />
 
       {view === 'health' ? <HealthView /> : (
       <div className="panel flex" style={{ height: 'calc(100vh - 220px)', minHeight: 460 }}>

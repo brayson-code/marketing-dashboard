@@ -294,14 +294,6 @@ function IMessageThread() {
               Set <code className="text-foreground">LOOPMESSAGE_AUTH_KEY</code> and <code className="text-foreground">KEYPLAYERS_OWNER_PHONE</code> in <code className="text-foreground">.env.local</code> and restart.
             </div>
           </div>
-
-      <Explainer
-        id="boardroom"
-        title="What this is"
-        what="One conversation with your whole AI team. Ask a question and the right specialists answer, the way a real boardroom would."
-        when="When the question crosses departments, or you do not know who to ask."
-        example="“We are down on bookings this month — what is going on?”"
-      />
         </div>
       )}
 
@@ -518,6 +510,13 @@ function BoardroomContent() {
 
   return (
     <div className="space-y-4 animate-in">
+      <Explainer
+        id="boardroom"
+        title="What this is"
+        what="One conversation with your whole AI team. Ask a question and the right specialists answer, the way a real boardroom would."
+        when="When the question crosses departments, or you do not know who to ask."
+        example="“We are down on bookings this month — what is going on?”"
+      />
       <div className="space-y-1">
         <h1 className="text-h1">Boardroom</h1>
         <p className="text-xs text-muted-foreground">{active.description}</p>

@@ -284,6 +284,14 @@ export default function AgentStudioPage() {
 
   return (
     <div className="space-y-6 animate-in w-full">
+      <Explainer
+        id="agent-studio"
+        title="What this is"
+        what="The actual instructions each agent runs on. Edit one and it takes effect immediately — no deploy, no waiting."
+        when="When an agent keeps getting something wrong, or you want it to sound more like you."
+        example="Telling your outreach agent to never promise a delivery date."
+        say="Or just say: “Stop signing emails with my full name.” Your assistant can make the change here."
+      />
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="space-y-1">
           <h1 className="text-h1 flex items-center gap-2">
@@ -348,15 +356,6 @@ export default function AgentStudioPage() {
             )}
           </div>
         </div>
-
-      <Explainer
-        id="agent-studio"
-        title="What this is"
-        what="The actual instructions each agent runs on. Edit one and it takes effect immediately — no deploy, no waiting."
-        when="When an agent keeps getting something wrong, or you want it to sound more like you."
-        example="Telling your outreach agent to never promise a delivery date."
-        say="Or just say: “Stop signing emails with my full name.” Your assistant can make the change here."
-      />
 
         {/* RIGHT: editor — fills the remaining width. */}
         <div className="panel min-w-0">

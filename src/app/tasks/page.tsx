@@ -195,6 +195,14 @@ export default function TasksPage() {
 
   return (
     <div className="space-y-6 animate-in">
+      <Explainer
+        id="tasks"
+        title="What this is"
+        what="Everything your AI team is doing or has queued, live. Anything waiting on a person shows at the top."
+        when="When you want to know what is actually happening right now, or why something has not landed yet."
+        example="An agent is drafting three follow-up emails and one needs your approval before it sends."
+        say="Or just ask: “What are you working on right now?”"
+      />
       <PageHeader
         icon={<Activity size={18} />}
         title="Tasks"
@@ -206,15 +214,6 @@ export default function TasksPage() {
             </button>
             <span className="badge badge-info inline-flex items-center gap-1.5">
               <Loader2 size={11} className={running.length > 0 ? 'animate-spin' : ''} />
-
-      <Explainer
-        id="tasks"
-        title="What this is"
-        what="Everything your AI team is doing or has queued, live. Anything waiting on a person shows at the top."
-        when="When you want to know what is actually happening right now, or why something has not landed yet."
-        example="An agent is drafting three follow-up emails and one needs your approval before it sends."
-        say="Or just ask: “What are you working on right now?”"
-      />
               {running.length} running
             </span>
             <span className="badge badge-neutral">{data?.counts.total ?? 0} total</span>

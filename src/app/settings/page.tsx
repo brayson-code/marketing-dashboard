@@ -593,6 +593,13 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6 animate-in w-full">
+      <Explainer
+        id="settings"
+        title="What this is"
+        what="How the workspace behaves — which sections your team sees, how much your agents may spend, and who has access."
+        when="When someone joins or leaves, or the workspace shows more than anyone needs."
+        example="Hiding the marketing sections for a team that only uses this for operations."
+      />
       <div className="panel">
         <div className="panel-header">
           <h1 className="text-2xl font-semibold flex items-center gap-2">
@@ -627,14 +634,6 @@ export default function SettingsPage() {
             ))}
           </div>
         </div>
-
-      <Explainer
-        id="settings"
-        title="What this is"
-        what="How the workspace behaves — which sections your team sees, how much your agents may spend, and who has access."
-        when="When someone joins or leaves, or the workspace shows more than anyone needs."
-        example="Hiding the marketing sections for a team that only uses this for operations."
-      />
       </div>
 
       {/* Command Center — which nav sections this workspace sees */}
