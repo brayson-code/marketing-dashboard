@@ -52,6 +52,10 @@ function fmtDate(iso: string) {
 
 export default function PortalPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
+  // 'va' means the ASSISTANT is reading their own placement, not the client reading
+  // about their assistant. Same data, almost entirely different copy.
+  const [viewer, setViewer] = useState<'client' | 'va'>('client');
+  const [founderName, setFounderName] = useState<string | null>(null);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +77,8 @@ export default function PortalPage() {
         const data = await res.json();
         setProfile(data.profile ?? null);
         setAnnouncements(data.announcements ?? []);
+        setViewer(data.viewer === 'va' ? 'va' : 'client');
+        setFounderName(data.founder_name ?? null);
       } catch {
         setError("Couldn't load this page. Refresh to try again.");
       } finally {
@@ -91,6 +97,7 @@ export default function PortalPage() {
     [profile?.holiday_region, now],
   );
 
+  const isVa = viewer === 'va';
   const events = announcements.filter(a => a.kind !== 'announcement');
   const notices = announcements.filter(a => a.kind === 'announcement');
   const successEmail = profile?.success_contact_email ?? null;
@@ -100,15 +107,23 @@ export default function PortalPage() {
       <PageHeader
         icon={<LifeBuoy size={20} />}
         title="Your KeyPlayers"
-        subtitle="Your assistant, their schedule, and how to get anything you need from us."
+        subtitle={isVa
+          ? 'Your schedule, your time off, and who to talk to when you need something.'
+          : 'Your assistant, their schedule, and how to get anything you need from us.'}
       />
 
       <Explainer
-        id="portal"
+        id={isVa ? 'portal-va' : 'portal'}
         title="What this is"
-        what="Everything about your KeyPlayers service in one place — who supports you, when they work, what time off they have, and how to reach us."
-        when="When you need to plan around your assistant's schedule, book support, or ask for another team member."
-        example="Check what's accrued before approving a week off."
+        what={isVa
+          ? 'Your placement in one place — your hours, the leave you have built up, and how to reach your client success contact.'
+          : 'Everything about your KeyPlayers service in one place — who supports you, when they work, what time off they have, and how to reach us.'}
+        when={isVa
+          ? 'Before you request time off, or when you need something from KeyPlayers rather than from your client.'
+          : "When you need to plan around your assistant's schedule, book support, or ask for another team member."}
+        example={isVa
+          ? 'Check what you have accrued before asking for a week off.'
+          : "Check what's accrued before approving a week off."}
       />
 
       {loading ? (
@@ -123,9 +138,13 @@ export default function PortalPage() {
           <div className="panel p-4 space-y-3">
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Your assistant</p>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  {isVa ? 'You support' : 'Your assistant'}
+                </p>
                 <h2 className="text-lg font-semibold mt-0.5">
-                  {profile?.ea_name || 'Not set up yet'}
+                  {isVa
+                    ? (founderName || 'Your founder')
+                    : (profile?.ea_name || 'Not set up yet')}
                 </h2>
                 {profile?.ea_role && <p className="text-sm text-muted-foreground">{profile.ea_role}</p>}
               </div>
@@ -138,8 +157,9 @@ export default function PortalPage() {
 
             {!profile?.ea_name && (
               <p className="text-xs text-muted-foreground">
-                Your KeyPlayers team hasn&apos;t filled this in yet. Ask your client success
-                contact and it&apos;ll appear here.
+                {isVa
+                  ? "Your placement details haven't been filled in yet. Your client success contact can add them."
+                  : "Your KeyPlayers team hasn't filled this in yet. Ask your client success contact and it'll appear here."}
               </p>
             )}
 
@@ -162,7 +182,7 @@ export default function PortalPage() {
                   <div className="flex items-start gap-2">
                     <CalendarDays size={14} className="text-muted-foreground mt-0.5 shrink-0" />
                     <div className="text-sm">
-                      <p>Started with you {fmtDate(profile.ea_started_on)}</p>
+                      <p>{isVa ? 'You started' : 'Started with you'} {fmtDate(profile.ea_started_on)}</p>
                       {accrual && (
                         <p className="text-[11px] text-muted-foreground">
                           {accrual.inProbation
@@ -175,12 +195,18 @@ export default function PortalPage() {
                 )}
               </div>
             )}
-            <p className="text-[11px] text-muted-foreground pt-1">{WORKING_HOURS_NOTE}</p>
+            <p className="text-[11px] text-muted-foreground pt-1">
+              {isVa
+                ? "You work in your client's timezone, usually between 9am and 5pm, weekdays. Both the hours and the days are flexible if the business needs something different."
+                : WORKING_HOURS_NOTE}
+            </p>
           </div>
 
           {/* Time off */}
           <div className="panel p-4 space-y-3">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Time off</p>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              {isVa ? 'Your time off' : 'Time off'}
+            </p>
 
             <div className="grid gap-2 sm:grid-cols-3">
               {ENTITLEMENTS.map((e) => {
@@ -207,7 +233,9 @@ export default function PortalPage() {
                         {e.daysPerYear}<span className="text-xs font-normal text-muted-foreground"> days a year</span>
                       </p>
                     )}
-                    <p className="text-[11px] text-muted-foreground mt-1">{e.blurb}</p>
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      {isVa ? e.blurb.replace(/\btheir\b/g, 'your').replace(/\bThey can\b/g, 'You can') : e.blurb}
+                    </p>
                   </div>
                 );
               })}
@@ -262,7 +290,9 @@ export default function PortalPage() {
                 <CalendarPlus size={14} className="text-[var(--primary)]" /> Book support
               </p>
               <p className="text-xs text-muted-foreground">
-                Something not working, or want to talk through how you&apos;re using your assistant?
+                {isVa
+                  ? 'Something you need from KeyPlayers, or something about the placement you want to raise?'
+                  : "Something not working, or want to talk through how you're using your assistant?"}
               </p>
               {SUPPORT_BOOKING_URL ? (
                 <a
@@ -285,6 +315,8 @@ export default function PortalPage() {
               )}
             </div>
 
+            {/* Asking for more people is the CLIENT's decision, not the assistant's. */}
+            {!isVa && (
             <div className="panel p-4 space-y-2">
               <p className="text-sm font-semibold flex items-center gap-1.5">
                 <UserPlus size={14} className="text-[var(--primary)]" /> Need another person?
@@ -306,6 +338,7 @@ export default function PortalPage() {
                 </p>
               )}
             </div>
+            )}
           </div>
 
           {/* Events + announcements */}
