@@ -11,6 +11,7 @@ import {
   LayoutList, Kanban, AlertCircle, BarChart3, ExternalLink,
 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
+import { Explainer } from '@/components/ui/explainer';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { useDashboard } from '@/store';
 import { timeAgo } from '@/lib/utils';
@@ -369,15 +370,27 @@ export default function CrmPage() {
       {/* Header */}
       <PageHeader
         icon={<Contact size={18} />}
-        title="CRM"
-        subtitle="Leads, tiers, and what's overdue. Tap a row for the full record."
+        title="Contacts"
+        subtitle="The people around the business, and where each relationship stands."
         actions={
           canEdit && (
             <button className="btn btn-primary btn-sm" onClick={() => setCreateOpen(true)}>
-              Add Lead
+              Add Contact
             </button>
           )
         }
+      />
+      {/* Says plainly what this page IS today. The nav calls it Contacts, but the
+          machinery underneath is still a sales pipeline (tiers, scores, stages) — so
+          rather than let the label quietly over-promise, the explainer tells an
+          assistant how to actually use it. */}
+      <Explainer
+        id="contacts-intro"
+        title="What this is for"
+        what="Everyone the business deals with — clients, prospects and partners — and where each relationship currently stands."
+        when="Use it to see who's gone quiet, who's owed a reply, and who to prepare the founder for before a meeting."
+        example="Before a call, open the person's record to see the last thing that happened with them."
+        say={<>&ldquo;Who have I not followed up with in three weeks?&rdquo;</>}
       />
       {data?.summary && (
         <div className="panel p-3 flex items-center gap-4 text-small flex-wrap">

@@ -123,11 +123,48 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+// HQ-only surfaces. Mirrors nav-rail.tsx — the APIs enforce this server-side too, but
+// a client should never SEE them.
+const HQ_ONLY = new Set(['/issues', '/security']);
+
 export function MobileNav() {
   const pathname = usePathname();
   const [sheetOpen, setSheetOpen] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
   const realOnly = useDashboard(s => s.realOnly);
+
+  // Per-tenant visibility. This was MISSING here: the desktop rail honoured the
+  // enabled-views map while mobile ignored it entirely, so a view an operator had
+  // switched off for a client was still sitting in their phone's More sheet. Same
+  // subtractive contract as the rail — a missing key means enabled.
+  const [isHq, setIsHq] = useState(false);
+  const [views, setViews] = useState<Record<string, boolean>>({});
+  const [flags, setFlags] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    let off = false;
+    fetch('/api/auth/me')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (off || !j) return;
+        setIsHq(!!j.is_hq);
+        setFlags({
+          salesops_enabled: !!j.salesops_enabled,
+          playground_enabled: !!j.playground_enabled,
+        });
+        setViews(j.command_center_views && typeof j.command_center_views === 'object'
+          ? (j.command_center_views as Record<string, boolean>)
+          : {});
+      })
+      .catch(() => {});
+    return () => { off = true; };
+  }, []);
+
+  const viewEnabled = (href: string) =>
+    isHq || href === '/' || href === '/settings' || views[href] !== false;
+  const allowed = (href: string) =>
+    (!HQ_ONLY.has(href) || isHq)
+    && (href !== '/salesops' || flags.salesops_enabled)
+    && viewEnabled(href);
 
   const { data: counts } = useSmartPoll<NavCounts>(
     () => fetch(`/api/counts${realOnly ? '?real=true' : ''}`).then(r => r.json()),
@@ -135,18 +172,21 @@ export function MobileNav() {
   );
 
   const priorityItems = useMemo(
-    () => NAV_GROUPS.flatMap(g => g.items).filter(i => i.priority),
-    [],
+    () => NAV_GROUPS.flatMap(g => g.items).filter(i => i.priority && allowed(i.href)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isHq, views, flags],
   );
   const nonPriorityItems = useMemo(
-    () => NAV_GROUPS.flatMap(g => g.items).filter(i => !i.priority),
-    [],
+    () => NAV_GROUPS.flatMap(g => g.items).filter(i => !i.priority && allowed(i.href)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isHq, views, flags],
   );
   const sheetGroups = useMemo(
     () => NAV_GROUPS
-      .map(group => ({ ...group, items: group.items.filter(i => !i.priority) }))
+      .map(group => ({ ...group, items: group.items.filter(i => !i.priority && allowed(i.href)) }))
       .filter(group => group.items.length > 0),
-    [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isHq, views, flags],
   );
   const moreActive = nonPriorityItems.some(i => isActive(pathname, i.href));
   const moreBadge = counts ? (counts.content + counts.total_pending) : 0;

@@ -118,26 +118,25 @@ function off(...hrefs: string[]): EnabledViews {
  *  preset is a complete EnabledViews map (missing key = on). `full` = {} = all on. */
 export const PRESETS: Record<string, EnabledViews> = {
   full: {},
+  // REWRITTEN for the six-section nav. The old `lite` switched off /kg (the Second
+  // Brain), /memory (Briefings), /crm (Contacts) and /boardroom (Ask the Team) — all
+  // of which are now headline sections, so a "lite" client lost the core of the
+  // product and kept the marketing machinery. Inverted: lite keeps everything an
+  // assistant works out of daily and drops the growth/analytics tooling.
   lite: off(
-    '/agents/skills',
-    '/boardroom',
     '/content/overview',
     '/campaigns',
     '/missions',
-    '/outreach',
     '/research',
-    '/crm',
     '/roi',
     '/salesops',
+    '/analytics',
     '/kpis',
     '/usage',
-    '/kg',
-    '/agents/workspace',
-    '/memory',
-    '/learning',
     '/genes',
-    '/cron',
+    '/learning',
     '/activity',
+    '/agents/skills',
   ),
   content: off('/crm', '/roi', '/salesops', '/genes', '/learning', '/cron'),
   sales: off('/content/overview', '/boardroom', '/missions', '/genes', '/learning', '/cron'),
