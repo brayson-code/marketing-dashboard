@@ -34,6 +34,7 @@ changes, visual/UX only unless agreed, never break functionality.
 
 | Tag | What |
 |---|---|
+| `operator-access-v1` | **Two tiers of gate.** `requireHq()` = engineering (Issues, Security). `requireOperator()` = running the business (Portal Admin, Templates) — HQ **or** the `platform_operators` allow-list, so Client Success reaches it from their own workspace. Both pages now server-gate with `notFound()`. Migration **0063** |
 | `first-run-v1` | **Role-aware landing.** Client gets "check what we wrote"/"your AI team doesn't know you yet"; assistant gets "things to ask Dana" with the actual questions. Renders nothing once essentials are answered. 9 tests |
 | `prep-mode-v1` | **Assistant reads before day one, cannot act.** `prep_until` on the JWT, enforced in the middleware (reads pass, writes 403) so it works on the Edge and regardless of AUTHZ_ENFORCE. Day one clears it. 9 tests |
 | `onboarding-capture-v1` | **Client Success captures the call**, writing the founder profile + playbook for that workspace. `/business-setup` then reads "we filled this in, correct anything wrong" instead of showing a blank form. The fix for 0-of-14 |
@@ -153,6 +154,10 @@ wizard is hard-dark).
   `*-catalog.ts` (pure) / `*.ts` (server) splits. **tsc will not catch this.**
 - **Stale Turbopack CSS**: if a `globals.css` change appears to do nothing, check
   `.next` for the rule; `rm -rf .next` fixes it.
+- **Operator surfaces are `requireOperator()`, NOT `requireHq()`.** Only mitch@ and
+  brayson@ are in the HQ workspace; Olivia and Client Success sit in their own. Add
+  people via `platform_operators` (email keyed), never by adding them to HQ — there is no
+  workspace switcher, so a second membership does not change where they land.
 - **⚠️ A CHILD server component renders OUTSIDE the page's AsyncLocalStorage scope.**
   `enterTenant()` is called in the page body; a child calling `tenantId()` silently gets
   `DEFAULT_TENANT_ID` (HQ) and a child calling `getSubject()` silently gets the
