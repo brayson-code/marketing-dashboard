@@ -21,9 +21,10 @@ interface Completeness {
   ready: boolean;
 }
 
-const GROUPS = ['How they work', 'Boundaries', 'Context', 'Preferences'] as const;
+const GROUPS = ['Their assistant', 'How they work', 'Boundaries', 'Context', 'Preferences'] as const;
 
 const GROUP_BLURB: Record<(typeof GROUPS)[number], string> = {
+  'Their assistant': 'Who supports this founder. Set when the workspace is provisioned; change it here.',
   'How they work': 'The basics an assistant needs on day one.',
   'Boundaries': 'The expensive ones to get wrong. Agents treat these as binding.',
   'Context': "Who and what matters — so nothing important gets treated as routine.",

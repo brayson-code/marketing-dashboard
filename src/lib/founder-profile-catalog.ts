@@ -7,6 +7,14 @@
 // from a client component.
 
 export interface FounderAnswers {
+  // ── Their assistant ──────────────────────────────────────────────────────────
+  // Set during onboarding and editable here. Provisioning writes the same key
+  // (business_profile.founder.assistant_name), so when Client Success stands a
+  // workspace up from the matrix the EA's name is already in place — and it reaches
+  // every agent, because this whole object is injected into their prompts.
+  assistant_name?: string;
+  assistant_role?: string;
+
   // ── How they work ────────────────────────────────────────────────────────────
   name?: string;             // what to call them
   bio?: string;              // who they are, what they run
@@ -36,12 +44,17 @@ export interface FounderAnswers {
 export const FOUNDER_FIELDS: ReadonlyArray<{
   key: keyof FounderAnswers;
   label: string;
-  group: 'How they work' | 'Boundaries' | 'Context' | 'Preferences';
+  group: 'Their assistant' | 'How they work' | 'Boundaries' | 'Context' | 'Preferences';
   placeholder: string;
   /** Boundaries are what an assistant gets wrong most expensively, so they count
    *  toward "ready" and the rest is enrichment. */
   essential?: boolean;
 }> = [
+  { key: 'assistant_name', group: 'Their assistant', label: "Executive Assistant's name", essential: true,
+    placeholder: 'Jervis' },
+  { key: 'assistant_role', group: 'Their assistant', label: 'What they own',
+    placeholder: 'Inbox, calendar, travel, follow-ups' },
+
   { key: 'name', group: 'How they work', label: 'What to call them', essential: true,
     placeholder: 'Mitch' },
   { key: 'bio', group: 'How they work', label: 'Who they are', essential: true,
@@ -118,7 +131,7 @@ export function completeness(answers: FounderAnswers | null): {
 
 /** Render the profile to markdown, verbatim — no model in the loop (see header). */
 export function renderFounderBrief(answers: FounderAnswers): string {
-  const groups = ['How they work', 'Boundaries', 'Context', 'Preferences'] as const;
+  const groups = ['Their assistant', 'How they work', 'Boundaries', 'Context', 'Preferences'] as const;
   const parts: string[] = [];
   for (const g of groups) {
     const lines = FOUNDER_FIELDS

@@ -92,6 +92,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/boardroom', label: 'Ask the Team', icon: MessagesSquare, priority: true },
       { href: '/agents/squads', label: 'Agents', icon: Bot },
+      { href: '/org-chart', label: 'Org Chart', icon: Network },
       { href: '/agents/skills', label: 'Skills', icon: Boxes },
       { href: '/agents/comms', label: 'Messages', icon: MessageCircle },
       { href: '/missions', label: 'Missions', icon: Rocket },

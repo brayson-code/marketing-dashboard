@@ -67,6 +67,7 @@ export const VIEW_SECTIONS: ReadonlyArray<{
     items: [
       { href: '/boardroom', label: 'Ask the Team' },
       { href: '/agents/squads', label: 'Agents' },
+      { href: '/org-chart', label: 'Org Chart' },
       { href: '/agents/skills', label: 'Skills' },
       { href: '/agents/comms', label: 'Messages' },
       { href: '/missions', label: 'Missions' },
