@@ -3,6 +3,7 @@ import { getSubject } from '@/lib/authz';
 import { resolveLayout } from '@/lib/dashboard-layout';
 import OnboardingGate from '@/components/onboarding/onboarding-gate';
 import { WidgetBoard } from '@/components/dashboard/widget-board';
+import { FirstRunCard } from '@/components/home/first-run-card';
 
 // The Overview is now a customizable widget board ("Lobsterboard").
 //
@@ -34,6 +35,9 @@ export default async function OverviewPage() {
   return (
     <div className="space-y-5">
       <OnboardingGate />
+      {/* Role-aware, and renders nothing once the essentials are answered. Above the
+          board because on day one it IS the thing to do. */}
+      <FirstRunCard />
       <WidgetBoard initialLayout={layout} canSetWorkspaceDefault={canSetWorkspaceDefault} />
     </div>
   );
