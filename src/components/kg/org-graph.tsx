@@ -95,6 +95,9 @@ export function OrgGraphView({
   );
   const [hover, setHover] = useState<string | null>(null);
   const [focus, setFocus] = useState<string | null>(null);
+  // Filter for the full-contents list on an area hub. A workspace with 656 knowledge
+  // entries needs a way to find one, not just to scroll past 656.
+  const [areaFilter, setAreaFilter] = useState('');
 
   const nodeById = useMemo(() => new Map(graph.nodes.map((n) => [n.id, n])), [graph]);
 
@@ -248,6 +251,39 @@ export function OrgGraphView({
   };
 
   const focusNode = focus ? nodeById.get(focus) ?? null : null;
+
+  // The FULL contents of an area hub, straight from the props the graph was built from.
+  // buildOrgGraph only draws AREA_CAP of these; the rest were unreachable before.
+  const areaItems = useMemo(() => {
+    if (!focusNode || !focusNode.id.startsWith('area:')) return null;
+    const key = focusNode.id.slice('area:'.length);
+    const byKey: Record<string, ReadonlyArray<{ id: string; name: string; status?: string }>> = {
+      goals: input.goals ?? [],
+      files: input.files ?? [],
+      contacts: input.contacts ?? [],
+      knowledge: input.notes ?? [],
+    };
+    return byKey[key] ?? null;
+  }, [focusNode, input]);
+
+  // Mirrors AREA_PILLARS in org-graph.ts — the node kind each area's leaves are built
+  // with. Needed to find a drawn node by id and to build a matching synthetic one.
+  const areaKind: OrgNodeKind | null = useMemo(() => {
+    if (!focusNode || !focusNode.id.startsWith('area:')) return null;
+    const map: Record<string, OrgNodeKind> = {
+      goals: 'goal', files: 'file', contacts: 'contact', knowledge: 'note',
+    };
+    return map[focusNode.id.slice('area:'.length)] ?? null;
+  }, [focusNode]);
+
+  const visibleAreaItems = useMemo(() => {
+    if (!areaItems) return [];
+    const q = areaFilter.trim().toLowerCase();
+    const matched = q ? areaItems.filter((i) => i.name.toLowerCase().includes(q)) : areaItems;
+    // Cap the RENDERED rows, not the searchable set: 656 buttons in the DOM is a
+    // scroll-jank problem, while filtering down to what you want is not.
+    return matched.slice(0, 200);
+  }, [areaItems, areaFilter]);
 
   // Scale: the focused node and its neighbours grow. This is the "they appear larger"
   // behaviour — hierarchy reads through SIZE, which survives being zoomed out, where
@@ -493,11 +529,62 @@ export function OrgGraphView({
                       key={x.id}
                       className="block w-full text-left text-[11px] truncate hover:underline"
                       style={{ color: colorOf(x) }}
-                      onClick={() => { setFocus(x.id); onSelect?.(x); }}
+                      onClick={() => { setFocus(x.id); onSelect?.(x); setAreaFilter(''); }}
                     >
                       {x.label}
                     </button>
                   ))}
+                </div>
+              )}
+
+              {/* EVERYTHING in this area, not just the ones drawn.
+                  The ring caps at AREA_CAP because past roughly that many leaves it
+                  turns to mush — but the items still exist, and until now there was no
+                  way to reach the other 638 of 656 from the graph at all. The full list
+                  comes from the same props the graph was built from, so this costs no
+                  extra query and cannot disagree with what is drawn. */}
+              {areaItems && areaItems.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] uppercase tracking-wider" style={{ color: '#5c5c5c' }}>
+                    Everything here ({areaItems.length})
+                  </p>
+                  {areaItems.length > 12 && (
+                    <input
+                      value={areaFilter}
+                      onChange={(e) => setAreaFilter(e.target.value)}
+                      placeholder="Filter…"
+                      className="w-full text-[11px] rounded px-2 py-1 outline-none"
+                      style={{ background: '#1a1a1a', border: '1px solid #2c2c2c', color: '#d4d4d4' }}
+                    />
+                  )}
+                  <div className="max-h-56 overflow-y-auto space-y-0.5 pr-1">
+                    {visibleAreaItems.map((it) => (
+                      <button
+                        key={it.id}
+                        className="block w-full text-left text-[11px] truncate hover:underline"
+                        style={{ color: '#9c9c9c' }}
+                        onClick={() => {
+                          // Most of these were never drawn, so there is no node to focus.
+                          // Selecting still drives the detail panel under the graph,
+                          // which is what someone browsing 656 entries actually wants.
+                          const drawn = areaKind ? nodeById.get(`${areaKind}:${it.id}`) : null;
+                          if (drawn) { setFocus(drawn.id); onSelect?.(drawn); }
+                          else if (areaKind) onSelect?.({
+                            id: `${areaKind}:${it.id}`,
+                            kind: areaKind, label: it.name,
+                            x: focusNode.x, y: focusNode.y, r: 0,
+                            pillar: focusNode.pillar,
+                            meta: { type: focusNode.label.replace(/s$/, ''), entityId: it.id, status: it.status },
+                          });
+                        }}
+                      >
+                        {it.name}
+                      </button>
+                    ))}
+                    {visibleAreaItems.length === 0 && (
+                      <p className="text-[10px]" style={{ color: '#5c5c5c' }}>Nothing matches.</p>
+                    )}
+                  </div>
                 </div>
               )}
 
