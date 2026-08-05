@@ -34,6 +34,7 @@ changes, visual/UX only unless agreed, never break functionality.
 
 | Tag | What |
 |---|---|
+| `lifecycle-v1` | **Provisioning separated from access.** Workspace states provisioned/active/paused/offboarded; enforcement is the AUTH ROWS (no user = no way in), not a request filter. `/api/lifecycle` + controls in `/portal-admin`. Migration **0062**, 10 tests |
 | `portal-v1` | `/portal` "Your KeyPlayers" — client-facing service page (assistant, hours, leave accrual, holidays, support, request-a-person, events). `/portal-admin` HQ editor. Migration **0061**. Policy in `src/lib/service-policy.ts`, 9 tests |
 | `templates-overlay-v1` | 22 → 32 industries via `niche-overlay.ts` (survives Brayson's reseeds) |
 | `templates-preview-v1` | `/templates` — HQ-only, **read-only** preview of the 22 industry rosters in `agent_library`, with a per-workspace gap view. No write path exists. Phase 1 of `plans/niche-templates.md` |
