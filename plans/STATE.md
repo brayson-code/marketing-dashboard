@@ -34,6 +34,9 @@ changes, visual/UX only unless agreed, never break functionality.
 
 | Tag | What |
 |---|---|
+| `second-brain-browse-v1` | Focusing an area hub lists **everything** in it with a filter, not just the 18 drawn. Fixed in the inspector, not the layout — the cap stays |
+| `portal-assistant-view-v1` | `/portal` reads differently for the assistant: their hours, their leave, who they support. "Need another person?" hidden; announcements filtered by audience |
+| `operators-v1` | Portal Admin manages the operator allow-list + provisions operator logins (own workspace, not HQ). Carl + Pow added |
 | `operator-access-v1` | **Two tiers of gate.** `requireHq()` = engineering (Issues, Security). `requireOperator()` = running the business (Portal Admin, Templates) — HQ **or** the `platform_operators` allow-list, so Client Success reaches it from their own workspace. Both pages now server-gate with `notFound()`. Migration **0063** |
 | `first-run-v1` | **Role-aware landing.** Client gets "check what we wrote"/"your AI team doesn't know you yet"; assistant gets "things to ask Dana" with the actual questions. Renders nothing once essentials are answered. 9 tests |
 | `prep-mode-v1` | **Assistant reads before day one, cannot act.** `prep_until` on the JWT, enforced in the middleware (reads pass, writes 403) so it works on the Edge and regardless of AUTHZ_ENFORCE. Day one clears it. 9 tests |
@@ -117,7 +120,8 @@ Success action, not a code one, and it beats everything in §4.
    roster quality (Phase 2), then apply (Phase 3, needs its own sign-off — it is the
    first feature that writes agent config into a live client workspace, and
    `agent_defs` RLS blocks cross-tenant writes by design).
-2. **Second Brain** — the only surface with real data (656 entities across 7
+2. ~~Second Brain browse~~ — SHIPPED `second-brain-browse-v1`. Remaining polish only:
+   synapse sparks, idle throttling. Original item: the only surface with real data (656 entities across 7
    workspaces), so polish here is the only polish anyone will actually see. Remaining
    from `plans/second-brain-graph-templates.md`: angular-sector level-of-detail
    (currently a crude cap of 18/hub, which visibly lies at 656), synapse sparks,
