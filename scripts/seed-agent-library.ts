@@ -52,7 +52,7 @@ import { sql } from '../src/lib/db/client';
 import { SUBAGENT_REGISTRY } from '../src/lib/subagent';
 import { EXEC_SPECS } from './lib/exec-specs';
 import { ARCHETYPE_SOULS } from './lib/archetype-souls';
-import { departmentFor } from '../src/lib/agent-department';
+import { departmentFor, SPECIALIST_CATEGORY } from '../src/lib/agent-department';
 
 // keycommand-provisioning lives as a sibling repo. Resolve relative to this file
 // so the script works regardless of the process cwd.
@@ -186,29 +186,8 @@ function readMd(dir: string, file: string): string {
 
 // Best-effort category/role for the bundled specialists (mirrors squad.ts META
 // roles + agent-defs BUNDLED_ROLE, generalized to the library's categories).
-const SPECIALIST_CATEGORY: Record<string, { category: string; role: string; niches: string[] }> = {
-  'research-analyst':     { category: 'research',   role: 'research',  niches: [] },
-  'lead-research':        { category: 'research',   role: 'research',  niches: [] },
-  'reel-analyst':         { category: 'research',   role: 'research',  niches: [] },
-  'content-writer':       { category: 'content',    role: 'content',   niches: [] },
-  'content-cascade':      { category: 'content',    role: 'content',   niches: [] },
-  'carousel-generator':   { category: 'content',    role: 'content',   niches: [] },
-  'reel-ideator':         { category: 'content',    role: 'content',   niches: [] },
-  'reel-optimizer':       { category: 'content',    role: 'content',   niches: [] },
-  'hyperframes-agent':    { category: 'content',    role: 'content',   niches: [] },
-  'thumbnail-generator':  { category: 'content',    role: 'creative',  niches: [] },
-  'outreach-sender':      { category: 'outreach',   role: 'outreach',  niches: [] },
-  'sponsor-pitch':        { category: 'sales',      role: 'outreach',  niches: [] },
-  'pipeline-review':      { category: 'sales',      role: 'general',   niches: [] },
-  'inbox-triage':         { category: 'comms',      role: 'general',   niches: ['landscaping'] },
-  'calendar-scheduler':   { category: 'scheduling', role: 'scheduler', niches: [] },
-  'community-pulse':      { category: 'client',     role: 'content',   niches: [] },
-  'weekly-client-status': { category: 'client',     role: 'general',   niches: [] },
-  'client-onboarding-doc':{ category: 'client',     role: 'general',   niches: [] },
-  'scope-of-work':        { category: 'client',     role: 'general',   niches: [] },
-  'deliverable-qa':       { category: 'quality',    role: 'general',   niches: [] },
-  'memory-compactor':     { category: 'knowledge',  role: 'general',   niches: [] },
-};
+// SPECIALIST_CATEGORY now lives in src/lib/agent-department.ts so the runtime
+// roster (squad.ts) reads the same table this seed does.
 
 function bundledSpecialists(): LibRow[] {
   const rows: LibRow[] = [];

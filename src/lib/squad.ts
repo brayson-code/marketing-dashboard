@@ -4,6 +4,7 @@
 
 import { sql, tenantId, DEFAULT_TENANT_ID } from './db/client';
 import { SUBAGENT_REGISTRY } from './subagent';
+import { departmentForSpecialist } from './agent-department';
 
 // ---------------------------------------------------------------------------
 // Audience gating
@@ -113,7 +114,10 @@ export function squadRoster(): SquadAgentMeta[] {
       role: meta?.role ?? 'Specialist',
       model: spec.model,
       description: spec.description,
-      department: null,
+      // Was hardcoded null. This roster backfills any bundled specialist the workspace
+      // has not written to agent_defs yet, so every one of them landed in the org
+      // chart's "General" bucket regardless of what the database said.
+      department: departmentForSpecialist(spec.id),
       is_executive: false,
       source: 'builtin',
     });

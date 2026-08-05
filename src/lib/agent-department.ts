@@ -60,3 +60,40 @@ export const DEPARTMENTS: Department[] = [
 export function isDepartment(v: unknown): v is Department {
   return typeof v === 'string' && (DEPARTMENTS as string[]).includes(v);
 }
+
+/**
+ * Category and role for each bundled specialist.
+ *
+ * Lived only inside scripts/seed-agent-library.ts, which is why the RUNTIME roster in
+ * squad.ts could not use it and hardcoded `department: null` — putting every bundled
+ * specialist not yet written to agent_defs into the org chart's "General" bucket.
+ * One source now, imported by both.
+ */
+export const SPECIALIST_CATEGORY: Record<string, { category: string; role: string; niches: string[] }> = {
+  'research-analyst':     { category: 'research',   role: 'research',  niches: [] },
+  'lead-research':        { category: 'research',   role: 'research',  niches: [] },
+  'reel-analyst':         { category: 'research',   role: 'research',  niches: [] },
+  'content-writer':       { category: 'content',    role: 'content',   niches: [] },
+  'content-cascade':      { category: 'content',    role: 'content',   niches: [] },
+  'carousel-generator':   { category: 'content',    role: 'content',   niches: [] },
+  'reel-ideator':         { category: 'content',    role: 'content',   niches: [] },
+  'reel-optimizer':       { category: 'content',    role: 'content',   niches: [] },
+  'hyperframes-agent':    { category: 'content',    role: 'content',   niches: [] },
+  'thumbnail-generator':  { category: 'content',    role: 'creative',  niches: [] },
+  'outreach-sender':      { category: 'outreach',   role: 'outreach',  niches: [] },
+  'sponsor-pitch':        { category: 'sales',      role: 'outreach',  niches: [] },
+  'pipeline-review':      { category: 'sales',      role: 'general',   niches: [] },
+  'inbox-triage':         { category: 'comms',      role: 'general',   niches: ['landscaping'] },
+  'calendar-scheduler':   { category: 'scheduling', role: 'scheduler', niches: [] },
+  'community-pulse':      { category: 'client',     role: 'content',   niches: [] },
+  'weekly-client-status': { category: 'client',     role: 'general',   niches: [] },
+  'client-onboarding-doc':{ category: 'client',     role: 'general',   niches: [] },
+  'scope-of-work':        { category: 'client',     role: 'general',   niches: [] },
+  'deliverable-qa':       { category: 'quality',    role: 'general',   niches: [] },
+  'memory-compactor':     { category: 'knowledge',  role: 'general',   niches: [] },
+};
+
+/** The department for a bundled specialist id, resolving its category first. */
+export function departmentForSpecialist(id: string): Department | null {
+  return departmentFor({ id, category: SPECIALIST_CATEGORY[id]?.category ?? null });
+}
