@@ -132,7 +132,10 @@ const NAV_GROUPS: NavGroup[] = [
 
 // HQ-only surfaces. Mirrors nav-rail.tsx — the APIs enforce this server-side too, but
 // a client should never SEE them.
-const HQ_ONLY = new Set(['/issues', '/security', '/templates', '/portal-admin']);
+const HQ_ONLY = new Set(['/issues', '/security']);
+// Operator surfaces (see nav-rail.tsx). Not present on mobile today, but listed so a
+// future row cannot leak by being added here and forgotten.
+const OPERATOR_ONLY = new Set(['/templates', '/portal-admin']);
 
 export function MobileNav() {
   const pathname = usePathname();
@@ -145,6 +148,7 @@ export function MobileNav() {
   // switched off for a client was still sitting in their phone's More sheet. Same
   // subtractive contract as the rail — a missing key means enabled.
   const [isHq, setIsHq] = useState(false);
+  const [isOperator, setIsOperator] = useState(false);
   const [views, setViews] = useState<Record<string, boolean>>({});
   const [flags, setFlags] = useState<Record<string, boolean>>({});
   useEffect(() => {
@@ -154,6 +158,7 @@ export function MobileNav() {
       .then((j) => {
         if (off || !j) return;
         setIsHq(!!j.is_hq);
+        setIsOperator(!!j.is_operator);
         setFlags({
           salesops_enabled: !!j.salesops_enabled,
           playground_enabled: !!j.playground_enabled,
@@ -166,8 +171,10 @@ export function MobileNav() {
     return () => { off = true; };
   }, []);
 
-  const viewEnabled = (href: string) =>
-    isHq || href === '/' || href === '/settings' || views[href] !== false;
+  const viewEnabled = (href: string) => {
+    if (OPERATOR_ONLY.has(href)) return isOperator;
+    return isHq || href === '/' || href === '/settings' || views[href] !== false;
+  };
   const allowed = (href: string) =>
     (!HQ_ONLY.has(href) || isHq)
     && (href !== '/salesops' || flags.salesops_enabled)

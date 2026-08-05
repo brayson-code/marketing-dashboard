@@ -13,10 +13,9 @@
 // here on purpose — the preview has to prove the rosters are good before anything is
 // written anywhere.
 //
-// GATING: requireHq() runs BEFORE any query, matching /api/security/console — the
-// existing precedent for an intentional cross-tenant operator read. This does NOT use
-// the requireApi* helpers: those are no-ops while AUTHZ_ENFORCE is 'off' (the default),
-// so they would gate nothing. requireHq is a real 403 regardless of that flag.
+// GATING: requireOperator() runs BEFORE any query — a real 403 regardless of
+// AUTHZ_ENFORCE (which defaults to 'off' and makes the requireApi* helpers no-ops).
+// Operator = the HQ workspace OR the platform_operators allow-list (0063).
 //
 // Modes (?mode=):
 //   niches (default) — every industry + agent counts, plus catalog stats
@@ -26,7 +25,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { enterTenant, resolveTenant } from '@/lib/with-tenant';
-import { requireHq } from '@/lib/hq-guard';
+import { requireOperator } from '@/lib/operator-guard';
 import {
   listNiches, agentsForNiche, getLibraryAgent, libraryStats,
   workspaceGap, listWorkspaces,
@@ -37,7 +36,7 @@ export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
   enterTenant(await resolveTenant());
-  const denied = requireHq();
+  const denied = await requireOperator();
   if (denied) return denied;
 
   const { searchParams } = new URL(request.url);

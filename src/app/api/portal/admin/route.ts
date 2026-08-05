@@ -12,7 +12,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { enterTenant, resolveTenant } from '@/lib/with-tenant';
-import { requireHq } from '@/lib/hq-guard';
+import { requireOperator } from '@/lib/operator-guard';
 import { requireUser } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
 import {
@@ -27,7 +27,7 @@ export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
   enterTenant(await resolveTenant());
-  const denied = requireHq();
+  const denied = await requireOperator();
   if (denied) return denied;
 
   const { searchParams } = new URL(request.url);
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   enterTenant(await resolveTenant());
-  const denied = requireHq();
+  const denied = await requireOperator();
   if (denied) return denied;
   const actor = requireUser(request);
 

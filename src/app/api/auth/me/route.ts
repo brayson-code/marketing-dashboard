@@ -6,6 +6,7 @@ import { getSubject, ROLE_TO_RBAC } from '@/lib/authz';
 import { redeemPendingEntitlement } from '@/lib/stripe';
 import { emitSecurityEvent } from '@/lib/security-events';
 import { getEnabledViews } from '@/lib/command-center-views';
+import { isOperator } from '@/lib/operator-guard';
 
 // Returns the current Supabase-authenticated user, with the REAL intra-workspace role
 // (owner | member | va) read from workspace_members (via getSubject()). This lets the
@@ -106,6 +107,10 @@ export async function GET() {
     // HQ-only surfaces (e.g. KeyWatch / Issues) use this to hide themselves from
     // client workspaces. The API routes enforce it server-side regardless.
     is_hq: tid === DEFAULT_TENANT_ID,
+    // Operator surfaces (Portal Admin, Industry Templates) are for running the business
+    // and are reachable from a person's OWN workspace via the platform_operators
+    // allow-list, so they cannot be gated on is_hq. The routes enforce it server-side.
+    is_operator: await isOperator(),
     // Feature flags surfaced to the client purely to hide/show UI; the routes
     // enforce them server-side regardless.
     movie_clips_enabled: process.env.MOVIE_CLIPS_ENABLED === 'true',

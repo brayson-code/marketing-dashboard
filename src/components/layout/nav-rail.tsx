@@ -236,8 +236,13 @@ export function NavRail() {
   // KeyWatch / Issues and the Security Console are HQ-only (both read across tenants
   // and can act on the platform). Hide them from client workspaces — the APIs enforce
   // it server-side too. Default false so they're hidden until proven HQ.
-  const HQ_ONLY = new Set(['/issues', '/security', '/templates', '/portal-admin']);
+  // Platform ENGINEERING — HQ workspace only. Unchanged.
+  const HQ_ONLY = new Set(['/issues', '/security']);
+  // Running the BUSINESS — the operator allow-list (0063), so Client Success sees these
+  // from their own workspace. The routes and the pages both enforce it server-side.
+  const OPERATOR_ONLY = new Set(['/templates', '/portal-admin']);
   const [isHq, setIsHq] = useState(false);
+  const [isOperator, setIsOperator] = useState(false);
   // Feature flags that hide/show nav items. Keyed by the NavItem.flag value. Default
   // all-off so a flag-gated item (SalesOps) stays hidden until /api/auth/me reports it
   // enabled — the routes enforce the flag server-side regardless.
@@ -255,6 +260,7 @@ export function NavRail() {
     const loadMe = () => {
       fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)).then((j) => {
         setIsHq(!!j?.is_hq);
+        setIsOperator(!!j?.is_operator);
         setFlags({
           salesops_enabled: !!j?.salesops_enabled,
           playground_enabled: !!j?.playground_enabled,
@@ -277,7 +283,12 @@ export function NavRail() {
   // A view passes the enabled-views map when EITHER we're the HQ workspace (operators
   // see everything) OR the map doesn't explicitly disable it. Overview "/" is always on
   // (callers also pass it through unconditionally) so a client can't lock themselves out.
-  const viewEnabled = (href: string) => isHq || href === '/' || views[href] !== false;
+  const viewEnabled = (href: string) => {
+    // Operator surfaces are never toggleable per tenant; they are simply absent for
+    // anyone who is not an operator.
+    if (OPERATOR_ONLY.has(href)) return isOperator;
+    return isHq || href === '/' || views[href] !== false;
+  };
 
   const { data: counts } = useSmartPoll<NavCounts>(
     () => fetch(`/api/counts${realOnly ? '?real=true' : ''}`).then(r => r.json()),

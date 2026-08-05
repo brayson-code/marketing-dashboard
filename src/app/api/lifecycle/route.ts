@@ -8,16 +8,17 @@
 // It works standalone in the meantime, driven by hand from /portal-admin, so Client
 // Success is not blocked waiting on either integration.
 //
-// requireHq() rather than the requireApi* role helpers: those are no-ops while
-// AUTHZ_ENFORCE is 'off' (the default) and would gate nothing. Same precedent as
-// /api/security/console and /api/templates.
+// requireOperator() rather than the requireApi* role helpers: those are no-ops while
+// AUTHZ_ENFORCE is 'off' (the default) and would gate nothing. Operator = the HQ
+// workspace OR the platform_operators allow-list, so Client Success can reach this from
+// their own workspace without also being handed the engineering surfaces.
 //
 // Every call is audit-logged. These actions decide whether a paying client can reach
 // their workspace, so "who opened this and when" must be answerable later.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { enterTenant, resolveTenant } from '@/lib/with-tenant';
-import { requireHq } from '@/lib/hq-guard';
+import { requireOperator } from '@/lib/operator-guard';
 import { requireUser } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
 import { listLifecycle, provisionWorkspace, transition, grantPrepAccess } from '@/lib/workspace-lifecycle';
@@ -30,7 +31,7 @@ const ACTIONS = new Set(['activate', 'pause', 'resume', 'offboard']);
 
 export async function GET() {
   enterTenant(await resolveTenant());
-  const denied = requireHq();
+  const denied = await requireOperator();
   if (denied) return denied;
 
   try {
@@ -43,7 +44,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   enterTenant(await resolveTenant());
-  const denied = requireHq();
+  const denied = await requireOperator();
   if (denied) return denied;
   const actor = requireUser(request);
 
