@@ -9,7 +9,7 @@ import {
   BarChart3, LineChart, Rocket, Clock, List, Settings,
   FolderOpen, UserRound, Heart, Activity, Inbox, Target, Network, FileText,
   TrendingUp, BookOpen, MessagesSquare, Boxes, Zap, Link2, Sparkles, Waves,
-  Timer, PhoneCall, DollarSign, Dna, Building2,
+  Timer, PhoneCall, DollarSign, Dna, Building2, LifeBuoy,
 } from 'lucide-react';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { useDashboard } from '@/store';
@@ -100,6 +100,12 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    label: 'Your KeyPlayers',
+    items: [
+      { href: '/portal', label: 'Your KeyPlayers', icon: LifeBuoy },
+    ],
+  },
+  {
     label: 'More',
     items: [
       { href: '/content/overview', label: 'Content Lab', icon: FlaskConical, countKey: 'content' },
@@ -126,7 +132,7 @@ const NAV_GROUPS: NavGroup[] = [
 
 // HQ-only surfaces. Mirrors nav-rail.tsx — the APIs enforce this server-side too, but
 // a client should never SEE them.
-const HQ_ONLY = new Set(['/issues', '/security', '/templates']);
+const HQ_ONLY = new Set(['/issues', '/security', '/templates', '/portal-admin']);
 
 export function MobileNav() {
   const pathname = usePathname();

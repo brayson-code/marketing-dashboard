@@ -75,6 +75,12 @@ export const VIEW_SECTIONS: ReadonlyArray<{
     ],
   },
   {
+    section: 'Your KeyPlayers',
+    items: [
+      { href: '/portal', label: 'Your KeyPlayers' },
+    ],
+  },
+  {
     section: 'More',
     items: [
       { href: '/content/overview', label: 'Content Lab' },

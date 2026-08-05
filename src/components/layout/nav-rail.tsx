@@ -9,7 +9,7 @@ import {
   FolderOpen, MessagesSquare, Activity, Target, Inbox, Network, DollarSign, Bug,
   Waves, TrendingUp, Dna, Timer, Link2, Sparkles, ChevronDown, ChevronRight,
   FlaskConical, BookOpen, ArrowUpRight, Boxes, ShieldCheck, PhoneCall, Blocks,
-  MessageCircle, UserRound, Heart, Building2, Layers,
+  MessageCircle, UserRound, Heart, Building2, Layers, LifeBuoy, Settings2,
 } from 'lucide-react';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { useDashboard } from '@/store';
@@ -113,6 +113,17 @@ const PRIMARY: NavGroup[] = [
       { href: '/autonomy', label: 'Autonomy', icon: Zap },
     ],
   },
+  // A seventh section, deliberately outside the North Star six: those are all about the
+  // CLIENT'S business, this is the only one about KeyPlayers as a service — their
+  // assistant, coverage, support, and what's coming up. It sits last because it's read
+  // occasionally rather than daily, and it's its own section rather than buried in
+  // SETUP because burying it undersells the one page that shows what they're paying for.
+  {
+    label: 'YOUR KEYPLAYERS',
+    items: [
+      { href: '/portal', label: 'Your KeyPlayers', icon: LifeBuoy },
+    ],
+  },
 ];
 
 // MORE — everything outside the six sections. Collapsed by default so it stays out of
@@ -144,6 +155,7 @@ const MORE: NavGroup = {
     // Industry Templates — HQ-only, read-only preview of the niche agent rosters in
     // agent_library. Operator tooling for client setup, never client-facing.
     { href: '/templates', label: 'Industry Templates', icon: Layers },
+    { href: '/portal-admin', label: 'Portal Admin', icon: Settings2 },
   ],
 };
 
@@ -224,7 +236,7 @@ export function NavRail() {
   // KeyWatch / Issues and the Security Console are HQ-only (both read across tenants
   // and can act on the platform). Hide them from client workspaces — the APIs enforce
   // it server-side too. Default false so they're hidden until proven HQ.
-  const HQ_ONLY = new Set(['/issues', '/security', '/templates']);
+  const HQ_ONLY = new Set(['/issues', '/security', '/templates', '/portal-admin']);
   const [isHq, setIsHq] = useState(false);
   // Feature flags that hide/show nav items. Keyed by the NavItem.flag value. Default
   // all-off so a flag-gated item (SalesOps) stays hidden until /api/auth/me reports it
