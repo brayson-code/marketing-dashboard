@@ -21,6 +21,7 @@ import {
 } from '@/lib/service-portal';
 import { listWorkspaces } from '@/lib/agent-library';
 import { getCapture, saveCapture } from '@/lib/onboarding-capture';
+import { extractFromNotes } from '@/lib/capture-extract';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -69,6 +70,27 @@ export async function POST(request: NextRequest) {
         detail: { fields: Object.keys(body.profile ?? {}) },
       });
       return NextResponse.json({ ok: true });
+    }
+
+    // Drafts from pasted call notes. Deliberately does NOT save: the operator reads and
+    // corrects it in the form first. These answers become binding agent instructions.
+    if (action === 'extract') {
+      try {
+        const result = await extractFromNotes(String(body?.notes ?? ''));
+        await logAudit({
+          actor, action: 'portal.onboarding.extract',
+          target: `tenant:${String(body?.tenant ?? '')}`,
+          detail: { found: Object.keys(result.values).length },
+        });
+        return NextResponse.json({ ok: true, ...result });
+      } catch (e) {
+        // A missing API key or notes that are too short are the operator's problem to
+        // fix, not a server fault — say which.
+        return NextResponse.json(
+          { error: e instanceof Error ? e.message : 'Could not read those notes' },
+          { status: 400 },
+        );
+      }
     }
 
     if (action === 'capture') {

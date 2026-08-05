@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Loader2, Save, Check, ClipboardList, AlertTriangle } from 'lucide-react';
+import { Loader2, Save, Check, ClipboardList, AlertTriangle, Wand2, X } from 'lucide-react';
 import {
   CAPTURE_FIELDS, CAPTURE_SECTIONS, SECTION_BLURB,
 } from '@/lib/onboarding-capture-catalog';
@@ -35,6 +35,12 @@ export function OnboardingCaptureForm({
 }) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  // Paste-the-notes flow. It DRAFTS into the form; nothing is saved until the operator
+  // reads it and hits Save, because these answers become binding agent instructions.
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [extracting, setExtracting] = useState(false);
+  const [filledKeys, setFilledKeys] = useState<Set<string>>(new Set());
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,6 +66,39 @@ export function OnboardingCaptureForm({
     [values],
   );
 
+  const extract = async () => {
+    setExtracting(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/portal/admin', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'extract', tenant, notes }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Could not read those notes');
+
+      // Only fill fields that are still EMPTY. Anything already typed was typed by a
+      // person and outranks an extraction.
+      const found = (data.values ?? {}) as Record<string, string>;
+      const filled = new Set<string>();
+      setValues(prev => {
+        const next = { ...prev };
+        for (const [k, v] of Object.entries(found)) {
+          if (!next[k]?.trim()) { next[k] = v; filled.add(k); }
+        }
+        return next;
+      });
+      setFilledKeys(filled);
+      setNotesOpen(false);
+      setNotes('');
+      setSaved(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not read those notes');
+    } finally {
+      setExtracting(false);
+    }
+  };
+
   const save = async () => {
     setSaving(true);
     setError(null);
@@ -78,6 +117,7 @@ export function OnboardingCaptureForm({
       });
       if (!res.ok) throw new Error((await res.json()).error ?? 'Save failed');
       setSaved(true);
+      setFilledKeys(new Set());
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save.');
@@ -104,6 +144,14 @@ export function OnboardingCaptureForm({
             </p>
           )}
         </div>
+        <div className="flex items-center gap-2">
+        <button
+          onClick={() => setNotesOpen(v => !v)}
+          className="text-xs font-medium inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border"
+          style={{ borderColor: 'var(--border)' }}
+        >
+          <Wand2 size={12} /> Paste call notes
+        </button>
         <button
           onClick={save} disabled={saving}
           className="text-xs font-medium inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-white disabled:opacity-40"
@@ -113,7 +161,43 @@ export function OnboardingCaptureForm({
             : saved ? <Check size={12} /> : <Save size={12} />}
           {saved ? 'Saved' : 'Save'}
         </button>
+        </div>
       </div>
+
+      {notesOpen && (
+        <div className="rounded-lg p-3 space-y-2 bg-[var(--surface-2)]">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-xs text-muted-foreground max-w-prose">
+              Paste your notes from the call. It fills in what it can find and leaves the
+              rest blank, then <strong>you check it before saving</strong>. It will not
+              guess at approval limits or escalation rules.
+            </p>
+            <button onClick={() => setNotesOpen(false)} className="text-muted-foreground shrink-0">
+              <X size={14} />
+            </button>
+          </div>
+          <textarea
+            rows={6} value={notes} onChange={(e) => setNotes(e.target.value)}
+            placeholder="Paste the raw notes. Bullet points, half sentences, whatever you actually wrote."
+            className="w-full text-sm bg-[var(--surface)] border border-border rounded-lg px-2.5 py-2"
+          />
+          <button
+            onClick={extract} disabled={extracting || notes.trim().length < 40}
+            className="text-xs font-medium inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white disabled:opacity-40"
+            style={{ background: 'var(--primary)' }}
+          >
+            {extracting ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />}
+            {extracting ? 'Reading…' : 'Fill the form'}
+          </button>
+        </div>
+      )}
+
+      {filledKeys.size > 0 && (
+        <p className="text-xs" style={{ color: 'var(--primary)' }}>
+          Filled {filledKeys.size} {filledKeys.size === 1 ? 'field' : 'fields'} from your
+          notes, highlighted below. Check them, then save.
+        </p>
+      )}
 
       {error && (
         <p className="text-xs flex items-center gap-1.5" style={{ color: 'var(--destructive)' }}>
@@ -145,17 +229,21 @@ export function OnboardingCaptureForm({
                     {f.essential && <span style={{ color: 'var(--warning)' }}> *</span>}
                   </span>
                   <span className="block text-[11px] text-muted-foreground mb-1">{f.ask}</span>
+                  {/* Drafted fields are marked so a human reads them before they are
+                      saved as binding agent instructions. */}
                   {f.long ? (
                     <textarea
                       rows={2} value={values[f.key] ?? ''}
                       onChange={(e) => set(f.key, e.target.value)}
-                      className="w-full text-sm bg-[var(--surface-2)] border border-border rounded-lg px-2.5 py-1.5"
+                      className="w-full text-sm bg-[var(--surface-2)] rounded-lg px-2.5 py-1.5 border"
+                      style={{ borderColor: filledKeys.has(f.key) ? 'var(--primary)' : 'var(--border)' }}
                     />
                   ) : (
                     <input
                       value={values[f.key] ?? ''}
                       onChange={(e) => set(f.key, e.target.value)}
-                      className="w-full text-sm bg-[var(--surface-2)] border border-border rounded-lg px-2.5 py-1.5"
+                      className="w-full text-sm bg-[var(--surface-2)] rounded-lg px-2.5 py-1.5 border"
+                      style={{ borderColor: filledKeys.has(f.key) ? 'var(--primary)' : 'var(--border)' }}
                     />
                   )}
                 </label>
