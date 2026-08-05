@@ -10,6 +10,7 @@ import { toast } from '@/components/ui/toast';
 import { useDashboard } from '@/store';
 import { EmailAgentPanel } from '@/components/outreach/email-agent';
 import type { Lead, Sequence, FunnelStep, Suppression } from '@/types';
+import { Explainer } from '@/components/ui/explainer';
 
 type Tab = 'pipeline' | 'leads' | 'sequences' | 'approvals' | 'suppression';
 
@@ -74,6 +75,14 @@ export default function OutreachPage() {
 
   return (
     <div className="space-y-6 animate-in">
+      <Explainer
+        id="outreach-intro"
+        title="What outreach is for"
+        what="Sequences that reach out on your behalf, plus the suppression list of people who must never be contacted."
+        when="Always check suppression before drafting anything new."
+        example="A follow-up sequence for everyone who attended the webinar."
+        say={<>&ldquo;Draft the follow-up to everyone who came to the webinar.&rdquo;</>}
+      />
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-h1">Outreach</h1>
         <div className="text-xs text-muted-foreground">

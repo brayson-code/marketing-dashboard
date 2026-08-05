@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Boxes, Plus, Loader2, RefreshCw, Check, X, Wand2, Github, Eye } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { toast } from '@/components/ui/toast';
+import { Explainer } from '@/components/ui/explainer';
 
 interface Skill { id: number; slug: string; name: string; category: string; description: string; body?: string; is_custom?: boolean }
 interface AgentOpt { id: string; name: string }
@@ -149,6 +150,14 @@ export default function SkillLibraryPage() {
             )}
           </div>
         }
+      />
+
+      <Explainer
+        id="agents-skills-intro"
+        title="What skills are"
+        what="Reusable playbooks your agents can call — a saved way of doing something, so every agent does it the same way."
+        when="Add one when you find yourself correcting the same thing twice."
+        example="A skill for how your follow-up emails should be structured."
       />
 
       {adding && (

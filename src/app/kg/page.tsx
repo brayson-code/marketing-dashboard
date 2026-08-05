@@ -15,6 +15,7 @@ interface OrgTool { id: string; name: string; status?: string }
 interface OrgHuman { id: string; name: string; role?: string }
 
 import { UpgradeGate } from '@/components/upgrade-gate';
+import { Explainer } from '@/components/ui/explainer';
 
 export default function KgPage() {
   return <UpgradeGate feature="kg" title="Knowledge Graph"><KgContent /></UpgradeGate>;
@@ -202,6 +203,15 @@ function KgContent() {
           </p>
         </div>
       </div>
+
+      <Explainer
+        id="second-brain-intro"
+        title="What the Second Brain is"
+        what="Everything the business knows — people, clients, decisions and facts worth keeping — and how it all connects."
+        when="Put anything durable here rather than leaving it in a chat thread. This is what survives someone leaving."
+        example="That Henderson only wants to be contacted by email, and who owns that relationship."
+        say={<>&ldquo;Remember that Henderson only wants to be contacted by email.&rdquo;</>}
+      />
 
       {/* The core instrument (components/kg/brain-core.tsx) was mounted here and has
           been pulled back out: a radar gauge stacked on top of the old force-graph

@@ -5,6 +5,7 @@ import { PenLine, MessageCircle, Mail, Search, Info, Activity } from 'lucide-rea
 import { timeAgo } from '@/lib/utils';
 import { useDashboard } from '@/store';
 import type { ActivityEntry } from '@/types';
+import { Explainer } from '@/components/ui/explainer';
 
 const ACTION_FILTERS = [
   { key: '', label: 'All Actions' },
@@ -31,6 +32,13 @@ export default function ActivityPage() {
 
   return (
     <div className="space-y-6 animate-in">
+      <Explainer
+        id="activity-intro"
+        title="What the activity log is"
+        what="A running record of what the AI team actually did, and when."
+        when="Check it when something looks wrong, or when you want to see what happened while you were away."
+        example="Confirming an agent really did send that follow-up on Tuesday."
+      />
       <div className="panel">
         <div className="panel-header flex items-center justify-between flex-wrap gap-3">
           <h1 className="text-h1">Activity Log</h1>

@@ -4,6 +4,7 @@ import { Link2 } from 'lucide-react';
 import ConnectPanel from '@/components/connections/connect-panel';
 import { IntegrationsPanel } from '@/components/connections/integrations-panel';
 import { McpPanel } from '@/components/connections/mcp-panel';
+import { Explainer } from '@/components/ui/explainer';
 
 // Single home for everything the workspace connects to:
 //  1. Social accounts — one-tap OAuth (Nango) → ConnectPanel
@@ -12,6 +13,13 @@ import { McpPanel } from '@/components/connections/mcp-panel';
 export default function ConnectionsPage() {
   return (
     <div className="space-y-6 animate-in">
+      <Explainer
+        id="connections-intro"
+        title="Start here"
+        what="The accounts your agents act through — email, calendar, social, your CRM. Your Claude key lives here too."
+        when="Connect the Claude key first: your agents stay paused until it is in place."
+        example="Connecting Gmail is what lets an agent draft a reply in your inbox."
+      />
       <div className="space-y-1">
         <h1 className="text-h1 flex items-center gap-2">
           <Link2 size={18} className="text-primary" /> Connections
