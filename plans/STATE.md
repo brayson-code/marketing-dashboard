@@ -34,6 +34,7 @@ changes, visual/UX only unless agreed, never break functionality.
 
 | Tag | What |
 |---|---|
+| `templates-preview-v1` | `/templates` — HQ-only, **read-only** preview of the 22 industry rosters in `agent_library`, with a per-workspace gap view. No write path exists. Phase 1 of `plans/niche-templates.md` |
 | `contacts-v1` | **/api/crm was 500ing for every tenant** (`pause_outreach = 0` vs a Postgres boolean) — fixed. Plus "Needs attention": owed a reply / this week / gone quiet |
 | `vocab-and-recs-v1` | Plain-English sweep (Cron Jobs→Scheduled work, Compacted memory→Summarised history, All Tiers→All priorities…) + agent recommendations panel |
 | `explainers-v1` | On-page What/When/Example guidance, 9 → 15 pages |
@@ -77,11 +78,13 @@ on the org chart and graph — the recommendations panel now surfaces this).
 
 ## 4. Still to do, in priority order
 
-1. **Templates** — Part C of the spec. Brayson's **22 industry niches** (in
-   `agent_library.default_niches`) are the base, presented like the spec's cards.
-   Needs **220 agent names written** (11 × 5 pillars × 4 agents). Decision already
-   made: applying a template should be an operator-only action with confirmation,
-   since `agent_library` + `scripts/provision-demo-client.ts` already do provisioning.
+1. **Templates** — Phase 1 SHIPPED (`templates-preview-v1`). See
+   `plans/niche-templates.md`. Correction to an earlier note here: templates needed
+   **no agent authoring at all** — Brayson deduped 110 near-duplicate niche agents into
+   15 rich archetypes in July, and they are already in prod. Next: Mitch judges the
+   roster quality (Phase 2), then apply (Phase 3, needs its own sign-off — it is the
+   first feature that writes agent config into a live client workspace, and
+   `agent_defs` RLS blocks cross-tenant writes by design).
 2. **Second Brain** — remaining from `plans/second-brain-graph-templates.md`:
    angular-sector level-of-detail (prod has 656 knowledge entities; currently a crude
    cap of 18/hub), synapse sparks, idle throttling.
