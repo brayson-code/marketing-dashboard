@@ -59,22 +59,44 @@ trimmed 14 widgets → 7.
 
 ---
 
-## 3. ⚠️ The thing that matters most
+## 3. ⚠️ The thing that matters most — production is empty
 
-**0 of 14 production workspaces have a Founder Profile filled in.**
+Measured in prod 2026-08-05, across all 14 workspaces:
 
-The profile is injected into every agent prompt, and the org chart + graph centre node
-read from it. So today, in production: agents don't know who they work for, the org
-chart says "Founder"/"Executive Assistant" instead of names.
+| What | Count | Means |
+|---|---|---|
+| Workspaces | 14 | |
+| **Founder Profiles filled in** | **0** | Agents don't know who they work for |
+| **Business Setup completed** | **1** | The wizard is live and unused |
+| **Personal Life items** | **1** (total, all workspaces) | The section is empty everywhere |
+| Contacts | 11, in **2 of 14** workspaces | 12 workspaces show "no contacts" |
+| Second Brain entities | 656, in **7 of 14** | ← the ONE surface with real usage |
+| Briefings/documents | 22 | |
+| Agents with no department | **35 of 231** | Pile into "General" on the org chart |
 
-`/business-setup` is the fix and it's live. **This is a Client Success action, not a
-code one** — someone has to walk a workspace through it. Worth more than anything
-left on the build list.
+**Read that again before building anything else.** Six shipped features are inert not
+because they're broken but because nothing has been entered into them. The Second Brain
+is the only surface clients actually populate.
 
-Related data gaps: **35 of 231 agents have no department** (they pile into "General"
-on the org chart and graph — the recommendations panel now surfaces this).
+So the highest-value work is almost certainly NOT more features — it's getting one
+real workspace fully set up end to end and finding out what breaks. That's a Client
+Success action, not a code one, and it beats everything in §4.
 
 ---
+
+## 3b. Open questions for Brayson (not ours to decide)
+
+- **`AUTHZ_ENFORCE` defaults to `'off'`**, which makes every `requireApi*` role gate a
+  no-op. Member/VA roles restrict nothing unless it's set. Vercel env vars are
+  write-only so this can't be read from here — worth confirming.
+- **Git is not connected** to the Vercel project; deploys are manual CLI. Connecting it
+  would auto-deploy his pushes.
+- **Two sources of truth for industries** now: his `niche-config.json` and our
+  `niche-overlay.ts`. Should be folded into one.
+- **`Lead.pause_outreach` is typed `number`, the column is `boolean`** — the same
+  confusion that 500'd `/api/crm` for every tenant.
+- **Meetings and Learning have no list data.** No UI work is possible until there's a
+  backend.
 
 ## 4. Still to do, in priority order
 
@@ -85,14 +107,17 @@ on the org chart and graph — the recommendations panel now surfaces this).
    roster quality (Phase 2), then apply (Phase 3, needs its own sign-off — it is the
    first feature that writes agent config into a live client workspace, and
    `agent_defs` RLS blocks cross-tenant writes by design).
-2. **Second Brain** — remaining from `plans/second-brain-graph-templates.md`:
-   angular-sector level-of-detail (prod has 656 knowledge entities; currently a crude
-   cap of 18/hub), synapse sparks, idle throttling.
-3. **Overview** — trimmed to 7 widgets but never rebuilt around the actual question,
+2. **Second Brain** — the only surface with real data (656 entities across 7
+   workspaces), so polish here is the only polish anyone will actually see. Remaining
+   from `plans/second-brain-graph-templates.md`: angular-sector level-of-detail
+   (currently a crude cap of 18/hub, which visibly lies at 656), synapse sparks,
+   idle throttling.
+3. **Explainers — 16 of 69 pages.** Worse coverage than previously recorded. 53 pages
+   still have no on-page guidance at all.
+4. **Overview** — trimmed to 7 widgets but never rebuilt around the actual question,
    "what does the founder need from me today?"
-4. **Briefings** — vocabulary fixed, but no assistant-first view the way Contacts got
+5. **Briefings** — vocabulary fixed, but no assistant-first view the way Contacts got
    "Needs attention".
-5. **Explainers** — 15 of 52 pages.
 
 **Open questions / not scoped:** Meetings and Learning have no list data (needs
 backend before any UI); the reference's Neural view / Fullscreen / LENS filters /
