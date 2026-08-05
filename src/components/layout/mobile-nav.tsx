@@ -69,7 +69,6 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/kg', label: 'Second Brain', icon: Network },
       { href: '/memory', label: 'Briefings', icon: FileText },
-      { href: '/agents/workspace', label: 'Files', icon: FolderOpen },
       { href: '/learning', label: 'Learning', icon: TrendingUp },
       { href: '/how-it-works', label: 'How to use this', icon: BookOpen },
     ],
@@ -92,6 +91,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/boardroom', label: 'Ask the Team', icon: MessagesSquare, priority: true },
       { href: '/agents/squads', label: 'Agents', icon: Bot },
+      { href: '/agents/workspace', label: 'Agent Studio', icon: FolderOpen },
       { href: '/org-chart', label: 'Org Chart', icon: Network },
       { href: '/agents/skills', label: 'Skills', icon: Boxes },
       { href: '/agents/comms', label: 'Messages', icon: MessageCircle },

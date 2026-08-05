@@ -80,7 +80,6 @@ const PRIMARY: NavGroup[] = [
     items: [
       { href: '/kg', label: 'Second Brain', icon: Network },
       { href: '/memory', label: 'Briefings', icon: FileText },
-      { href: '/agents/workspace', label: 'Files', icon: FolderOpen },
       { href: '/learning', label: 'Learning', icon: TrendingUp },
       // Points at the in-app guide, NOT /docs: the docs site opens in a new tab, and
       // sending someone out of the app to learn the app is the reason nobody read them.
@@ -106,6 +105,10 @@ const PRIMARY: NavGroup[] = [
     items: [
       { href: '/boardroom', label: 'Ask the Team', icon: MessagesSquare, matchPrefixes: ['/boardroom'] },
       { href: '/agents/squads', label: 'Agents', icon: Bot, matchPrefixes: ['/agents/squads'] },
+      // Was labelled "Files" under Company Knowledge. The page is Agent Studio — it
+      // edits agent prompts. There is no files surface in the product, so a client
+      // clicking "Files" got a prompt editor for their AI team.
+      { href: '/agents/workspace', label: 'Agent Studio', icon: FolderOpen },
       { href: '/org-chart', label: 'Org Chart', icon: Network },
       { href: '/agents/skills', label: 'Skills', icon: Boxes, matchPrefixes: ['/agents/skills'] },
       { href: '/agents/comms', label: 'Messages', icon: MessageCircle, matchPrefixes: ['/agents/comms'] },

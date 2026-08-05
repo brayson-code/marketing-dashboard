@@ -44,7 +44,6 @@ export const VIEW_SECTIONS: ReadonlyArray<{
     items: [
       { href: '/kg', label: 'Second Brain' },
       { href: '/memory', label: 'Briefings' },
-      { href: '/agents/workspace', label: 'Files' },
       { href: '/learning', label: 'Learning' },
       { href: '/how-it-works', label: 'How to use this' },
     ],
@@ -67,6 +66,7 @@ export const VIEW_SECTIONS: ReadonlyArray<{
     items: [
       { href: '/boardroom', label: 'Ask the Team' },
       { href: '/agents/squads', label: 'Agents' },
+      { href: '/agents/workspace', label: 'Agent Studio' },
       { href: '/org-chart', label: 'Org Chart' },
       { href: '/agents/skills', label: 'Skills' },
       { href: '/agents/comms', label: 'Messages' },

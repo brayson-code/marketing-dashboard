@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { type Department } from '@/components/agent-orb';
 import { AgentIcon } from '@/components/agent-icon';
 import { compareExecOrder } from '@/lib/exec-order';
+import { Explainer } from '@/components/ui/explainer';
 
 type Status = 'active' | 'idle' | 'error' | 'planned';
 
@@ -111,6 +112,15 @@ export default function SquadsPage() {
           </Link>
         </div>
       </div>
+
+      <Explainer
+        id="agents"
+        title="What this is"
+        what="Your AI team, grouped the way a company is — leadership, marketing, revenue, operations, client experience."
+        when="When you want to see who does what, or open one up to check its memory and current work."
+        example="Opening the CRO agent to see which deals it flagged this week."
+        say="Or just ask: “Who on the team handles follow-ups?”"
+      />
 
       {loading && agents.length === 0 ? (
         <div className="panel p-8 flex items-center justify-center gap-2 text-sm text-muted-foreground">

@@ -14,6 +14,7 @@ import { CommandCenterViews } from '@/components/settings/command-center-views';
 import { timeAgo } from '@/lib/utils';
 import { getRoleMatrix } from '@/lib/rbac';
 import pkg from '../../../package.json';
+import { Explainer } from '@/components/ui/explainer';
 
 interface SyncInfo {
   db_path: string;
@@ -626,6 +627,14 @@ export default function SettingsPage() {
             ))}
           </div>
         </div>
+
+      <Explainer
+        id="settings"
+        title="What this is"
+        what="How the workspace behaves — which sections your team sees, how much your agents may spend, and who has access."
+        when="When someone joins or leaves, or the workspace shows more than anyone needs."
+        example="Hiding the marketing sections for a team that only uses this for operations."
+      />
       </div>
 
       {/* Command Center — which nav sections this workspace sees */}

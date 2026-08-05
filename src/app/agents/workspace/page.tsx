@@ -6,6 +6,7 @@ import { toast } from '@/components/ui/toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AgentPlaybookWizard } from '@/components/agents/agent-playbook-wizard';
 import { CreateAgentModal } from '@/components/agents/create-agent-modal';
+import { Explainer } from '@/components/ui/explainer';
 
 // Known Claude models (latest family). The select keeps any legacy/custom value
 // already on a def so it isn't silently dropped.
@@ -347,6 +348,15 @@ export default function AgentStudioPage() {
             )}
           </div>
         </div>
+
+      <Explainer
+        id="agent-studio"
+        title="What this is"
+        what="The actual instructions each agent runs on. Edit one and it takes effect immediately — no deploy, no waiting."
+        when="When an agent keeps getting something wrong, or you want it to sound more like you."
+        example="Telling your outreach agent to never promise a delivery date."
+        say="Or just say: “Stop signing emails with my full name.” Your assistant can make the change here."
+      />
 
         {/* RIGHT: editor — fills the remaining width. */}
         <div className="panel min-w-0">

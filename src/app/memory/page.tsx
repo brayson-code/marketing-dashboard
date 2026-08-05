@@ -7,6 +7,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/components/ui/toast';
+import { Explainer } from '@/components/ui/explainer';
 
 // Supported export formats — kept in sync with src/lib/export/markdown-export.ts.
 const EXPORT_FORMATS: Array<{ format: string; label: string }> = [
@@ -205,7 +206,7 @@ export default function MemoryPage() {
     <div className="space-y-4 animate-in">
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <div className="space-y-1">
-          <h1 className="text-h1 flex items-center gap-2"><FileText size={18} className="text-primary" /> Reports</h1>
+          <h1 className="text-h1 flex items-center gap-2"><FileText size={18} className="text-primary" /> Briefings</h1>
           <p className="text-xs text-muted-foreground">Filed outputs — mission research reports and scheduled-job results, stored as markdown. (Your AI team&apos;s live knowledge lives in Knowledge; the Company brief moved to Settings.)</p>
         </div>
         <div className="flex items-center gap-1 border-b border-border">
@@ -213,6 +214,15 @@ export default function MemoryPage() {
           <button onClick={() => setView('health')} className={`tab ${view === 'health' ? 'active' : ''}`}>Health</button>
         </div>
       </div>
+
+      <Explainer
+        id="briefings"
+        title="What this is"
+        what="Written summaries your agents produce — research, weekly reviews, anything worth reading rather than skimming a chat for."
+        when="When you want the thinking behind a decision, or something to forward to someone else."
+        example="A weekly state-of-the-business brief you can send to a partner without rewriting it."
+        say="Or just ask: “Write me a summary of what happened this week.”"
+      />
 
       {view === 'health' ? <HealthView /> : (
       <div className="panel flex" style={{ height: 'calc(100vh - 220px)', minHeight: 460 }}>
