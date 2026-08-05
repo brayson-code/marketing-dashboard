@@ -34,6 +34,7 @@ changes, visual/UX only unless agreed, never break functionality.
 
 | Tag | What |
 |---|---|
+| `prep-mode-v1` | **Assistant reads before day one, cannot act.** `prep_until` on the JWT, enforced in the middleware (reads pass, writes 403) so it works on the Edge and regardless of AUTHZ_ENFORCE. Day one clears it. 9 tests |
 | `onboarding-capture-v1` | **Client Success captures the call**, writing the founder profile + playbook for that workspace. `/business-setup` then reads "we filled this in, correct anything wrong" instead of showing a blank form. The fix for 0-of-14 |
 | `lifecycle-v1` | **Provisioning separated from access.** Workspace states provisioned/active/paused/offboarded; enforcement is the AUTH ROWS (no user = no way in), not a request filter. `/api/lifecycle` + controls in `/portal-admin`. Migration **0062**, 10 tests |
 | `portal-v1` | `/portal` "Your KeyPlayers" — client-facing service page (assistant, hours, leave accrual, holidays, support, request-a-person, events). `/portal-admin` HQ editor. Migration **0061**. Policy in `src/lib/service-policy.ts`, 9 tests |
