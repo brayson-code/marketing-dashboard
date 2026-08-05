@@ -135,19 +135,24 @@ export default function TemplatesPage() {
         subtitle="What a client in a given industry would get. Preview only — nothing here changes a workspace."
       />
 
-      <Explainer
-        id="templates"
-        title="What this is"
-        what={
-          <>
-            The agent library holds <strong>{totalAgents} agent definitions</strong>, including
-            industry-tuned specialists across <strong>{niches.length} industries</strong>. This page
-            shows what each industry&apos;s roster looks like and how it compares to a workspace today.
-          </>
-        }
-        when="Before onboarding a client, to see which agents suit their business — and to judge whether the written agents are actually good enough to give someone."
-        example="Pick Roofing, then pick a workspace, and read what they'd gain."
-      />
+      {/* Held back until the counts are real. Rendering this while loading showed
+          "0 agent definitions across 0 industries" for a beat — a confident, false
+          number is worse than a blank space. */}
+      {!loading && !error && (
+        <Explainer
+          id="templates"
+          title="What this is"
+          what={
+            <>
+              The agent library holds <strong>{totalAgents} agent definitions</strong>, including
+              industry-tuned specialists across <strong>{niches.length} industries</strong>. This page
+              shows what each industry&apos;s roster looks like and how it compares to a workspace today.
+            </>
+          }
+          when="Before onboarding a client, to see which agents suit their business — and to judge whether the written agents are actually good enough to give someone."
+          example="Pick Roofing, then pick a workspace, and read what they'd gain."
+        />
+      )}
 
       {loading ? (
         <div className="panel p-8 flex items-center justify-center gap-2 text-sm text-muted-foreground">
