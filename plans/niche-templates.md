@@ -27,7 +27,29 @@ side; the seeded output is already in prod. It is only needed to change the sour
 data, which is not in scope. (`resolveNicheSlugsByName()` lives there and matters to
 their CLI pipeline, not to a console that reads `agent_library` directly.)
 
-### The 22 industries
+### Adding industries — the overlay rule
+
+**Never add an industry by editing `agent_library` rows.** `seed-agent-library.ts`
+upserts by id and sets `default_niches = EXCLUDED.default_niches`, so tagging an
+existing archetype in the database is silently reverted the next time that seed runs
+against `niche-config.json`. Its cleanup DELETE only targets `source='niche'` /
+`id LIKE 'niche-%'`, so anything declared outside those ids is safe.
+
+Industries we define therefore live in **`src/lib/niche-overlay.ts`** — version
+controlled, reviewable in a PR, survives any reseed. `listNiches()`, `agentsForNiche()`
+and `workspaceGap()` union it in; a seeded slug wins on collision so Brayson's catalog
+stays authoritative for anything it covers.
+
+**Added 2026-08-05 (10, taking 22 → 32):** Marketing Agency · GTM Agency · Consulting
+Business · Medical Practice · Law Firm · E-commerce Brand · SaaS Company · Veterinary
+Practice · Chiropractic & Physio · Commercial Cleaning. All reuse the existing 15
+archetypes — no new prompt bodies. Each carries a `note` naming the money leak its
+roster targets, rendered on the page.
+
+⚠️ This and `niche-config.json` are now two sources of truth for one concept. Fine
+short-term, bad long-term — Brayson should fold these in when he next touches that repo.
+
+### The 22 seeded industries
 accounting · auto_dealership · beverage · coaching · concierge_medicine · construction ·
 dental · financial_advisors · fitness · hvac · insurance · landscaping · med_spa ·
 mortgage · personal_injury_law · property_mgmt · real_estate · restaurants · roofing ·
