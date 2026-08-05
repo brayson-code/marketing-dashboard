@@ -40,6 +40,9 @@ function KgContent() {
   const [agents, setAgents] = useState<OrgAgent[]>([]);
   const [tools, setTools] = useState<OrgTool[]>([]);
   const [humans, setHumans] = useState<OrgHuman[]>([]);
+  // The centre node is the founder — it's their brain. Falls back to the workspace name
+  // when the Founder Profile hasn't been filled in yet.
+  const [centerLabel, setCenterLabel] = useState<string>('Second Brain');
 
   const load = useCallback(async () => {
     const qs = new URLSearchParams();
@@ -67,10 +70,12 @@ function KgContent() {
       } catch { return null; }
     };
     (async () => {
-      const [a, c, m] = await Promise.all([
-        json('/api/agents'), json('/api/connections'), json('/api/members'),
+      const [a, c, m, f] = await Promise.all([
+        json('/api/agents'), json('/api/connections'), json('/api/members'), json('/api/founder'),
       ]);
       if (off) return;
+      const founderName = typeof f?.answers?.name === 'string' ? f.answers.name.trim() : '';
+      if (founderName) setCenterLabel(founderName);
       const agentRows = Array.isArray(a) ? a : Array.isArray(a?.agents) ? a.agents : [];
       setAgents(agentRows.map((x: Record<string, unknown>) => ({
         id: String(x.id ?? ''),
@@ -176,7 +181,7 @@ function KgContent() {
           <h3 className="section-title">Graph</h3>
         </div>
         <div className="panel-body">
-          <OrgGraphView input={orgInput} />
+          <OrgGraphView input={orgInput} centerLabel={centerLabel} />
         </div>
       </div>
 

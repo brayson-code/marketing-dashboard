@@ -265,6 +265,52 @@ export function buildOrgGraph(input: OrgInput): OrgGraph {
   return { nodes, edges, counts };
 }
 
+/**
+ * Re-lay a focused node's subtree as an ORG CHART anchored at the node itself.
+ *
+ * The focused node holds its position and its descendants stack in tiers ABOVE it, the
+ * way a division sits under the business on an org chart. Everything else in the graph
+ * keeps its radial position and simply dims, so the focused branch reads as being
+ * pulled forward out of the wheel rather than replacing it.
+ *
+ * Tiers go, bottom to top: the node → its SOP tasks → the agents who do the work →
+ * the tools they use. That ordering is the actual chain of delegation.
+ */
+export function treeLayout(graph: OrgGraph, focusId: string): Map<string, { x: number; y: number }> {
+  const pos = new Map<string, { x: number; y: number }>();
+  const root = graph.nodes.find((n) => n.id === focusId);
+  if (!root) return pos;
+
+  const children = graph.edges.filter((e) => e.a === focusId).map((e) => e.b);
+  const kindOf = new Map(graph.nodes.map((n) => [n.id, n.kind] as const));
+
+  // Tools hang off the agents conceptually, but in the data they hang off the pillar —
+  // so they're split out here by kind rather than by another edge walk.
+  const agents = children.filter((id) => kindOf.get(id) === 'agent' || kindOf.get(id) === 'human');
+  const tools = children.filter((id) => kindOf.get(id) === 'tool');
+  const tasks = graph.nodes
+    .filter((n) => n.kind === 'task' && n.pillar === root.pillar)
+    .map((n) => n.id);
+
+  const row = (ids: string[], dy: number, gap: number) => {
+    if (ids.length === 0) return;
+    const width = (ids.length - 1) * gap;
+    ids.forEach((id, i) => {
+      pos.set(id, {
+        x: r2(root.x - width / 2 + i * gap),
+        y: r2(root.y + dy),
+      });
+    });
+  };
+
+  pos.set(focusId, { x: root.x, y: root.y });
+  row(tasks.slice(0, 10), -130, 92);
+  row(agents, -270, 104);
+  row(tools, -410, 108);
+
+  return pos;
+}
+
 /** Ids reachable from a node in one hop — drives hover-isolate and drill-down. */
 export function neighbourhood(graph: OrgGraph, id: string): Set<string> {
   const out = new Set<string>([id]);
