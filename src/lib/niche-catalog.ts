@@ -9,6 +9,8 @@
 // falls back to a readable title-case so a niche seeded later still renders sensibly
 // instead of throwing or showing a raw slug.
 
+import { NICHE_OVERLAY } from './niche-overlay';
+
 const DISPLAY: Record<string, string> = {
   accounting: 'Accounting',
   auto_dealership: 'Auto Dealership',
@@ -38,12 +40,18 @@ const DISPLAY: Record<string, string> = {
 export function nicheName(slug: string): string {
   const key = String(slug ?? '').trim().toLowerCase();
   if (!key) return 'Unknown';
-  return DISPLAY[key] ?? key.split(/[_-]+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  // Overlay industries carry their own display name, so adding one is a single edit in
+  // niche-overlay.ts rather than two files that can drift apart.
+  return NICHE_OVERLAY[key]?.name
+    ?? DISPLAY[key]
+    ?? key.split(/[_-]+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
 /** True when we have authored copy for this slug (vs falling back to title-case). */
 export function hasNicheName(slug: string): boolean {
-  return Object.prototype.hasOwnProperty.call(DISPLAY, String(slug ?? '').trim().toLowerCase());
+  const key = String(slug ?? '').trim().toLowerCase();
+  return Object.prototype.hasOwnProperty.call(DISPLAY, key)
+    || Object.prototype.hasOwnProperty.call(NICHE_OVERLAY, key);
 }
 
 // Category labels, same reasoning — 'client' and 'comms' are column values, not words

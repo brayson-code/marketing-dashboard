@@ -9,6 +9,7 @@
 // plain SELECT returns the whole catalog regardless of the caller's tenant.
 
 import { sql } from './db/client';
+import { overlayArchetypesFor, overlayNiches } from './niche-overlay';
 
 export type AgentRichness = 'thin' | 'rich';
 
@@ -115,12 +116,24 @@ export async function getLibraryAgent(slug: string): Promise<LibraryAgent | null
  */
 export async function agentsForNiche(nicheSlug: string): Promise<LibraryAgentListItem[]> {
   const slug = String(nicheSlug ?? '').trim().toLowerCase();
+  // Overlay industries (niche-overlay.ts) select by explicit id, because their slug is
+  // deliberately NOT written into any agent_library row — writing it there would be
+  // reverted by the next seed run. Seeded niches keep the original default_niches path
+  // unchanged.
+  const ids = overlayArchetypesFor(slug);
+  const useIds = ids.length > 0;
+
   const rows = (await sql()`
     SELECT id, name, category, role, department, is_executive, does,
            default_niches, tags, richness, source
     FROM public.agent_library
-    WHERE default_niches @> ARRAY[${slug}]::text[]
-       OR source IN ('default', 'exec')
+    WHERE (
+      CASE WHEN ${useIds}
+           THEN id = ANY(${ids}::text[])
+           ELSE default_niches @> ARRAY[${slug}]::text[]
+      END
+    )
+    OR source IN ('default', 'exec')
     ORDER BY is_executive DESC, category ASC, name ASC
   `) as unknown as RawRow[];
   return rows.map(toListItem);
@@ -140,7 +153,12 @@ export async function listNiches(): Promise<Array<{ slug: string; agents: number
     GROUP BY n
     ORDER BY n
   `) as unknown as Array<{ slug: string; agents: number }>;
-  return rows;
+
+  // Union in the industries we define. A seeded slug wins if one ever collides, so
+  // Brayson's catalog stays authoritative for anything it actually covers.
+  const seeded = new Set(rows.map(r => r.slug));
+  const extra = overlayNiches().filter(n => !seeded.has(n.slug));
+  return [...rows, ...extra].sort((a, b) => a.slug.localeCompare(b.slug));
 }
 
 /**
@@ -162,6 +180,9 @@ export async function workspaceGap(targetTenantId: string, nicheSlug: string): P
   missing: string[];
 }> {
   const slug = String(nicheSlug ?? '').trim().toLowerCase();
+  const ids = overlayArchetypesFor(slug);
+  const useIds = ids.length > 0;
+
   const rows = (await sql()`
     SELECT l.id,
            EXISTS (
@@ -169,8 +190,13 @@ export async function workspaceGap(targetTenantId: string, nicheSlug: string): P
              WHERE d.tenant_id = ${targetTenantId} AND d.id = l.id
            ) AS has_it
     FROM public.agent_library l
-    WHERE l.default_niches @> ARRAY[${slug}]::text[]
-       OR l.source IN ('default', 'exec')
+    WHERE (
+      CASE WHEN ${useIds}
+           THEN l.id = ANY(${ids}::text[])
+           ELSE l.default_niches @> ARRAY[${slug}]::text[]
+      END
+    )
+    OR l.source IN ('default', 'exec')
   `) as unknown as Array<{ id: string; has_it: boolean }>;
 
   return {

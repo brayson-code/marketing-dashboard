@@ -10,6 +10,7 @@ import { Explainer } from '@/components/ui/explainer';
 import {
   nicheName, categoryName, rosterReason, REASON_LABEL, type RosterReason,
 } from '@/lib/niche-catalog';
+import { overlayNote } from '@/lib/niche-overlay';
 
 // Industry Templates — HQ-only, PREVIEW ONLY.
 //
@@ -208,6 +209,12 @@ export default function TemplatesPage() {
               </select>
             </div>
           </div>
+
+          {/* Why this roster and not another. An operator picking a template for a real
+              client needs the reasoning, not just the list. */}
+          {overlayNote(selected) && (
+            <p className="text-xs text-muted-foreground max-w-prose">{overlayNote(selected)}</p>
+          )}
 
           {gap && (
             <div className="panel p-3 text-xs flex flex-wrap items-center gap-x-4 gap-y-1">
