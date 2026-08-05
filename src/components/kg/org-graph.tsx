@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Sparkles, Users, User, UserRound, Wrench, ClipboardList, X, CornerUpLeft, type LucideIcon,
+  Sparkles, Users, User, UserRound, Wrench, ClipboardList, X, CornerUpLeft,
+  Target, FileText, Contact, Lightbulb, Maximize2, type LucideIcon,
 } from 'lucide-react';
 import {
   buildOrgGraph, neighbourhood, treeLayout, VIEW, C,
@@ -32,12 +33,16 @@ import {
 // out is an escape.
 
 const KIND: Record<OrgNodeKind, { label: string; Icon: LucideIcon; color: string }> = {
-  self: { label: 'Notes', Icon: Sparkles, color: '#f2f2f2' },
-  pillar: { label: 'Pillars', Icon: Users, color: '#10d982' },
+  self: { label: 'Founder', Icon: Sparkles, color: '#f2f2f2' },
+  pillar: { label: 'Areas', Icon: Users, color: '#10d982' },
   task: { label: 'SOP tasks', Icon: ClipboardList, color: '#8a8a9a' },
   human: { label: 'Humans', Icon: UserRound, color: '#f5a623' },
   agent: { label: 'AI agents', Icon: User, color: '#f2f2f2' },
   tool: { label: 'Tools', Icon: Wrench, color: '#ff2d3f' },
+  goal: { label: 'Goals', Icon: Target, color: '#10d982' },
+  file: { label: 'Files', Icon: FileText, color: '#8ab4f8' },
+  contact: { label: 'Contacts', Icon: Contact, color: '#2dd4bf' },
+  note: { label: 'Knowledge', Icon: Lightbulb, color: '#c9b6ff' },
 };
 
 const PILLAR_COLOR: Record<string, string> = {
@@ -47,13 +52,19 @@ const PILLAR_COLOR: Record<string, string> = {
   operations: '#2dd4bf',
   client_experience: '#f59e0b',
   unassigned: '#8a8a9a',
+  // The non-department areas take their own hue so a hub reads as "an area of the
+  // business" rather than "another department".
+  goals: '#10d982',
+  files: '#8ab4f8',
+  contacts: '#2dd4bf',
+  knowledge: '#c9b6ff',
 };
 
 const EDGE_COLOR: Record<string, string> = {
   pillar: '#f2f2f2', member: '#8a8a9a', uses: '#ff2d3f', sop: '#5c5c5c',
 };
 
-const ORDER: OrgNodeKind[] = ['self', 'pillar', 'task', 'human', 'agent', 'tool'];
+const ORDER: OrgNodeKind[] = ['self', 'pillar', 'agent', 'human', 'tool', 'goal', 'file', 'contact', 'note', 'task'];
 
 function colorOf(n: OrgNode): string {
   if (n.kind === 'pillar') return PILLAR_COLOR[n.pillar ?? 'unassigned'] ?? KIND.pillar.color;
@@ -68,11 +79,15 @@ export function OrgGraphView({
   input,
   height = 620,
   centerLabel,
+  onSelect,
 }: {
   input: OrgInput;
   height?: number;
   /** The founder's name or the business name — this is their brain, so it's their node. */
   centerLabel?: string;
+  /** Fired on selection so the page can show what you're looking at underneath the
+   *  graph. Null when the selection is cleared. */
+  onSelect?: (node: OrgNode | null) => void;
 }) {
   const graph = useMemo(
     () => buildOrgGraph(centerLabel ? { ...input, workspace: centerLabel } : input),
@@ -146,6 +161,84 @@ export function OrgGraphView({
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // ── Pan + zoom ────────────────────────────────────────────────────────────
+  // Without this, anything the auto-framing doesn't happen to cover is simply
+  // unreachable — you can see half the graph and have no way to get to the rest.
+  // Dragging writes to BOTH cam and target so the easing loop doesn't fight the
+  // pointer and drag the view back out from under you.
+  const dragRef = useRef<{ x: number; y: number; cam: Rect } | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const unitsPerPx = () => {
+    const el = svgRef.current;
+    const w = el?.clientWidth || 1;
+    return camRef.current.w / w;
+  };
+
+  const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    // Left button only; let other buttons through for native behaviours.
+    if (e.button !== 0) return;
+    dragRef.current = { x: e.clientX, y: e.clientY, cam: { ...camRef.current } };
+    setDragging(true);
+    (e.currentTarget as SVGSVGElement).setPointerCapture?.(e.pointerId);
+  };
+
+  const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const k = unitsPerPx();
+    const next: Rect = {
+      x: d.cam.x - (e.clientX - d.x) * k,
+      y: d.cam.y - (e.clientY - d.y) * k,
+      w: d.cam.w,
+      h: d.cam.h,
+    };
+    camRef.current = next;
+    targetRef.current = next;
+    svgRef.current?.setAttribute('viewBox', rectStr(next));
+  };
+
+  const endDrag = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!dragRef.current) return;
+    const moved = Math.hypot(e.clientX - dragRef.current.x, e.clientY - dragRef.current.y);
+    dragRef.current = null;
+    setDragging(false);
+    // A drag must not also register as a click — otherwise panning the canvas
+    // constantly throws you out of whatever you were focused on.
+    if (moved > 4) suppressClickRef.current = true;
+  };
+
+  const suppressClickRef = useRef(false);
+
+  const onWheel = (e: React.WheelEvent<SVGSVGElement>) => {
+    const el = svgRef.current;
+    if (!el) return;
+    const cam = camRef.current;
+    const factor = e.deltaY > 0 ? 1.12 : 1 / 1.12;
+    // Clamped so you can't zoom to a pinhead or lose the graph entirely.
+    const w = Math.max(VIEW * 0.12, Math.min(VIEW * 2.2, cam.w * factor));
+    const h = w;
+    // Zoom toward the cursor rather than the centre, which is what makes a wheel
+    // zoom feel like it's obeying you.
+    const rect = el.getBoundingClientRect();
+    const px = (e.clientX - rect.left) / (rect.width || 1);
+    const py = (e.clientY - rect.top) / (rect.height || 1);
+    const next: Rect = {
+      x: cam.x + (cam.w - w) * px,
+      y: cam.y + (cam.h - h) * py,
+      w, h,
+    };
+    camRef.current = next;
+    targetRef.current = next;
+    el.setAttribute('viewBox', rectStr(next));
+  };
+
+  const resetView = () => {
+    setFocus(null);
+    targetRef.current = restingFrame(VIEW);
+    easeRef.current = CAM_EASE_HOME;
+  };
+
   const focusNode = focus ? nodeById.get(focus) ?? null : null;
 
   // Scale: the focused node and its neighbours grow. This is the "they appear larger"
@@ -161,6 +254,15 @@ export function OrgGraphView({
 
   return (
     <div className="relative rounded-xl overflow-hidden" style={{ background: '#0a0a0f' }}>
+      <button
+        className="absolute top-3 right-3 z-10 btn btn-sm"
+        style={{ background: 'rgba(255,255,255,0.08)', color: '#f2f2f2', border: '1px solid rgba(255,255,255,0.15)' }}
+        onClick={resetView}
+        title="Reset the view"
+      >
+        <Maximize2 size={12} /> Reset
+      </button>
+
       {focusNode && (
         <button
           className="absolute top-3 left-3 z-10 btn btn-sm"
@@ -179,7 +281,17 @@ export function OrgGraphView({
         role="img"
         aria-label={`Second Brain — ${graph.nodes.length} nodes across ${graph.counts.pillar} departments`}
         onMouseLeave={() => setHover(null)}
-        onClick={() => setFocus(null)}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onWheel={onWheel}
+        onClick={() => {
+          if (suppressClickRef.current) { suppressClickRef.current = false; return; }
+          setFocus(null);
+          onSelect?.(null);
+        }}
+        style={{ cursor: dragging ? 'grabbing' : 'grab', touchAction: 'none' }}
       >
         <defs>
           <pattern id="og-grid" width="44" height="44" patternUnits="userSpaceOnUse">
@@ -238,7 +350,13 @@ export function OrgGraphView({
                   transition: 'opacity 200ms ease, transform 420ms var(--ease-out, ease)',
                 }}
                 onMouseEnter={() => setHover(n.id)}
-                onClick={(ev) => { ev.stopPropagation(); setFocus(n.id === focus ? null : n.id); }}
+                onClick={(ev) => {
+                  ev.stopPropagation();
+                  if (suppressClickRef.current) { suppressClickRef.current = false; return; }
+                  const next = n.id === focus ? null : n.id;
+                  setFocus(next);
+                  onSelect?.(next ? n : null);
+                }}
               >
                 {/* Inner group carries the scale so the growth animates around the
                     node's own centre rather than the SVG origin. */}

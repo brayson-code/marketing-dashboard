@@ -43,6 +43,12 @@ function KgContent() {
   // The centre node is the founder — it's their brain. Falls back to the workspace name
   // when the Founder Profile hasn't been filled in yet.
   const [centerLabel, setCenterLabel] = useState<string>('Second Brain');
+  const [goals, setGoals] = useState<Array<{ id: string; name: string; status?: string }>>([]);
+  const [files, setFiles] = useState<Array<{ id: string; name: string; status?: string }>>([]);
+  const [contacts, setContacts] = useState<Array<{ id: string; name: string; status?: string }>>([]);
+  // What you last clicked in the graph, mirrored underneath so the page shows what
+  // you're actually looking at rather than leaving you to guess.
+  const [picked, setPicked] = useState<{ kind: string; label: string; type?: string; entityId?: string } | null>(null);
 
   const load = useCallback(async () => {
     const qs = new URLSearchParams();
@@ -70,8 +76,9 @@ function KgContent() {
       } catch { return null; }
     };
     (async () => {
-      const [a, c, m, f] = await Promise.all([
+      const [a, c, m, f, g, d, l] = await Promise.all([
         json('/api/agents'), json('/api/connections'), json('/api/members'), json('/api/founder'),
+        json('/api/goals'), json('/api/documents'), json('/api/leads'),
       ]);
       if (off) return;
       const founderName = typeof f?.answers?.name === 'string' ? f.answers.name.trim() : '';
@@ -97,22 +104,29 @@ function KgContent() {
         name: String(u.name ?? u.username ?? u.email ?? 'Teammate'),
         role: typeof u.role === 'string' ? u.role : undefined,
       })).filter((h: OrgHuman) => h.id));
+
+      const goalRows = Array.isArray(g?.goals) ? g.goals : [];
+      setGoals(goalRows.map((x: Record<string, unknown>) => ({
+        id: String(x.id ?? ''), name: String(x.title ?? x.name ?? 'Goal'),
+        status: typeof x.status === 'string' ? x.status : undefined,
+      })).filter((x: { id: string }) => x.id));
+
+      const docRows = Array.isArray(d?.documents) ? d.documents : [];
+      setFiles(docRows.map((x: Record<string, unknown>) => ({
+        id: String(x.id ?? ''), name: String(x.title ?? x.name ?? 'Document'),
+        status: typeof x.status === 'string' ? x.status : undefined,
+      })).filter((x: { id: string }) => x.id));
+
+      const leadRows = Array.isArray(l?.leads) ? l.leads : Array.isArray(l) ? l : [];
+      setContacts(leadRows.map((x: Record<string, unknown>) => ({
+        id: String(x.id ?? ''),
+        name: [x.first_name, x.last_name].filter(Boolean).join(' ').trim()
+          || String(x.company ?? x.email ?? 'Contact'),
+        status: typeof x.status === 'string' ? x.status : undefined,
+      })).filter((x: { id: string }) => x.id));
     })();
     return () => { off = true; };
   }, []);
-
-  // SOP tasks come from the entity list — documents and projects are the closest
-  // thing we hold to a standing procedure.
-  const orgInput = useMemo(() => ({
-    workspace: 'Second Brain',
-    agents,
-    humans,
-    tools,
-    tasks: entities
-      .filter((e) => e.kind === 'document' || e.kind === 'project')
-      .slice(0, 40)
-      .map((e) => ({ id: String(e.id), name: e.name })),
-  }), [agents, humans, tools, entities]);
 
   const loadNeighbors = useCallback(async (id: number) => {
     setSelectedId(id);
@@ -152,6 +166,25 @@ function KgContent() {
     return copy;
   }, [entities, sort, degreeMap]);
 
+  // SOP tasks come from the entity list — documents and projects are the closest
+  // thing we hold to a standing procedure.
+  const orgInput = useMemo(() => ({
+    workspace: 'Second Brain',
+    agents,
+    humans,
+    tools,
+    tasks: entities
+      .filter((e) => e.kind === 'project')
+      .slice(0, 20)
+      .map((e) => ({ id: String(e.id), name: e.name })),
+    goals,
+    files,
+    contacts,
+    // Knowledge leans on the most-connected entities: with hundreds of them, degree is
+    // the honest proxy for "what actually matters here".
+    notes: sortedEntities.slice(0, 24).map((e) => ({ id: String(e.id), name: e.name, kind: e.kind })),
+  }), [agents, humans, tools, entities, goals, files, contacts, sortedEntities]);
+
   const totalPages = Math.max(1, Math.ceil(sortedEntities.length / PAGE_SIZE));
   const pageStart = page * PAGE_SIZE;
   const pageEnd = Math.min(pageStart + PAGE_SIZE, sortedEntities.length);
@@ -181,7 +214,23 @@ function KgContent() {
           <h3 className="section-title">Graph</h3>
         </div>
         <div className="panel-body">
-          <OrgGraphView input={orgInput} centerLabel={centerLabel} />
+          <OrgGraphView
+            input={orgInput}
+            centerLabel={centerLabel}
+            onSelect={(n) => {
+              setPicked(n ? { kind: n.kind, label: n.label, type: n.meta?.type, entityId: n.meta?.entityId } : null);
+              // A knowledge node IS an entity in the list below — select it so the
+              // detail panel fills in rather than making you find it by hand.
+              const eid = Number(n?.meta?.entityId);
+              if (n?.kind === 'note' && Number.isFinite(eid)) loadNeighbors(eid);
+            }}
+          />
+          {picked && (
+            <p className="text-xs text-muted-foreground mt-2">
+              Selected: <span className="text-foreground font-medium">{picked.label}</span>
+              {picked.type ? ` · ${picked.type}` : ''}
+            </p>
+          )}
         </div>
       </div>
 

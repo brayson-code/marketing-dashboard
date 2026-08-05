@@ -15,7 +15,12 @@
 // The six node kinds mirror the reference exactly (Notes / Pillars / SOP tasks /
 // Humans / AI agents / Tools), because that legend IS the spec's CAT record.
 
-export type OrgNodeKind = 'self' | 'pillar' | 'agent' | 'human' | 'tool' | 'task';
+// The graph is the brain of the WHOLE operation, not just the org chart: departments and
+// agents sit alongside goals, files, contacts and knowledge, because the point is to be
+// able to check on anything from one place.
+export type OrgNodeKind =
+  | 'self' | 'pillar' | 'agent' | 'human' | 'tool'
+  | 'task' | 'goal' | 'file' | 'contact' | 'note';
 
 export interface OrgNode {
   id: string;
@@ -55,8 +60,18 @@ const R_AGENT = 330;
 const R_TOOL = 440;
 
 const NODE_R: Record<OrgNodeKind, number> = {
-  self: 26, pillar: 19, agent: 13, human: 13, tool: 9.5, task: 7,
+  self: 26, pillar: 19, agent: 13, human: 13, tool: 9.5,
+  task: 7, goal: 12, file: 8, contact: 9, note: 6.5,
 };
+
+/** The non-department areas of the Command Centre that also hang off the founder.
+ *  Ordered so the wheel is stable regardless of how the data arrives. */
+export const AREA_PILLARS = [
+  { key: 'goals', label: 'Goals', kind: 'goal' as const },
+  { key: 'files', label: 'Files & Briefings', kind: 'file' as const },
+  { key: 'contacts', label: 'Contacts', kind: 'contact' as const },
+  { key: 'knowledge', label: 'Knowledge', kind: 'note' as const },
+];
 
 /** Deterministic string hash — stands in for Math.random everywhere in this file. */
 export function hashId(s: string): number {
@@ -130,7 +145,18 @@ export interface OrgInput {
   humans: ReadonlyArray<{ id: string; name: string; role?: string }>;
   tools: ReadonlyArray<{ id: string; name: string; status?: string; department?: string | null }>;
   tasks: ReadonlyArray<{ id: string; name: string; department?: string | null }>;
+  // The rest of the Command Centre. Each becomes its own hub off the founder, so the
+  // graph answers "what is going on anywhere" rather than only "who works for me".
+  goals?: ReadonlyArray<{ id: string; name: string; status?: string }>;
+  files?: ReadonlyArray<{ id: string; name: string; status?: string }>;
+  contacts?: ReadonlyArray<{ id: string; name: string; status?: string }>;
+  notes?: ReadonlyArray<{ id: string; name: string; kind?: string }>;
 }
+
+/** Per-area cap. The whole point of a brain view is that you can SEE it — past roughly
+ *  this many leaves per hub the ring turns to mush and the browser starts working hard
+ *  for no extra understanding. The count in the hub label still reports the true total. */
+export const AREA_CAP = 18;
 
 /**
  * Build the radial graph.
@@ -162,7 +188,19 @@ export function buildOrgGraph(input: OrgInput): OrgGraph {
   const pillars = [...byPillar.keys()].sort();
   for (const p of pillars) byPillar.get(p)!.sort((x, y) => x.name.localeCompare(y.name));
 
-  const n = Math.max(1, pillars.length);
+  // Area hubs (Goals / Files / Contacts / Knowledge) share the pillar ring with the
+  // departments, so the founder is surrounded by everything the Command Centre holds
+  // rather than only by the org chart. Empty areas are skipped — an always-present hub
+  // with nothing under it just teaches people the graph is decorative.
+  const areaData: Record<string, ReadonlyArray<{ id: string; name: string; status?: string; kind?: string }>> = {
+    goals: input.goals ?? [],
+    files: input.files ?? [],
+    contacts: input.contacts ?? [],
+    knowledge: input.notes ?? [],
+  };
+  const areas = AREA_PILLARS.filter((a) => (areaData[a.key]?.length ?? 0) > 0);
+
+  const n = Math.max(1, pillars.length + areas.length);
   const sector = 360 / n;
 
   // Tools and humans are distributed across sectors deterministically when they carry
@@ -230,6 +268,37 @@ export function buildOrgGraph(input: OrgInput): OrgGraph {
     });
   });
 
+  // Area hubs, continuing round the same ring after the departments.
+  areas.forEach((area, ai) => {
+    const mid = -90 + sector * (pillars.length + ai) + sector / 2;
+    const [px, py] = polar(C, C, R_PILLAR, mid);
+    const pid = `area:${area.key}`;
+    const items = areaData[area.key] ?? [];
+    nodes.push({
+      id: pid, kind: 'pillar', label: area.label,
+      x: px, y: py, r: NODE_R.pillar, pillar: area.key,
+      // The label reports the TRUE total even though only AREA_CAP are drawn, so the
+      // graph never quietly under-reports how much is in there.
+      meta: { type: 'Area', count: String(items.length) },
+    });
+    edges.push({ a: 'self', b: pid, rel: 'pillar' });
+
+    const shown = items.slice(0, AREA_CAP);
+    const inset = sector * 0.82;
+    const slots = fanPositions(shown.length, mid, inset, R_AGENT, 30, 40);
+    shown.forEach((it, i) => {
+      const [sr, deg] = slots[i];
+      const wob = ((hashId(it.id) % 5) - 2) * 2;
+      const [x, y] = polar(C, C, sr + wob, deg);
+      const id = `${area.kind}:${it.id}`;
+      nodes.push({
+        id, kind: area.kind, label: it.name, x, y, r: NODE_R[area.kind], pillar: area.key,
+        meta: { type: area.label.replace(/s$/, ''), status: it.status, entityId: it.id },
+      });
+      edges.push({ a: pid, b: id, rel: 'member' });
+    });
+  });
+
   // Humans ride the agent ring but render in the WARNING colour: in a board of AI
   // agents a human is the exception that needs attention. Placed on their own arc so
   // they read as a group.
@@ -259,7 +328,8 @@ export function buildOrgGraph(input: OrgInput): OrgGraph {
 
   const counts = nodes.reduce(
     (acc, nd) => { acc[nd.kind] += 1; return acc; },
-    { self: 0, pillar: 0, agent: 0, human: 0, tool: 0, task: 0 } as Record<OrgNodeKind, number>,
+    { self: 0, pillar: 0, agent: 0, human: 0, tool: 0, task: 0,
+      goal: 0, file: 0, contact: 0, note: 0 } as Record<OrgNodeKind, number>,
   );
 
   return { nodes, edges, counts };
@@ -288,25 +358,37 @@ export function treeLayout(graph: OrgGraph, focusId: string): Map<string, { x: n
   // so they're split out here by kind rather than by another edge walk.
   const agents = children.filter((id) => kindOf.get(id) === 'agent' || kindOf.get(id) === 'human');
   const tools = children.filter((id) => kindOf.get(id) === 'tool');
+  // Everything else hanging off this hub — goals, files, contacts, knowledge. Without
+  // this the non-org hubs keep their radial positions while the camera zooms in on
+  // them, which lands as a pile of overlapping labels.
+  const leaves = children.filter((id) => {
+    const k = kindOf.get(id);
+    return k !== 'agent' && k !== 'human' && k !== 'tool';
+  });
   const tasks = graph.nodes
     .filter((n) => n.kind === 'task' && n.pillar === root.pillar)
     .map((n) => n.id);
 
-  const row = (ids: string[], dy: number, gap: number) => {
+  /** Lay a set out in centred rows, wrapping at `perRow` so a hub with twenty children
+   *  becomes a readable block rather than one row running off the canvas. */
+  const rows = (ids: string[], startDy: number, gap: number, perRow = 7, rowGap = 96) => {
     if (ids.length === 0) return;
-    const width = (ids.length - 1) * gap;
-    ids.forEach((id, i) => {
-      pos.set(id, {
-        x: r2(root.x - width / 2 + i * gap),
-        y: r2(root.y + dy),
+    for (let i = 0; i < ids.length; i += perRow) {
+      const slice = ids.slice(i, i + perRow);
+      const width = (slice.length - 1) * gap;
+      const dy = startDy - (i / perRow) * rowGap;
+      slice.forEach((id, j) => {
+        pos.set(id, { x: r2(root.x - width / 2 + j * gap), y: r2(root.y + dy) });
       });
-    });
+    }
   };
 
   pos.set(focusId, { x: root.x, y: root.y });
-  row(tasks.slice(0, 10), -130, 92);
-  row(agents, -270, 104);
-  row(tools, -410, 108);
+  rows(tasks.slice(0, 10), -130, 92, 6);
+  rows(agents, -270, 104, 7);
+  rows(tools, -410, 108, 7);
+  // Leaves start just above the hub and stack upward in rows of six.
+  rows(leaves, -150, 120, 6, 104);
 
   return pos;
 }
