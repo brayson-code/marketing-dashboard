@@ -34,6 +34,8 @@ changes, visual/UX only unless agreed, never break functionality.
 
 | Tag | What |
 |---|---|
+| `operator-audit-v1` | "What we've done" in Portal Admin — every operator action as a sentence, failures first. Fetched on click, prefix-matched so new actions appear automatically |
+| `export-completeness-v1` | **The client export was missing 37 tenant-scoped tables** while promising "everything". Inverted to runtime discovery minus a named deny-list; withheld tables listed with reasons. 706KB → 731KB |
 | `day-one-clarity-v1` | **Two mislabels fixed:** nav "Files" actually opened Agent Studio (a prompt editor) — renamed + moved to Your AI Team; `/memory` said "Reports" while the nav said "Briefings". Plus explainers on the 7 day-one pages, 18 → 25 of 71 |
 | `capture-extract-v1` | Paste onboarding call notes → drafts the capture form. Drafts only, never saves; told not to infer approval limits. ⚠️ Needs a working Anthropic key |
 | `readiness-v1` | Per-workspace day-one checklist in Portal Admin. "Open" deliberately does NOT count as ready. Sorts live-and-unfinished first. 8 tests |
