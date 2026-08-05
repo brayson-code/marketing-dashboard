@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Network, Search, ArrowRight, ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
-import KnowledgeGraph from '@/components/kg-graph';
+import { OrgGraphView } from '@/components/kg/org-graph';
 import { timeAgo } from '@/lib/utils';
 
 interface Entity { id: number; kind: string; name: string; attributes: Record<string, unknown>; created_at: string; updated_at: string }
@@ -10,6 +10,9 @@ interface KgRelation { id: number; from_id: number; to_id: number; label: string
 interface Neighbor { entity: Entity; relation: KgRelation; direction: 'in' | 'out' }
 interface KindCount { kind: string; n: number }
 interface GraphRelation { from_id: number; to_id: number; label: string }
+interface OrgAgent { id: string; name: string; department: string | null; is_executive: boolean; role?: string; description?: string }
+interface OrgTool { id: string; name: string; status?: string }
+interface OrgHuman { id: string; name: string; role?: string }
 
 import { UpgradeGate } from '@/components/upgrade-gate';
 
@@ -31,6 +34,12 @@ function KgContent() {
   const [kindFilter, setKindFilter] = useState<string | null>(null);
   const [sort, setSort] = useState<SortOption>('connections');
   const [page, setPage] = useState(0);
+  // The graph is drawn from the ORG — departments, agents, tools, people — because
+  // that's what makes it a picture of how the business runs. The entity list below is
+  // a different lens on the same brain and keeps its own data.
+  const [agents, setAgents] = useState<OrgAgent[]>([]);
+  const [tools, setTools] = useState<OrgTool[]>([]);
+  const [humans, setHumans] = useState<OrgHuman[]>([]);
 
   const load = useCallback(async () => {
     const qs = new URLSearchParams();
@@ -45,6 +54,60 @@ function KgContent() {
   }, [search, kindFilter]);
 
   useEffect(() => { load(); const id = setInterval(load, 5000); return () => clearInterval(id); }, [load]);
+
+  // Org data for the graph. Fetched once — unlike the entity list this doesn't change
+  // every few seconds, and re-polling it would rebuild the layout for no reason.
+  // Every call degrades to an empty tier rather than failing the whole graph.
+  useEffect(() => {
+    let off = false;
+    const json = async (url: string) => {
+      try {
+        const r = await fetch(url, { cache: 'no-store' });
+        return r.ok ? await r.json() : null;
+      } catch { return null; }
+    };
+    (async () => {
+      const [a, c, m] = await Promise.all([
+        json('/api/agents'), json('/api/connections'), json('/api/members'),
+      ]);
+      if (off) return;
+      const agentRows = Array.isArray(a) ? a : Array.isArray(a?.agents) ? a.agents : [];
+      setAgents(agentRows.map((x: Record<string, unknown>) => ({
+        id: String(x.id ?? ''),
+        name: String(x.name ?? x.id ?? ''),
+        department: typeof x.department === 'string' ? x.department : null,
+        is_executive: x.is_executive === true,
+        role: typeof x.role === 'string' ? x.role : undefined,
+        description: typeof x.description === 'string' ? x.description : undefined,
+      })).filter((x: OrgAgent) => x.id));
+      const provRows = Array.isArray(c?.providers) ? c.providers : [];
+      setTools(provRows.map((p: Record<string, unknown>) => ({
+        id: String(p.provider ?? p.id ?? ''),
+        name: String(p.label ?? p.provider ?? p.id ?? ''),
+        status: typeof p.status === 'string' ? p.status : (p.connected ? 'connected' : undefined),
+      })).filter((t: OrgTool) => t.id));
+      const memberRows = Array.isArray(m?.members) ? m.members : Array.isArray(m) ? m : [];
+      setHumans(memberRows.map((u: Record<string, unknown>) => ({
+        id: String(u.id ?? u.email ?? ''),
+        name: String(u.name ?? u.username ?? u.email ?? 'Teammate'),
+        role: typeof u.role === 'string' ? u.role : undefined,
+      })).filter((h: OrgHuman) => h.id));
+    })();
+    return () => { off = true; };
+  }, []);
+
+  // SOP tasks come from the entity list — documents and projects are the closest
+  // thing we hold to a standing procedure.
+  const orgInput = useMemo(() => ({
+    workspace: 'Second Brain',
+    agents,
+    humans,
+    tools,
+    tasks: entities
+      .filter((e) => e.kind === 'document' || e.kind === 'project')
+      .slice(0, 40)
+      .map((e) => ({ id: String(e.id), name: e.name })),
+  }), [agents, humans, tools, entities]);
 
   const loadNeighbors = useCallback(async (id: number) => {
     setSelectedId(id);
@@ -113,7 +176,7 @@ function KgContent() {
           <h3 className="section-title">Graph</h3>
         </div>
         <div className="panel-body">
-          <KnowledgeGraph entities={entities} relations={relations} onSelect={loadNeighbors} focusId={selectedId} />
+          <OrgGraphView input={orgInput} />
         </div>
       </div>
 
