@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Explainer } from '@/components/ui/explainer';
+import { LeavePanel } from '@/components/portal/leave-panel';
 import {
   accrualStatus, upcomingHolidays, ENTITLEMENTS, PROBATION_RULE, WORKING_HOURS_NOTE,
   HOLIDAY_YEAR, type LeaveKind, type HolidayRegion,
@@ -256,6 +257,17 @@ export default function PortalPage() {
               </div>
             )}
           </div>
+
+          {/* Requesting it, right where the balance is read. Only rendered once there
+              is a placement to request against. */}
+          {profile?.ea_started_on && accrual && (
+            <LeavePanel
+              isVa={isVa}
+              workingDayNames={profile.ea_days}
+              accrued={accrual.accrued}
+              inProbation={accrual.inProbation}
+            />
+          )}
 
           {/* Holidays */}
           <div className="panel p-4 space-y-2">
