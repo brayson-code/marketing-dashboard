@@ -91,6 +91,7 @@ export const VIEW_SECTIONS: ReadonlyArray<{
   {
     section: 'Setup',
     items: [
+      { href: '/business-setup', label: 'Business Setup' },
       { href: '/connections', label: 'Connections' },
       { href: '/billing', label: 'Billing' },
     ],

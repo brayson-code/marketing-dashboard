@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { getAnthropicKey, NO_ANTHROPIC_KEY_MESSAGE } from '@/lib/anthropic-key';
-import { getCompanyPlaybook, saveCompanyPlaybook, type PlaybookAnswers } from '@/lib/company-playbook';
+import { getCompanyPlaybook, saveCompanyPlaybook, savePlaybookAnswers, type PlaybookAnswers } from '@/lib/company-playbook';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -34,7 +34,7 @@ const FIELDS: Array<{ key: keyof PlaybookAnswers; label: string }> = [
 export async function POST(request: Request) {
   enterTenant(await resolveTenant());
 
-  let body: { answers?: PlaybookAnswers; save?: boolean; markdown?: string };
+  let body: { answers?: PlaybookAnswers; save?: boolean; markdown?: string; answers_only?: boolean };
   try { body = await request.json(); }
   catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
 
@@ -43,6 +43,14 @@ export async function POST(request: Request) {
     const answers = (body.answers ?? {}) as PlaybookAnswers;
     await saveCompanyPlaybook(body.markdown.trim(), answers, new Date().toISOString());
     return NextResponse.json({ ok: true, markdown: body.markdown.trim(), answers });
+  }
+
+  // Answers-only save — the Business Setup wizard, which saves after every step.
+  // Keeps any existing brief untouched and never needs an Anthropic key, so a
+  // workspace can complete setup before it has connected one.
+  if (body.answers_only === true) {
+    await savePlaybookAnswers((body.answers ?? {}) as PlaybookAnswers, new Date().toISOString());
+    return NextResponse.json({ ok: true, answers: body.answers ?? {} });
   }
 
   const answers = (body.answers ?? {}) as PlaybookAnswers;

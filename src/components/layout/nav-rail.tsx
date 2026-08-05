@@ -9,7 +9,7 @@ import {
   FolderOpen, MessagesSquare, Activity, Target, Inbox, Network, DollarSign, Bug,
   Waves, TrendingUp, Dna, Timer, Link2, Sparkles, ChevronDown, ChevronRight,
   FlaskConical, BookOpen, ArrowUpRight, Boxes, ShieldCheck, PhoneCall, Blocks,
-  MessageCircle, UserRound, Heart,
+  MessageCircle, UserRound, Heart, Building2,
 } from 'lucide-react';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { useDashboard } from '@/store';
@@ -157,6 +157,7 @@ const BOTTOM_GROUP: NavGroup = {
   collapsible: true,
   defaultCollapsed: true,
   items: [
+    { href: '/business-setup', label: 'Business Setup', icon: Building2 },
     { href: '/connections', label: 'Connections', icon: Link2 },
     { href: '/billing', label: 'Billing', icon: Sparkles },
   ],

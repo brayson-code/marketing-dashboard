@@ -64,6 +64,23 @@ export async function companyContextBlock(): Promise<string> {
   return `# Company playbook (the business you work for — honor this in everything you produce)\n\n${md.trim()}\n\n---\n`;
 }
 
+/**
+ * Persist ONLY the questionnaire answers, leaving any existing rendered brief alone.
+ *
+ * The Business Setup wizard saves after every step, and generating the brief costs an
+ * Anthropic call — which a workspace that hasn't connected a key yet cannot make. So
+ * answers are captured as you go and the brief is drafted once, deliberately, at the
+ * end. Without this the wizard would either lose work or demand a key up front.
+ */
+export async function savePlaybookAnswers(answers: PlaybookAnswers, nowIso: string): Promise<void> {
+  await sql()`
+    UPDATE public.tenants
+    SET business_profile = COALESCE(business_profile, '{}'::jsonb)
+      || ${jsonb({ playbook_answers: answers, playbook_answers_updated_at: nowIso })}
+    WHERE id = ${tenantId()}
+  `;
+}
+
 /** Persist the generated/edited playbook onto business_profile (merge, don't clobber
  *  the rest of the profile). nowIso is passed in because Date.now() isn't available
  *  to some callers; the API route stamps it. */

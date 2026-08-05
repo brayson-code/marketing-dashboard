@@ -9,7 +9,7 @@ import {
   BarChart3, LineChart, Rocket, Clock, List, Settings,
   FolderOpen, UserRound, Heart, Activity, Inbox, Target, Network, FileText,
   TrendingUp, BookOpen, MessagesSquare, Boxes, Zap, Link2, Sparkles, Waves,
-  Timer, PhoneCall, DollarSign, Dna,
+  Timer, PhoneCall, DollarSign, Dna, Building2,
 } from 'lucide-react';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { useDashboard } from '@/store';
@@ -116,6 +116,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Setup',
     items: [
+      { href: '/business-setup', label: 'Business Setup', icon: Building2 },
       { href: '/connections', label: 'Connections', icon: Link2 },
       { href: '/billing', label: 'Billing', icon: Sparkles },
       { href: '/settings', label: 'Settings', icon: Settings },
