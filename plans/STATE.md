@@ -34,6 +34,8 @@ changes, visual/UX only unless agreed, never break functionality.
 
 | Tag | What |
 |---|---|
+| `portal-v1` | `/portal` "Your KeyPlayers" — client-facing service page (assistant, hours, leave accrual, holidays, support, request-a-person, events). `/portal-admin` HQ editor. Migration **0061**. Policy in `src/lib/service-policy.ts`, 9 tests |
+| `templates-overlay-v1` | 22 → 32 industries via `niche-overlay.ts` (survives Brayson's reseeds) |
 | `templates-preview-v1` | `/templates` — HQ-only, **read-only** preview of the 22 industry rosters in `agent_library`, with a per-workspace gap view. No write path exists. Phase 1 of `plans/niche-templates.md` |
 | `contacts-v1` | **/api/crm was 500ing for every tenant** (`pause_outreach = 0` vs a Postgres boolean) — fixed. Plus "Needs attention": owed a reply / this week / gone quiet |
 | `vocab-and-recs-v1` | Plain-English sweep (Cron Jobs→Scheduled work, Compacted memory→Summarised history, All Tiers→All priorities…) + agent recommendations panel |
@@ -97,6 +99,9 @@ Success action, not a code one, and it beats everything in §4.
   confusion that 500'd `/api/crm` for every tenant.
 - **Meetings and Learning have no list data.** No UI work is possible until there's a
   backend.
+- **No EA has a login.** All 13 workspace members in production are `owner` — zero `va`,
+  zero `member`. The North Star says the assistant is the primary user; today not one
+  can sign in. Bigger than any single page, and `/portal` makes it obvious.
 
 ## 4. Still to do, in priority order
 
@@ -118,6 +123,9 @@ Success action, not a code one, and it beats everything in §4.
    "what does the founder need from me today?"
 5. **Briefings** — vocabulary fixed, but no assistant-first view the way Contacts got
    "Needs attention".
+6. **Portal follow-ups** — the GHL support booking link (Mitch is making it; until then
+   the card offers email); Client Success needs to fill in `/portal-admin` per workspace
+   or every client sees "Not set up yet"; 2027 holiday dates need adding each December.
 
 **Open questions / not scoped:** Meetings and Learning have no list data (needs
 backend before any UI); the reference's Neural view / Fullscreen / LENS filters /
