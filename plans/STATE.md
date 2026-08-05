@@ -34,6 +34,8 @@ changes, visual/UX only unless agreed, never break functionality.
 
 | Tag | What |
 |---|---|
+| `agent-departments-v1` | **The org chart's "General" bucket is gone.** 35 agents had no department; fixed at the seed AND in `squad.ts`'s runtime fallback roster, which was the actual cause. `SPECIALIST_CATEGORY` moved to a shared pure module. 7 tests |
+| `pause-outreach-fix-v1` | **A paused lead never showed as paused** — three `=== 1` checks against a Postgres boolean, always false. Type corrected, which surfaced the rest |
 | `leave-requests-v1` | Assistant requests time off, client approves, KeyPlayers has the record. Probation leave is marked **unpaid**, not refused. Working days counted against the assistant's own schedule. Migration **0064**, 13 tests |
 | `roster-at-activation-v1` | Every workspace card + the activation confirm now say what the client will actually find: "16 agents, none tuned to their industry" |
 | `daily-brief-v1` | **Role-aware "what needs doing today" on Overview.** Founder sees approvals + overdue; assistant additionally sees decay and personal act-by dates. Renders nothing when there's nothing. No new storage. 10 tests |
