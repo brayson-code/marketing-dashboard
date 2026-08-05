@@ -120,7 +120,12 @@ export async function GET(request: Request) {
     s`SELECT COUNT(*) as c FROM sequences WHERE tenant_id = ${tenantId()} AND status = 'sent'`,
     s`SELECT COUNT(*) as c FROM leads WHERE tenant_id = ${tenantId()} AND status IN ('contacted','replied','interested','booked','qualified')`,
     s`SELECT COUNT(*) as c FROM leads WHERE tenant_id = ${tenantId()} AND status IN ('replied','interested','booked','qualified')`,
-    s`SELECT COUNT(*) as c FROM leads WHERE tenant_id = ${tenantId()} AND next_action_at < now() AND (pause_outreach IS NULL OR pause_outreach = FALSE OR pause_outreach = 0)`,
+    // `pause_outreach = 0` was left over from SQLite, where booleans are integers.
+    // Postgres rejects it outright — "operator does not exist: boolean = integer" —
+    // which made this whole endpoint 500 on EVERY request for EVERY tenant, and the
+    // page degraded silently to "No contacts found". NOT NULL-safe FALSE covers both
+    // false and NULL, so the extra comparisons weren't buying anything either.
+    s`SELECT COUNT(*) as c FROM leads WHERE tenant_id = ${tenantId()} AND next_action_at < now() AND pause_outreach IS NOT TRUE`,
   ]);
 
   const totalLeads = Number(totalRows[0]?.c ?? 0);

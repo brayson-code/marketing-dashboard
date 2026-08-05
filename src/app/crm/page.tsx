@@ -19,6 +19,7 @@ import { toast } from '@/components/ui/toast';
 import type { Lead, FunnelStep } from '@/types';
 import { LeadDetailPanel } from '@/components/crm/lead-detail-panel';
 import { ActivateStaleLeadsBanner } from '@/components/cron/activate-stale-leads-banner';
+import { NeedsAttention } from '@/components/crm/needs-attention';
 
 interface CrmData {
   leads: Lead[];
@@ -392,6 +393,10 @@ export default function CrmPage() {
         example="Before a call, open the person's record to see the last thing that happened with them."
         say={<>&ldquo;Who have I not followed up with in three weeks?&rdquo;</>}
       />
+
+      {/* The assistant's view of the same records: who is owed a reply, who has gone
+          quiet. The pipeline below stays exactly as it was for anyone working deals. */}
+      <NeedsAttention contacts={leads} onPick={(id) => setSelectedLead(id)} />
       {data?.summary && (
         <div className="panel p-3 flex items-center gap-4 text-small flex-wrap">
           <span><strong className="text-foreground">{data.summary.total}</strong> leads</span>
