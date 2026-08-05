@@ -6,35 +6,44 @@
 // as a single ZIP they can keep or migrate. Their data is theirs; this is the
 // "take it with you" button.
 //
-// What's included: content + work tables, tenant-scoped to the caller.
-// What's EXCLUDED, and why:
-//   - client_integrations: holds AES-encrypted third-party SECRETS that are
-//     useless without the platform key, and exporting key material is a security
-//     risk. We export the list of CONNECTED PROVIDERS (names + connected_at) only.
-//   - billing/system internals (stripe events, entitlements, error_events,
-//     audit_log): platform plumbing, not the client's assets.
-//   - auth/member PII beyond the caller's own workspace membership.
+// WHAT'S INCLUDED: every tenant-scoped table, DISCOVERED AT RUN TIME, minus an explicit
+// deny-list (src/lib/export-tables.ts). This used to be a hardcoded list of 30 tables,
+// and 37 others had appeared since — Personal Life, brand assets, competitor research,
+// strategy, time-savings history — all silently missing while the manifest promised
+// "everything your workspace created".
+//
+// An allow-list fails silently and in the worst direction: the NEWEST data is the most
+// likely to be missing, and nobody finds out until a client leaves. Inverted, so not
+// exporting something is a deliberate decision recorded with a reason the client sees.
 
 import { zipSync, strToU8 } from 'fflate';
 import { NextResponse } from 'next/server';
 import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { sql, tenantId } from '@/lib/db/client';
 import { currentUserId } from '@/lib/tenant';
+import { isExportable, exclusionReason } from '@/lib/export-tables';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-// Content/work tables exported verbatim (SELECT * WHERE tenant_id = caller).
-// Order is cosmetic. Tables that don't exist in an environment are skipped.
-const EXPORT_TABLES = [
-  'documents', 'agent_defs', 'kg_entities', 'kg_relations',
-  'goals', 'goal_progress', 'cron_jobs', 'cron_templates', 'cron_runs',
-  'wave_runs', 'wave_step_runs', 'leads', 'sequences', 'suppression',
-  'engagements', 'signals', 'content_posts', 'agent_drafts', 'agent_tasks',
-  'agent_memory', 'messages', 'boardroom_messages', 'agentmail_messages',
-  'daily_metrics', 'learnings', 'experiments', 'reward_events', 'agent_policy',
-  'activity_log', 'notifications',
-] as const;
+/**
+ * Every table in this database that is scoped to a tenant, read from the catalog rather
+ * than listed by hand. A table added next month is exported without anyone remembering
+ * to come back here.
+ */
+async function tenantScopedTables(): Promise<string[]> {
+  const rows = (await sql()`
+    SELECT c.table_name
+    FROM information_schema.columns c
+    JOIN information_schema.tables t
+      ON t.table_schema = c.table_schema AND t.table_name = c.table_name
+    WHERE c.table_schema = 'public'
+      AND c.column_name = 'tenant_id'
+      AND t.table_type = 'BASE TABLE'
+    ORDER BY c.table_name
+  `) as unknown as Array<{ table_name: string }>;
+  return rows.map(r => r.table_name);
+}
 
 /** Only the workspace owner can export the whole workspace. */
 async function isTenantOwner(): Promise<boolean> {
@@ -62,8 +71,16 @@ export async function GET() {
   const tid = tenantId();
   const data: Record<string, unknown[]> = {};
   const skipped: Record<string, string> = {};
+  const withheld: Record<string, string> = {};
 
-  for (const table of EXPORT_TABLES) {
+  const all = await tenantScopedTables();
+  const tables = all.filter(t => {
+    if (isExportable(t)) return true;
+    withheld[t] = exclusionReason(t);
+    return false;
+  });
+
+  for (const table of tables) {
     try {
       // Table identifiers can't be parameterized; the list above is a fixed
       // allow-list of known table names, so this is not injectable.
@@ -103,11 +120,16 @@ export async function GET() {
     workspace: profile,
     connected_providers: providers,
     tables: Object.fromEntries(Object.entries(data).map(([t, rows]) => [t, rows.length])),
+    // Named explicitly, each with a reason, so the export is auditable rather than
+    // asking anyone to take "everything" on trust.
+    withheld,
     skipped,
     note:
-      'This archive contains everything your workspace created. Third-party API ' +
-      'keys are intentionally not included (they are your own keys, held by you). ' +
-      'export.json holds all rows; documents/ and agents/ are rendered for portability.',
+      'This archive contains your workspace data. Every table we hold that is scoped to ' +
+      'your workspace is included except those listed under "withheld", each with the ' +
+      'reason. Third-party API keys are never included — they are your own keys, held ' +
+      'by you. export.json holds all rows; documents/ and agents/ are also rendered as ' +
+      'markdown for portability.',
   };
 
   // Assemble the ZIP (fflate). Files: manifest + the full JSON + rendered
