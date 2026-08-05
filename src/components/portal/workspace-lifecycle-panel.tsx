@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Loader2, Lock, Unlock, PauseCircle, PlayCircle, LogOut, Plus, Copy, Check,
-  AlertTriangle, CalendarClock,
+  AlertTriangle, CalendarClock, BookOpen,
 } from 'lucide-react';
 import {
   STATUS_LABEL, STATUS_BLURB, ACTION_LABEL, ACTION_CONSEQUENCE, allowedActions,
@@ -53,6 +53,10 @@ export function WorkspaceLifecyclePanel() {
   const [note, setNote] = useState('');
   const [grants, setGrants] = useState<Grant[] | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+
+  // Early assistant access, offered only while a workspace is still closed.
+  const [prepFor, setPrepFor] = useState<string | null>(null);
+  const [prepEmail, setPrepEmail] = useState('');
 
   const [newName, setNewName] = useState('');
   const [newGoLive, setNewGoLive] = useState('');
@@ -108,6 +112,25 @@ export function WorkspaceLifecyclePanel() {
         setError(data.error ?? 'That did not work.');
         if (data.grants) setGrants(data.grants);
       }
+    } finally { setBusy(false); }
+  };
+
+  const givePrep = async (row: Row) => {
+    if (!prepEmail.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      // Read-only runs until day one. Without a date there is nothing to expire, so the
+      // workspace's go-live is required rather than guessed at.
+      const until = row.go_live_on ? `${row.go_live_on}T00:00:00Z` : '';
+      if (!until) { setError('Set a day-one date on this workspace first.'); return; }
+      const res = await fetch('/api/lifecycle', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'prep', tenant: row.id, email: prepEmail.trim(), until }),
+      });
+      const data = await res.json();
+      if (res.ok) { setGrants(data.grants ?? null); setPrepFor(null); setPrepEmail(''); load(); }
+      else setError(data.error ?? 'Could not give early access.');
     } finally { setBusy(false); }
   };
 
@@ -225,6 +248,15 @@ export function WorkspaceLifecyclePanel() {
               </div>
 
               <div className="flex gap-1.5 flex-wrap shrink-0">
+                {w.status === 'provisioned' && (
+                  <button
+                    onClick={() => { setPrepFor(prepFor === w.id ? null : w.id); setPending(null); setError(null); }}
+                    className="text-[11px] font-medium inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border"
+                    style={{ borderColor: 'var(--border)', color: 'var(--foreground)' }}
+                  >
+                    <BookOpen size={11} /> Assistant, read-only
+                  </button>
+                )}
                 {actions.map(a => {
                   const Icon = ACTION_ICON[a];
                   const destructive = a === 'offboard';
@@ -243,6 +275,42 @@ export function WorkspaceLifecyclePanel() {
                 })}
               </div>
             </div>
+
+            {prepFor === w.id && (
+              <div className="rounded-lg p-3 space-y-2.5 mt-1 bg-[var(--surface-2)]">
+                <p className="text-xs">
+                  <strong>Early access for the assistant.</strong> They can read
+                  everything captured about this client but cannot act on anything until
+                  day one. The workspace stays closed to the client.
+                </p>
+                <div className="flex gap-2 flex-wrap items-end">
+                  <label className="flex-1 min-w-[200px]">
+                    <span className="text-[11px] text-muted-foreground">Assistant&apos;s email</span>
+                    <input
+                      type="email" value={prepEmail} onChange={(e) => setPrepEmail(e.target.value)}
+                      className="w-full mt-0.5 text-sm bg-[var(--surface)] border border-border rounded-lg px-2.5 py-1.5"
+                    />
+                  </label>
+                  <button
+                    onClick={() => givePrep(w)} disabled={busy || !prepEmail.trim()}
+                    className="text-xs font-medium inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-white disabled:opacity-40"
+                    style={{ background: 'var(--primary)' }}
+                  >
+                    {busy && <Loader2 size={11} className="animate-spin" />}
+                    Give read-only access
+                  </button>
+                  <button onClick={() => setPrepFor(null)} className="text-xs text-muted-foreground px-2 py-2">
+                    Cancel
+                  </button>
+                </div>
+                {!w.go_live_on && (
+                  <p className="text-[11px]" style={{ color: 'var(--warning)' }}>
+                    This workspace has no day-one date, so there is nothing for read-only
+                    access to expire on. Set one first.
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Confirm inline rather than in a modal — the workspace it applies to stays
                 visible, so you can't confirm against the wrong one. */}

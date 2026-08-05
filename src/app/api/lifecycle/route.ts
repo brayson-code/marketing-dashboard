@@ -20,7 +20,7 @@ import { enterTenant, resolveTenant } from '@/lib/with-tenant';
 import { requireHq } from '@/lib/hq-guard';
 import { requireUser } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
-import { listLifecycle, provisionWorkspace, transition } from '@/lib/workspace-lifecycle';
+import { listLifecycle, provisionWorkspace, transition, grantPrepAccess } from '@/lib/workspace-lifecycle';
 import type { LifecycleAction } from '@/lib/workspace-lifecycle-catalog';
 
 export const dynamic = 'force-dynamic';
@@ -65,6 +65,27 @@ export async function POST(request: NextRequest) {
         detail: { name, go_live_on: body?.go_live_on ?? null },
       });
       return NextResponse.json({ ok: true, tenant: id });
+    }
+
+    // Early assistant access. Deliberately NOT a state transition: the workspace stays
+    // closed to the client, one more person can just read it.
+    if (action === 'prep') {
+      const tenant = String(body?.tenant ?? '').trim();
+      const email = String(body?.email ?? '').trim();
+      const until = String(body?.until ?? '').trim();
+      if (!tenant || !email || !until) {
+        return NextResponse.json({ error: 'tenant, email and until are required' }, { status: 400 });
+      }
+      const origin = request.headers.get('origin') || new URL(request.url).origin;
+      const grant = await grantPrepAccess(tenant, email, until, origin);
+      await logAudit({
+        actor, action: 'workspace.prep_access', target: `tenant:${tenant}`,
+        detail: { email, until, error: grant.error ?? null },
+      });
+      return NextResponse.json(
+        { ok: !grant.error, grants: [grant], error: grant.error ?? null },
+        { status: grant.error ? 409 : 200 },
+      );
     }
 
     if (!ACTIONS.has(action)) {

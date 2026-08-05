@@ -99,6 +99,10 @@ export async function GET() {
       workspace_role: subject.role,
     },
     has_workspace: hasWorkspace(),
+    // Prep mode: an assistant placed before day one reads but cannot act. The
+    // MIDDLEWARE enforces it (src/proxy.ts); this is surfaced only so the UI can say
+    // WHY a write was refused instead of leaving them staring at a dead button.
+    prep_until: (user.app_metadata as Record<string, unknown> | undefined)?.prep_until ?? null,
     // HQ-only surfaces (e.g. KeyWatch / Issues) use this to hide themselves from
     // client workspaces. The API routes enforce it server-side regardless.
     is_hq: tid === DEFAULT_TENANT_ID,

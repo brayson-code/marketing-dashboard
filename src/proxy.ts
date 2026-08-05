@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { shouldBlockForPrep, PREP_MESSAGE } from '@/lib/prep-mode';
 import type { NextRequest } from 'next/server';
 import { updateSession } from '@/lib/supabase/middleware';
 
@@ -96,6 +97,27 @@ export async function proxy(request: NextRequest) {
       url.search = '';
       return NextResponse.redirect(url);
     }
+
+    // PREP MODE — an assistant placed before day one reads, but does not act. The claim
+    // is carried on the JWT precisely so this check works here, on the Edge, with no
+    // database round trip and no dependence on AUTHZ_ENFORCE (which defaults to 'off'
+    // and would make the ordinary role helpers no-ops).
+    //
+    // Pages are GET, so browsing is untouched; only writes are refused, and the refusal
+    // says why rather than failing as a generic 403.
+    const prepUntil = (user.app_metadata as Record<string, unknown> | undefined)?.prep_until;
+    if (shouldBlockForPrep({
+      prepUntil,
+      method: request.method,
+      pathname,
+      now: Date.now(),
+    })) {
+      return NextResponse.json(
+        { error: 'Read-only until day one', reason: PREP_MESSAGE },
+        { status: 403 },
+      );
+    }
+
     return supabaseResponse;
   }
 

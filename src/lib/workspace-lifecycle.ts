@@ -116,6 +116,10 @@ export interface GrantResult {
  */
 async function grantAccess(
   tenantId: string, email: string, role: 'owner' | 'va', origin: string,
+  /** ISO instant until which this person reads but cannot act. null CLEARS prep, which
+   *  is what day one does. Always written, never left as-is, so activation reliably
+   *  releases an assistant who was placed early. */
+  prepUntil: string | null = null,
 ): Promise<GrantResult> {
   const a = admin();
   if (!a) return { email, role, link: null, error: 'Supabase admin credentials not configured' };
@@ -152,7 +156,9 @@ async function grantAccess(
       ON CONFLICT (workspace_id, user_id) DO UPDATE SET role = EXCLUDED.role
     `;
 
-    await a.auth.admin.updateUserById(userId, { app_metadata: { ...meta, tenant_id: tenantId } });
+    await a.auth.admin.updateUserById(userId, {
+      app_metadata: { ...meta, tenant_id: tenantId, prep_until: prepUntil },
+    });
 
     let link: string | null = null;
     try {
@@ -233,7 +239,8 @@ export async function transition(
       return { ok: false, error: 'At least one email is needed to open a workspace' };
     }
     const grants: GrantResult[] = [];
-    for (const p of people) grants.push(await grantAccess(tenantId, p.email, p.role, origin));
+    // prepUntil null: day one RELEASES anyone who was reading in prep.
+    for (const p of people) grants.push(await grantAccess(tenantId, p.email, p.role, origin, null));
 
     // If nobody got in, this is not an activation — leave the state alone so it can be
     // retried once the cause (bad address, missing admin key) is fixed.
@@ -266,7 +273,7 @@ export async function transition(
     return { ok: false, error: 'At least one email is needed to reopen a workspace' };
   }
   const grants: GrantResult[] = [];
-  for (const p of people) grants.push(await grantAccess(tenantId, p.email, p.role, origin));
+  for (const p of people) grants.push(await grantAccess(tenantId, p.email, p.role, origin, null));
   if (grants.every(g => g.error)) {
     return { ok: false, grants, error: 'Nobody could be given access, so the workspace stayed paused' };
   }
@@ -275,4 +282,24 @@ export async function transition(
     WHERE id = ${tenantId}
   `;
   return { ok: true, status: target, grants };
+}
+
+/**
+ * Give the assistant early, READ-ONLY access once their placement is confirmed.
+ *
+ * Deliberately NOT a lifecycle transition: the workspace stays closed to the client.
+ * The only thing that changes is that one more person can read what Client Success
+ * captured, so they walk into day one already knowing the business.
+ *
+ * `until` is normally the go-live date. The middleware enforces it from the JWT claim
+ * (see prep-mode.ts) — reads pass, writes are refused with an explanation.
+ */
+export async function grantPrepAccess(
+  tenantId: string, email: string, until: string, origin: string,
+): Promise<GrantResult> {
+  const when = Date.parse(until);
+  if (!Number.isFinite(when)) {
+    return { email, role: 'va', link: null, error: 'A valid day-one date is needed' };
+  }
+  return grantAccess(tenantId, email, 'va', origin, new Date(when).toISOString());
 }

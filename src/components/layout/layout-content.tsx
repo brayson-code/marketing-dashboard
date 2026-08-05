@@ -9,6 +9,7 @@ import { AppShell } from './app-shell';
 import { CommandPalette } from '../command-palette';
 import { WalkthroughController } from '../walkthrough/walkthrough-controller';
 import { createClient } from '@/lib/supabase/client';
+import { PrepBanner } from '@/components/layout/prep-banner';
 
 const AUTH_PATHS = ['/login'];
 
@@ -74,7 +75,11 @@ export function LayoutContent({ children }: { children: React.ReactNode }) {
           browser chrome and can't be scrolled to. */}
       <div className="flex min-h-[calc(100dvh-var(--header-height))]">
         <NavRail />
-        <AppShell>{children}</AppShell>
+        <AppShell>
+          {/* Renders only for an assistant in prep — nothing for everyone else. */}
+          <PrepBanner />
+          {children}
+        </AppShell>
       </div>
       <MobileNav />
       <CommandPalette />
