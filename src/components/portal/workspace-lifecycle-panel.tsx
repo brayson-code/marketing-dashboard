@@ -27,6 +27,7 @@ interface Row {
   go_live_on: string | null; status_note: string | null; members: number;
   captured_at: string | null; essentials_filled: number;
   has_assistant_name: boolean; has_start_date: boolean; has_assistant_login: boolean;
+  agents: number; industry_agents: number;
 }
 
 const ESSENTIALS_TOTAL = 6;
@@ -302,6 +303,18 @@ export function WorkspaceLifecyclePanel() {
                           Next: {r.nextAction}
                         </p>
                       )}
+                      {/* What the client will actually find on day one. Shown as a fact
+                          rather than a checklist step: applying an industry roster is
+                          not something Client Success can do yet, and a box nobody can
+                          tick is worse than no box. */}
+                      {w.agents > 0 && (
+                        <p className="text-[11px] text-muted-foreground">
+                          {w.agents} agents
+                          {w.industry_agents > 0
+                            ? ` · ${w.industry_agents} industry-tuned`
+                            : ' · none industry-tuned'}
+                        </p>
+                      )}
                     </div>
                   );
                 })()}
@@ -382,6 +395,15 @@ export function WorkspaceLifecyclePanel() {
                 <p className="text-xs">
                   <strong>{ACTION_LABEL[pending.action]}</strong> — {ACTION_CONSEQUENCE[pending.action]}
                 </p>
+
+                {pending.action === 'activate' && (
+                  <p className="text-xs text-muted-foreground">
+                    They will find <strong>{w.agents} agents</strong> waiting for them
+                    {w.industry_agents > 0
+                      ? `, ${w.industry_agents} of them tuned to their industry.`
+                      : ', none of them tuned to their industry.'}
+                  </p>
+                )}
 
                 {NEEDS_EMAILS.has(pending.action) && (
                   <div className="grid gap-2 sm:grid-cols-2">

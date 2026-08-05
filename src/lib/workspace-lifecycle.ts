@@ -40,6 +40,10 @@ export interface WorkspaceLifecycle {
   has_assistant_name: boolean;
   has_start_date: boolean;
   has_assistant_login: boolean;
+  /** What the client will actually find in their workspace on day one. */
+  agents: number;
+  /** Of those, how many are industry-tuned rather than the generic set everyone gets. */
+  industry_agents: number;
 }
 
 function admin() {
@@ -72,7 +76,16 @@ export async function listLifecycle(): Promise<WorkspaceLifecycle[]> {
            EXISTS (
              SELECT 1 FROM public.workspace_members m2
              WHERE m2.workspace_id = t.id AND m2.role = 'va'
-           ) AS has_assistant_login
+           ) AS has_assistant_login,
+           (SELECT count(*) FROM public.agent_defs ad WHERE ad.tenant_id = t.id)::int AS agents,
+           -- Industry-tuned agents are the archetype rows from agent_library. Matching
+           -- on id, not name: names get edited per workspace, ids are the deterministic
+           -- slug both sides share.
+           (
+             SELECT count(*) FROM public.agent_defs ad
+             WHERE ad.tenant_id = t.id
+               AND ad.id IN (SELECT al.id FROM public.agent_library al WHERE al.source = 'archetype')
+           )::int AS industry_agents
     FROM public.tenants t
     LEFT JOIN public.service_profiles sp ON sp.tenant_id = t.id
     ORDER BY
@@ -96,6 +109,8 @@ export async function listLifecycle(): Promise<WorkspaceLifecycle[]> {
     has_assistant_name: !!r.has_assistant_name,
     has_start_date: !!r.has_start_date,
     has_assistant_login: !!r.has_assistant_login,
+    agents: Number(r.agents ?? 0),
+    industry_agents: Number(r.industry_agents ?? 0),
   }));
 }
 
