@@ -6,7 +6,7 @@ import {
   Target, FileText, Contact, Lightbulb, Maximize2, type LucideIcon,
 } from 'lucide-react';
 import {
-  buildOrgGraph, neighbourhood, treeLayout, VIEW, C,
+  buildOrgGraph, neighbourhood, treeLayout, hashId, VIEW, C,
   type OrgInput, type OrgNode, type OrgNodeKind,
 } from '@/lib/org-graph';
 import {
@@ -105,7 +105,14 @@ export function OrgGraphView({
     [graph, focus],
   );
 
-  const posOf = (n: OrgNode) => treePos?.get(n.id) ?? { x: n.x, y: n.y };
+  // Manual node positions. The layout is still solved once and deterministically —
+  // this is an OVERRIDE on top, so dragging a node to somewhere it reads better is
+  // remembered without reintroducing a live simulation.
+  const [moved, setMoved] = useState<Record<string, { x: number; y: number }>>({});
+  const nodeDragRef = useRef<{ id: string; ox: number; oy: number; sx: number; sy: number } | null>(null);
+
+  const posOf = (n: OrgNode) =>
+    moved[n.id] ?? treePos?.get(n.id) ?? { x: n.x, y: n.y };
 
   // Lit set: the focused node's neighbourhood, else the hovered node's, else everything.
   const lit = useMemo(() => {
@@ -235,6 +242,7 @@ export function OrgGraphView({
 
   const resetView = () => {
     setFocus(null);
+    setMoved({});
     targetRef.current = restingFrame(VIEW);
     easeRef.current = CAM_EASE_HOME;
   };
@@ -275,6 +283,7 @@ export function OrgGraphView({
 
       <svg
         ref={svgRef}
+        className={focus ? 'og-still' : undefined}
         viewBox={rectStr(restingFrame(VIEW))}
         width="100%"
         height={height}
@@ -347,9 +356,37 @@ export function OrgGraphView({
                 opacity={opacityOf(n)}
                 style={{
                   cursor: 'pointer',
-                  transition: 'opacity 200ms ease, transform 420ms var(--ease-out, ease)',
+                  // No transform easing while this node is being dragged — otherwise it
+                  // trails the cursor by the animation duration and feels broken.
+                  transition: moved[n.id]
+                    ? 'opacity 200ms ease'
+                    : 'opacity 200ms ease, transform 420ms var(--ease-out, ease)',
                 }}
                 onMouseEnter={() => setHover(n.id)}
+                onPointerDown={(ev) => {
+                  // Claim the gesture so the canvas doesn't pan underneath us.
+                  ev.stopPropagation();
+                  const p = posOf(n);
+                  nodeDragRef.current = { id: n.id, ox: p.x, oy: p.y, sx: ev.clientX, sy: ev.clientY };
+                  (ev.currentTarget as SVGGElement).setPointerCapture?.(ev.pointerId);
+                }}
+                onPointerMove={(ev) => {
+                  const d = nodeDragRef.current;
+                  if (!d || d.id !== n.id) return;
+                  const k = unitsPerPx();
+                  setMoved((m) => ({
+                    ...m,
+                    [n.id]: { x: d.ox + (ev.clientX - d.sx) * k, y: d.oy + (ev.clientY - d.sy) * k },
+                  }));
+                }}
+                onPointerUp={(ev) => {
+                  const d = nodeDragRef.current;
+                  nodeDragRef.current = null;
+                  if (!d) return;
+                  // A real drag must not also count as a click, or letting go of a node
+                  // would zoom you into it every time.
+                  if (Math.hypot(ev.clientX - d.sx, ev.clientY - d.sy) > 4) suppressClickRef.current = true;
+                }}
                 onClick={(ev) => {
                   ev.stopPropagation();
                   if (suppressClickRef.current) { suppressClickRef.current = false; return; }
@@ -359,11 +396,14 @@ export function OrgGraphView({
                 }}
               >
                 {/* Inner group carries the scale so the growth animates around the
-                    node's own centre rather than the SVG origin. */}
+                    node's own centre rather than the SVG origin. The ambient layer sits
+                    outside it so drift and scale don't fight over one transform. */}
+                <g className={`og-layer-${hashId(n.id) % 3}`}>
                 <g style={{ transform: `scale(${s})`, transition: 'transform 260ms var(--ease-out, ease)' }}>
                   <circle r={n.r + 5} fill="none" stroke={col} strokeWidth="1" opacity={n.id === focus ? 0.95 : 0.28} />
                   <circle r={n.r} fill="#0a0a0f" stroke={col} strokeWidth={n.id === focus ? 2.6 : 1.6} />
                   <Icon x={-glyph / 2} y={-glyph / 2} width={glyph} height={glyph} color={col} />
+                </g>
                 </g>
                 {showLabel && (
                   <text
@@ -396,28 +436,100 @@ export function OrgGraphView({
         })}
       </div>
 
-      {focusNode && (
-        <div
-          className="absolute bottom-3 right-3 z-10 rounded-lg px-3 py-2 max-w-[260px]"
-          style={{ background: '#15151b', border: '1px solid rgba(255,255,255,0.12)' }}
-        >
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold truncate" style={{ color: colorOf(focusNode) }}>{focusNode.label}</p>
-              <p className="text-[11px]" style={{ color: '#8a8a9a' }}>{focusNode.meta?.type}</p>
+      {focusNode && (() => {
+        const near = [...neighbourhood(graph, focusNode.id)]
+          .filter((i) => i !== focusNode.id)
+          .map((i) => nodeById.get(i))
+          .filter((x): x is OrgNode => !!x);
+        const parents = near.filter((x) => x.kind === 'pillar' || x.kind === 'self');
+        const children = near.filter((x) => x.kind !== 'pillar' && x.kind !== 'self');
+        const col = colorOf(focusNode);
+        return (
+          <div
+            className="absolute top-3 right-24 z-10 w-72 rounded-lg overflow-hidden"
+            style={{ background: '#15151b', border: '1px solid rgba(255,255,255,0.12)' }}
+          >
+            <div className="px-3 py-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold truncate" style={{ color: col }}>{focusNode.label}</p>
+                  <p className="text-[11px]" style={{ color: '#8a8a9a' }}>
+                    {[focusNode.meta?.department, focusNode.meta?.type].filter(Boolean).join(' · ')}
+                  </p>
+                </div>
+                <button onClick={() => { setFocus(null); onSelect?.(null); }} aria-label="Close" style={{ color: '#8a8a9a' }}>
+                  <X size={13} />
+                </button>
+              </div>
             </div>
-            <button onClick={() => setFocus(null)} aria-label="Close" style={{ color: '#8a8a9a' }}>
-              <X size={13} />
-            </button>
+
+            <div className="px-3 py-2.5 space-y-2.5 max-h-[340px] overflow-y-auto">
+              {focusNode.meta?.description && (
+                <p className="text-[11px] leading-relaxed" style={{ color: '#c9c9d1' }}>
+                  {focusNode.meta.description}
+                </p>
+              )}
+
+              {(focusNode.meta?.role || focusNode.meta?.status) && (
+                <div className="space-y-1">
+                  <p className="text-[10px] uppercase tracking-wider" style={{ color: '#5c5c5c' }}>Detail</p>
+                  {focusNode.meta?.role && (
+                    <p className="text-[11px]" style={{ color: '#9c9c9c' }}>Role · {focusNode.meta.role}</p>
+                  )}
+                  {focusNode.meta?.status && (
+                    <p className="text-[11px]" style={{ color: '#9c9c9c' }}>Status · {focusNode.meta.status}</p>
+                  )}
+                  {focusNode.meta?.count && (
+                    <p className="text-[11px]" style={{ color: '#9c9c9c' }}>Holds · {focusNode.meta.count}</p>
+                  )}
+                </div>
+              )}
+
+              {parents.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[10px] uppercase tracking-wider" style={{ color: '#5c5c5c' }}>Reports to</p>
+                  {parents.map((x) => (
+                    <button
+                      key={x.id}
+                      className="block w-full text-left text-[11px] truncate hover:underline"
+                      style={{ color: colorOf(x) }}
+                      onClick={() => { setFocus(x.id); onSelect?.(x); }}
+                    >
+                      {x.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {children.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[10px] uppercase tracking-wider" style={{ color: '#5c5c5c' }}>
+                    Connected ({children.length})
+                  </p>
+                  {children.slice(0, 10).map((x) => (
+                    <button
+                      key={x.id}
+                      className="block w-full text-left text-[11px] truncate hover:underline"
+                      style={{ color: '#9c9c9c' }}
+                      onClick={() => { setFocus(x.id); onSelect?.(x); }}
+                    >
+                      {x.label}
+                    </button>
+                  ))}
+                  {children.length > 10 && (
+                    <p className="text-[10px]" style={{ color: '#5c5c5c' }}>+{children.length - 10} more</p>
+                  )}
+                </div>
+              )}
+
+              <p className="text-[10px] pt-1" style={{ color: '#5c5c5c' }}>
+                Drag any node to move it · Esc to pull back
+              </p>
+            </div>
           </div>
-          {focusNode.meta?.description && (
-            <p className="text-[11px] mt-1" style={{ color: '#9c9c9c' }}>{focusNode.meta.description}</p>
-          )}
-          <p className="text-[10px] mt-1.5" style={{ color: '#5c5c5c' }}>
-            Click any lit node to go deeper · Esc to pull back
-          </p>
-        </div>
-      )}
+        );
+      })()}
+
     </div>
   );
 }

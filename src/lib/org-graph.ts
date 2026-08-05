@@ -246,6 +246,9 @@ export function buildOrgGraph(input: OrgInput): OrgGraph {
           type: m.is_executive ? 'AI executive' : 'AI agent',
           role: m.role,
           description: m.description,
+          // Who it answers to, so the panel can show the chain rather than just a name.
+          reportsTo: PILLAR_LABEL[pillar] ?? pillar,
+          department: PILLAR_LABEL[pillar] ?? pillar,
         },
       });
       edges.push({ a: pid, b: id, rel: 'member' });
@@ -262,7 +265,7 @@ export function buildOrgGraph(input: OrgInput): OrgGraph {
       const id = `tool:${t.id}`;
       nodes.push({
         id, kind: 'tool', label: t.name, x, y, r: NODE_R.tool, pillar,
-        meta: { type: 'Tool', status: t.status },
+        meta: { type: 'Tool', status: t.status ?? 'not connected', department: PILLAR_LABEL[pillar] ?? pillar },
       });
       edges.push({ a: pid, b: id, rel: 'uses' });
     });

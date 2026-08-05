@@ -1124,3 +1124,33 @@ input.canvas-title-input:focus { background: color-mix(in srgb, var(--surface-2)
 .dot.ok.pulse { animation: led-blink 2.6s steps(1) infinite; }
 @keyframes led-blink { 0%, 70%, 100% { opacity: 1; } 85% { opacity: 0.25; } }
 @media (prefers-reduced-motion: reduce) { .dot.ok.pulse { animation: none; } }
+
+
+/* ─── Second Brain graph — ambient life ────────────────────────────────────
+   THREE animations for the whole field, not one per node. Nodes hash into three
+   layers; each layer gets its own drift + breathe with a different amplitude,
+   duration AND negative delay. Because adjacent nodes belong to different layers,
+   the field appears to move independently node by node — six animations producing
+   the illusion of hundreds. Per-node animations were what made the old graph lag.
+
+   Durations are mutually non-harmonic (17/23/29s, 6.5/8.5/11s) and the negative
+   delays start each layer mid-cycle, so the layers can never visibly sync up.
+   Amplitude is about ONE pixel — this is meant to register as "alive", not as
+   movement you can point at. */
+@keyframes og-drift  { from { transform: translate(0, 0); } to { transform: translate(var(--og-dx, 0px), var(--og-dy, 0px)); } }
+@keyframes og-breathe { from { opacity: 0.82; } to { opacity: 1; } }
+
+.og-layer-0 { --og-dx: 1.1px;  --og-dy: -0.8px; animation: og-drift 17s ease-in-out infinite alternate, og-breathe 6.5s ease-in-out infinite alternate; }
+.og-layer-1 { --og-dx: -0.9px; --og-dy: 1.2px;  animation: og-drift 23s ease-in-out -8s infinite alternate, og-breathe 8.5s ease-in-out -3s infinite alternate; }
+.og-layer-2 { --og-dx: 0.7px;  --og-dy: 1px;    animation: og-drift 29s ease-in-out -15s infinite alternate, og-breathe 11s ease-in-out -6s infinite alternate; }
+
+/* Hold still during a camera move or while a branch is focused: ambient motion
+   competing with a transition is what makes a zoom feel cheap, and a drifting node
+   under a pinned label misaligns the two. */
+.og-still .og-layer-0,
+.og-still .og-layer-1,
+.og-still .og-layer-2 { animation: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .og-layer-0, .og-layer-1, .og-layer-2 { animation: none; }
+}
