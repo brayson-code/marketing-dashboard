@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Building2, Check, AlertCircle, ArrowRight, ArrowLeft, Sparkles } from 'lucide-react';
+import { Building2, Check, AlertCircle, ArrowRight, ArrowLeft, Sparkles, ClipboardCheck } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Explainer } from '@/components/ui/explainer';
 import {
@@ -26,6 +26,9 @@ export default function BusinessSetupPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  // Set when Client Success filled this in on the onboarding call. Changes the whole
+  // framing of the page from "author this" to "check we got it right".
+  const [captured, setCaptured] = useState<{ by: string | null; at: string } | null>(null);
 
   // Load whatever is already answered, from both stores, so this is an edit surface
   // rather than a blank form every time.
@@ -46,6 +49,7 @@ export default function BusinessSetupPage() {
         if (typeof v === 'string') merged[k] = v;
       }
       setValues(merged);
+      setCaptured(f?.captured ?? null);
       setLoading(false);
     })();
     return () => { off = true; };
@@ -113,13 +117,36 @@ export default function BusinessSetupPage() {
         subtitle="Everything the Command Centre needs to know about you and the business."
       />
 
-      <Explainer
-        id="business-setup-intro"
-        title="Why this is worth ten minutes"
-        what="These answers are given to every AI agent before it does any work — so they act like they know you and your business, instead of guessing."
-        when="Fill it in once when the workspace is set up, then come back whenever something changes. Nothing here is locked."
-        example="“Never book meetings before 9am.” “My assistant can approve anything under $500.”"
-      />
+      {/* When the call was captured, this REPLACES the explainer rather than sitting
+          next to it. Two boxes of preamble is how people learn to skip both, and the
+          job to be done is different: check what we wrote, not fill in a form. */}
+      {captured ? (
+        <div
+          className="panel p-3 flex items-start gap-2.5"
+          style={{
+            background: 'color-mix(in srgb, var(--primary) 6%, transparent)',
+            borderColor: 'color-mix(in srgb, var(--primary) 25%, transparent)',
+          }}
+        >
+          <ClipboardCheck size={15} className="text-[var(--primary)] shrink-0 mt-0.5" />
+          <div className="text-xs space-y-1">
+            <p className="font-semibold text-sm">We filled this in from your onboarding call</p>
+            <p className="text-muted-foreground">
+              Read through and correct anything we got wrong. Your assistant and every AI
+              agent work from these answers, so it is worth being picky, especially about
+              what they can approve without asking you.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <Explainer
+          id="business-setup-intro"
+          title="Why this is worth ten minutes"
+          what="These answers are given to every AI agent before it does any work — so they act like they know you and your business, instead of guessing."
+          when="Fill it in once when the workspace is set up, then come back whenever something changes. Nothing here is locked."
+          example="“Never book meetings before 9am.” “My assistant can approve anything under $500.”"
+        />
+      )}
 
       {progress.total > 0 && (
         <div className="panel p-3 space-y-2">

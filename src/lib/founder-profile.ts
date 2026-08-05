@@ -16,9 +16,15 @@ import {
 
 export * from './founder-profile-catalog';
 
-export async function getFounderProfile(): Promise<FounderProfile> {
+/**
+ * `target` lets an HQ operator read/write ANOTHER workspace's profile — the onboarding
+ * capture, where Client Success fills this in on the call rather than the client filling
+ * a blank form later. Callers passing a target MUST be requireHq()-gated; omitting it
+ * keeps the original tenantId()-scoped behaviour for every existing call site.
+ */
+export async function getFounderProfile(target?: string): Promise<FounderProfile> {
   const rows = (await sql()`
-    SELECT business_profile FROM public.tenants WHERE id = ${tenantId()} LIMIT 1
+    SELECT business_profile FROM public.tenants WHERE id = ${target ?? tenantId()} LIMIT 1
   `) as unknown as Array<{ business_profile: Record<string, unknown> | null }>;
   const bp = rows[0]?.business_profile ?? {};
   const raw = bp.founder;
@@ -33,13 +39,13 @@ export async function getFounderProfile(): Promise<FounderProfile> {
 }
 
 /** Merge onto business_profile — never clobber the playbook, autonomy or views. */
-export async function saveFounderProfile(answers: FounderAnswers, nowIso: string): Promise<FounderProfile> {
+export async function saveFounderProfile(answers: FounderAnswers, nowIso: string, target?: string): Promise<FounderProfile> {
   const markdown = renderFounderBrief(answers);
   await sql()`
     UPDATE public.tenants
     SET business_profile = COALESCE(business_profile, '{}'::jsonb)
       || ${jsonb({ founder: answers, founder_brief: markdown, founder_updated_at: nowIso })}
-    WHERE id = ${tenantId()}
+    WHERE id = ${target ?? tenantId()}
   `;
   return { answers, markdown: markdown || null, updated_at: nowIso };
 }

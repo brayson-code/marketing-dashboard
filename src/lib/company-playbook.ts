@@ -39,9 +39,11 @@ function readProfile(profile: Record<string, unknown> | null): CompanyPlaybook {
 }
 
 /** The current tenant's saved playbook (markdown + raw answers), or empty. */
-export async function getCompanyPlaybook(): Promise<CompanyPlaybook> {
+/** `target` reads ANOTHER workspace's playbook — HQ-gated callers only (see
+ *  founder-profile.ts for the same pattern and the same rule). */
+export async function getCompanyPlaybook(target?: string): Promise<CompanyPlaybook> {
   const rows = (await sql()`
-    SELECT business_profile FROM public.tenants WHERE id = ${tenantId()} LIMIT 1
+    SELECT business_profile FROM public.tenants WHERE id = ${target ?? tenantId()} LIMIT 1
   `) as unknown as Array<{ business_profile: Record<string, unknown> | null }>;
   return readProfile(rows[0]?.business_profile ?? null);
 }
@@ -72,12 +74,12 @@ export async function companyContextBlock(): Promise<string> {
  * answers are captured as you go and the brief is drafted once, deliberately, at the
  * end. Without this the wizard would either lose work or demand a key up front.
  */
-export async function savePlaybookAnswers(answers: PlaybookAnswers, nowIso: string): Promise<void> {
+export async function savePlaybookAnswers(answers: PlaybookAnswers, nowIso: string, target?: string): Promise<void> {
   await sql()`
     UPDATE public.tenants
     SET business_profile = COALESCE(business_profile, '{}'::jsonb)
       || ${jsonb({ playbook_answers: answers, playbook_answers_updated_at: nowIso })}
-    WHERE id = ${tenantId()}
+    WHERE id = ${target ?? tenantId()}
   `;
 }
 

@@ -20,6 +20,7 @@ import {
   listAllAnnouncements, createAnnouncement, deleteAnnouncement,
 } from '@/lib/service-portal';
 import { listWorkspaces } from '@/lib/agent-library';
+import { getCapture, saveCapture } from '@/lib/onboarding-capture';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -37,8 +38,12 @@ export async function GET(request: NextRequest) {
       listWorkspaces(),
       listAllAnnouncements(),
     ]);
-    const profile = target ? await getServiceProfile(target) : null;
-    return NextResponse.json({ workspaces, announcements, profile });
+    // The onboarding capture rides along with the profile read — same workspace, same
+    // screen, one round trip.
+    const [profile, capture] = target
+      ? await Promise.all([getServiceProfile(target), getCapture(target)])
+      : [null, null];
+    return NextResponse.json({ workspaces, announcements, profile, capture });
   } catch (err) {
     console.error('portal admin GET error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -64,6 +69,22 @@ export async function POST(request: NextRequest) {
         detail: { fields: Object.keys(body.profile ?? {}) },
       });
       return NextResponse.json({ ok: true });
+    }
+
+    if (action === 'capture') {
+      const target = String(body?.tenant ?? '').trim();
+      if (!target) return NextResponse.json({ error: 'tenant required' }, { status: 400 });
+      const capture = await saveCapture(
+        target,
+        { founder: body?.founder ?? {}, playbook: body?.playbook ?? {} },
+        actor?.username ?? null,
+        new Date().toISOString(),
+      );
+      await logAudit({
+        actor, action: 'portal.onboarding.capture', target: `tenant:${target}`,
+        detail: { filled: capture.filled, total: capture.total },
+      });
+      return NextResponse.json({ ok: true, capture });
     }
 
     if (action === 'announce') {

@@ -7,6 +7,7 @@ import {
 import { PageHeader } from '@/components/layout/page-header';
 import { Explainer } from '@/components/ui/explainer';
 import { WorkspaceLifecyclePanel } from '@/components/portal/workspace-lifecycle-panel';
+import { OnboardingCaptureForm } from '@/components/portal/onboarding-capture-form';
 
 // HQ-only editor behind /portal. Two jobs: fill in a workspace's assistant details, and
 // publish announcements/events that every workspace sees.
@@ -45,6 +46,7 @@ export default function PortalAdminPage() {
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState(false);
   const [forbidden, setForbidden] = useState(false);
+  const [capture, setCapture] = useState<Record<string, unknown> | null>(null);
 
   const [draft, setDraft] = useState({
     kind: 'announcement', audience: 'client', title: '', body: '',
@@ -59,6 +61,7 @@ export default function PortalAdminPage() {
     setWorkspaces(data.workspaces ?? []);
     setAnnouncements(data.announcements ?? []);
     if (t) setProfile({ ...BLANK, ...(data.profile ?? {}) });
+    setCapture(data.capture ?? null);
     setLoading(false);
   }, []);
 
@@ -225,6 +228,16 @@ export default function PortalAdminPage() {
               </p>
             )}
           </div>
+
+          {/* The call comes before anything else about the placement, so it sits
+              directly under the workspace picker it belongs to. */}
+          {tenant && (
+            <OnboardingCaptureForm
+              tenant={tenant}
+              capture={capture as never}
+              onSaved={() => load(tenant)}
+            />
+          )}
 
           {/* Publish */}
           <div className="panel p-4 space-y-3">
