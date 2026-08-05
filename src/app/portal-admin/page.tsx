@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Explainer } from '@/components/ui/explainer';
+import { WorkspaceLifecyclePanel } from '@/components/portal/workspace-lifecycle-panel';
 
 // HQ-only editor behind /portal. Two jobs: fill in a workspace's assistant details, and
 // publish announcements/events that every workspace sees.
@@ -135,6 +136,10 @@ export default function PortalAdminPage() {
         when="During onboarding for the assistant details, and any time there's something clients should know about."
         example="Set the start date — probation and accrued leave are calculated from it."
       />
+
+      {/* Access first: a workspace has to exist and be open before its assistant
+          details matter. */}
+      <WorkspaceLifecyclePanel />
 
       {loading ? (
         <div className="panel p-8 flex items-center justify-center gap-2 text-sm text-muted-foreground">
