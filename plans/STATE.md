@@ -34,6 +34,8 @@ changes, visual/UX only unless agreed, never break functionality.
 
 | Tag | What |
 |---|---|
+| `capture-extract-v1` | Paste onboarding call notes → drafts the capture form. Drafts only, never saves; told not to infer approval limits. ⚠️ Needs a working Anthropic key |
+| `readiness-v1` | Per-workspace day-one checklist in Portal Admin. "Open" deliberately does NOT count as ready. Sorts live-and-unfinished first. 8 tests |
 | `second-brain-browse-v1` | Focusing an area hub lists **everything** in it with a filter, not just the 18 drawn. Fixed in the inspector, not the layout — the cap stays |
 | `portal-assistant-view-v1` | `/portal` reads differently for the assistant: their hours, their leave, who they support. "Need another person?" hidden; announcements filtered by audience |
 | `operators-v1` | Portal Admin manages the operator allow-list + provisions operator logins (own workspace, not HQ). Carl + Pow added |
@@ -93,6 +95,16 @@ real workspace fully set up end to end and finding out what breaks. That's a Cli
 Success action, not a code one, and it beats everything in §4.
 
 ---
+
+## 3a. ⚠️ The HQ Anthropic key is being REJECTED
+
+Found 2026-08-05 by running the capture extractor: the key connected to the KeyPlayers
+HQ workspace returns `401 authentication_error`. Connected 2026-06-24, last updated
+2026-07-16. **This breaks every Claude feature for HQ**, not just the extractor —
+agents, briefs, the boardroom chat. Fix in Connections → Anthropic.
+
+Client workspaces BYO their own key (`anthropic-key.ts`), so this is HQ-specific — but
+8 of 14 workspaces have a connected key and none have been tested.
 
 ## 3b. Open questions for Brayson (not ours to decide)
 
