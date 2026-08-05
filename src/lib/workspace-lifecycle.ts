@@ -32,6 +32,14 @@ export interface WorkspaceLifecycle {
   go_live_on: string | null;
   status_note: string | null;
   members: number;
+  // Setup facts, so Client Success can see in ONE place whether a workspace is actually
+  // ready rather than opening three screens per client. Read here because they are all
+  // cheap joins off the same row.
+  captured_at: string | null;
+  essentials_filled: number;
+  has_assistant_name: boolean;
+  has_start_date: boolean;
+  has_assistant_login: boolean;
 }
 
 function admin() {
@@ -48,8 +56,25 @@ export async function listLifecycle(): Promise<WorkspaceLifecycle[]> {
   const rows = (await sql()`
     SELECT t.id, t.name, t.status, t.provisioned_at, t.provisioned_by,
            t.activated_at, t.go_live_on, t.status_note,
-           (SELECT count(*) FROM public.workspace_members m WHERE m.workspace_id = t.id)::int AS members
+           (SELECT count(*) FROM public.workspace_members m WHERE m.workspace_id = t.id)::int AS members,
+           t.business_profile -> 'onboarding_capture' ->> 'at' AS captured_at,
+           -- The six founder-profile essentials, counted in SQL so the panel does not
+           -- have to pull every workspace's whole profile to show a checklist.
+           (
+             SELECT count(*) FROM (VALUES
+               ('name'), ('bio'), ('working_hours'), ('communication'),
+               ('approvals'), ('escalation')
+             ) AS k(key)
+             WHERE COALESCE(btrim(t.business_profile -> 'founder' ->> k.key), '') <> ''
+           )::int AS essentials_filled,
+           COALESCE(btrim(sp.ea_name), '') <> '' AS has_assistant_name,
+           sp.ea_started_on IS NOT NULL       AS has_start_date,
+           EXISTS (
+             SELECT 1 FROM public.workspace_members m2
+             WHERE m2.workspace_id = t.id AND m2.role = 'va'
+           ) AS has_assistant_login
     FROM public.tenants t
+    LEFT JOIN public.service_profiles sp ON sp.tenant_id = t.id
     ORDER BY
       CASE t.status WHEN 'provisioned' THEN 0 WHEN 'active' THEN 1
                     WHEN 'paused' THEN 2 ELSE 3 END,
@@ -66,6 +91,11 @@ export async function listLifecycle(): Promise<WorkspaceLifecycle[]> {
     go_live_on: day(r.go_live_on),
     status_note: (r.status_note as string) ?? null,
     members: Number(r.members ?? 0),
+    captured_at: iso(r.captured_at),
+    essentials_filled: Number(r.essentials_filled ?? 0),
+    has_assistant_name: !!r.has_assistant_name,
+    has_start_date: !!r.has_start_date,
+    has_assistant_login: !!r.has_assistant_login,
   }));
 }
 

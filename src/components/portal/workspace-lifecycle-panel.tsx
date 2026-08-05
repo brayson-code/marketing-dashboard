@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Loader2, Lock, Unlock, PauseCircle, PlayCircle, LogOut, Plus, Copy, Check,
-  AlertTriangle, CalendarClock, BookOpen,
+  AlertTriangle, CalendarClock, BookOpen, Circle,
 } from 'lucide-react';
 import {
   STATUS_LABEL, STATUS_BLURB, ACTION_LABEL, ACTION_CONSEQUENCE, allowedActions,
   type WorkspaceStatus, type LifecycleAction,
 } from '@/lib/workspace-lifecycle-catalog';
+import { readiness, urgency } from '@/lib/readiness';
 
 // Client Success's control over who can get into a workspace.
 //
@@ -24,6 +25,24 @@ interface Row {
   id: string; name: string; status: WorkspaceStatus;
   provisioned_at: string | null; activated_at: string | null;
   go_live_on: string | null; status_note: string | null; members: number;
+  captured_at: string | null; essentials_filled: number;
+  has_assistant_name: boolean; has_start_date: boolean; has_assistant_login: boolean;
+}
+
+const ESSENTIALS_TOTAL = 6;
+
+function factsFor(w: Row) {
+  return {
+    status: w.status,
+    capturedAt: w.captured_at,
+    essentialsFilled: w.essentials_filled,
+    essentialsTotal: ESSENTIALS_TOTAL,
+    hasAssistantName: w.has_assistant_name,
+    hasStartDate: w.has_start_date,
+    members: w.members,
+    hasAssistantLogin: w.has_assistant_login,
+    goLiveOn: w.go_live_on,
+  };
 }
 interface Grant { email: string; role: string; link: string | null; error?: string }
 
@@ -65,7 +84,14 @@ export function WorkspaceLifecyclePanel() {
     try {
       const res = await fetch('/api/lifecycle');
       if (!res.ok) throw new Error(String(res.status));
-      setRows((await res.json()).workspaces ?? []);
+      const list: Row[] = (await res.json()).workspaces ?? [];
+      // Live-and-unfinished first: a client is already using those, so they are the
+      // ones costing something right now.
+      setRows([...list].sort((a, b) => {
+        const ua = urgency(factsFor(a), readiness(factsFor(a)));
+        const ub = urgency(factsFor(b), readiness(factsFor(b)));
+        return ua - ub || a.name.localeCompare(b.name);
+      }));
     } catch {
       setError("Couldn't load workspaces.");
     } finally {
@@ -245,6 +271,40 @@ export function WorkspaceLifecyclePanel() {
                 {w.status_note && (
                   <p className="text-[11px] text-muted-foreground mt-0.5 italic">{w.status_note}</p>
                 )}
+
+                {/* Ready for day one? Four steps in the order they actually happen.
+                    Being OPEN deliberately does not count as ready — every live
+                    workspace today is open with nothing in it, and a checklist that
+                    agreed everything was fine would be worse than none. */}
+                {(() => {
+                  const r = readiness(factsFor(w));
+                  return (
+                    <div className="mt-2 space-y-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {r.steps.map(step => (
+                          <span
+                            key={step.key}
+                            title={step.detail ?? 'Done'}
+                            className="text-[10px] px-1.5 py-0.5 rounded inline-flex items-center gap-1"
+                            style={step.done
+                              ? { color: 'var(--primary)', background: 'color-mix(in srgb, var(--primary) 10%, transparent)' }
+                              : step.blocksGoodDayOne
+                                ? { color: 'var(--warning)', background: 'color-mix(in srgb, var(--warning) 10%, transparent)' }
+                                : { color: 'var(--muted-foreground)', background: 'var(--surface-2)' }}
+                          >
+                            {step.done ? <Check size={9} /> : <Circle size={9} />}
+                            {step.label}
+                          </span>
+                        ))}
+                      </div>
+                      {r.nextAction && (
+                        <p className="text-[11px]" style={{ color: 'var(--warning)' }}>
+                          Next: {r.nextAction}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="flex gap-1.5 flex-wrap shrink-0">
