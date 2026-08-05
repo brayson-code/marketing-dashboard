@@ -25,7 +25,7 @@ const STAGE_ICONS: Record<string, typeof Send> = {
 export type LeadDetailPanelVariant = 'panel' | 'page';
 
 interface LeadDetail {
-  lead: Lead & { pause_outreach?: number };
+  lead: Lead;
   sequences: Sequence[];
   /** Unified timeline from API — may be old shape or new shape. */
   timeline: (UnifiedTimelineItem | { id: number; type: string; description: string; timestamp: string })[];
@@ -231,7 +231,8 @@ export function LeadDetailPanel({
   }
 
   const { lead, sequences, timeline } = data;
-  const isPaused = (lead as { pause_outreach?: number }).pause_outreach === 1;
+  // Truthy, not `=== 1`: pause_outreach is a Postgres boolean.
+  const isPaused = !!lead.pause_outreach;
   const currentStageIdx = STAGES.indexOf(lead.status as typeof STAGES[number]);
   const canAdvance = currentStageIdx >= 0 && currentStageIdx < STAGES.length - 1;
   const canRevert = currentStageIdx > 0;

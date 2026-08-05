@@ -989,7 +989,9 @@ function KanbanColumn({
 /* ─── Kanban Card ──────────────────────────────────────── */
 
 function KanbanCard({ lead, selected, onSelect, nowMs, canEdit, slaStaleDays, slaNewDays }: { lead: Lead; selected: boolean; onSelect: () => void; nowMs: number | null; canEdit: boolean; slaStaleDays: number; slaNewDays: number }) {
-  const isPaused = (lead as { pause_outreach?: number }).pause_outreach === 1;
+  // Truthy, not `=== 1`: the column is a Postgres boolean, so the old comparison was
+  // always false and a paused lead never showed as paused.
+  const isPaused = !!lead.pause_outreach;
   const missingEmail = !lead.email;
   const missingCompany = !lead.company;
   const missingIndustry = !lead.industry_segment;
@@ -1098,9 +1100,11 @@ function KanbanCard({ lead, selected, onSelect, nowMs, canEdit, slaStaleDays, sl
 
 /* ─── Lead Row (List View) ─────────────────────────────── */
 
-function LeadRow({ lead, selected, onClick, nowMs, slaStaleDays, slaNewDays }: { lead: Lead & { pause_outreach?: number }; selected: boolean; onClick: () => void; nowMs: number | null; slaStaleDays: number; slaNewDays: number }) {
+function LeadRow({ lead, selected, onClick, nowMs, slaStaleDays, slaNewDays }: { lead: Lead; selected: boolean; onClick: () => void; nowMs: number | null; slaStaleDays: number; slaNewDays: number }) {
   const Icon = STAGE_ICONS[lead.status] || CircleDot;
-  const isPaused = (lead as { pause_outreach?: number }).pause_outreach === 1;
+  // Truthy, not `=== 1`: the column is a Postgres boolean, so the old comparison was
+  // always false and a paused lead never showed as paused.
+  const isPaused = !!lead.pause_outreach;
   const missingEmail = !lead.email;
   const missingCompany = !lead.company;
   const missingIndustry = !lead.industry_segment;

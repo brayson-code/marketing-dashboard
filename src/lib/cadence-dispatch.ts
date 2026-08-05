@@ -55,7 +55,9 @@ export interface EligibilityLead {
   email: string | null;
   status: string | null;
   // DB stores BOOL; some call sites carry it as 0/1 — accept both.
-  pause_outreach: boolean | number | null;
+  /** Postgres BOOLEAN. Was typed `boolean | number` while the app disagreed with
+   *  the column; the truthy checks below no longer need to straddle both. */
+  pause_outreach: boolean | null;
 }
 
 /** Minimal shape the eligibility check needs from a sequence step row. */
@@ -95,7 +97,7 @@ export function eligibility(
   if (!hasInbox) return 'skip:no_inbox';
 
   // Per-lead gates.
-  if (lead.pause_outreach === true || lead.pause_outreach === 1) return 'skip:paused';
+  if (lead.pause_outreach) return 'skip:paused';
   if (!lead.email || !lead.email.trim()) return 'skip:no_email';
   if (!lead.status || !OUTREACH_ELIGIBLE_STATUSES.has(lead.status)) return 'skip:ineligible_status';
 

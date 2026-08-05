@@ -33,7 +33,9 @@ export interface StaleLead {
   email: string;
   status: string | null;
   last_touch_at: Date | string | null;
-  pause_outreach: boolean | number | null;
+  /** Postgres BOOLEAN. Was typed `boolean | number` while the app disagreed with
+   *  the column; the truthy checks below no longer need to straddle both. */
+  pause_outreach: boolean | null;
 }
 
 /**
@@ -54,7 +56,7 @@ export function isStale(
   if (!latestInboundAt) return false;
 
   // Owner froze the conversation — skip.
-  if (lead.pause_outreach === true || lead.pause_outreach === 1) return false;
+  if (lead.pause_outreach) return false;
 
   // They wrote to us; if we've never touched them (last_touch_at is null) → stale.
   if (!lead.last_touch_at) return true;
@@ -86,7 +88,7 @@ export function sweepEligibility(
 ): EligibilityResult {
   if (!envOn) return 'skip:disabled_env';
   if (!tenantOn) return 'skip:disabled_tenant';
-  if (lead.pause_outreach === true || lead.pause_outreach === 1) return 'skip:paused';
+  if (lead.pause_outreach) return 'skip:paused';
   if (!latestInboundAt) return 'skip:no_inbound';
   if (!isStale(lead, latestInboundAt)) return 'skip:not_stale';
   return 'draft';

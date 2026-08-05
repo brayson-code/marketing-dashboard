@@ -15,7 +15,7 @@ const touchedLead = { last_touch_at: NOW, pause_outreach: false };
 const untouchedLead = { last_touch_at: null, pause_outreach: false };
 // A paused lead.
 const pausedLead = { last_touch_at: null, pause_outreach: true };
-const pausedLead1 = { last_touch_at: null, pause_outreach: 1 as boolean | number | null };
+const pausedLead1 = { last_touch_at: null, pause_outreach: 1 as unknown as boolean };
 
 // ── No inbound ───────────────────────────────────────────────────────────────
 
@@ -30,7 +30,10 @@ test('isStale: paused lead (bool true) → false even with inbound', () => {
   assert.equal(isStale(pausedLead, NOW), false);
 });
 
-test('isStale: paused lead (legacy 1) → false even with inbound', () => {
+// A numeric 1 cannot come out of the boolean column, but the check is truthy rather
+// than `=== true` so a stray legacy value still counts as paused. Failing safe matters
+// here: the cost of missing a pause is contacting someone the owner froze.
+test('isStale: a truthy non-boolean pause still blocks', () => {
   assert.equal(isStale(pausedLead1, NOW), false);
 });
 
@@ -96,9 +99,9 @@ test('sweepEligibility: paused lead → skip:paused (after kill-switch checks)',
   );
 });
 
-test('sweepEligibility: paused lead (legacy 1) → skip:paused', () => {
+test('sweepEligibility: a truthy non-boolean pause still skips', () => {
   assert.equal(
-    sweepEligibility({ last_touch_at: null, pause_outreach: 1 as boolean | number | null }, staleInbound, true, true),
+    sweepEligibility({ last_touch_at: null, pause_outreach: 1 as unknown as boolean }, staleInbound, true, true),
     'skip:paused',
   );
 });

@@ -56,8 +56,12 @@ test('paused lead → skip:paused (bool true and legacy 1)', () => {
     eligibility({ ...okLead, pause_outreach: true }, approvedStep, true, true, true),
     'skip:paused',
   );
+  // The column is a Postgres boolean, so a numeric 1 cannot come out of the database.
+  // The check is truthy rather than `=== true` so a stray legacy value would still be
+  // treated as paused — failing SAFE, since the cost of ignoring a pause is contacting
+  // someone the owner deliberately froze. Cast, because the type no longer allows it.
   assert.equal(
-    eligibility({ ...okLead, pause_outreach: 1 }, approvedStep, true, true, true),
+    eligibility({ ...okLead, pause_outreach: 1 as unknown as boolean }, approvedStep, true, true, true),
     'skip:paused',
   );
 });
@@ -99,7 +103,7 @@ test('approved step + active lead + inbox + both switches ON → send', () => {
 });
 
 test('pause_outreach false/0/null does not block', () => {
-  for (const p of [false, 0, null]) {
+  for (const p of [false, 0 as unknown as boolean, null]) {
     assert.equal(
       eligibility({ ...okLead, pause_outreach: p }, approvedStep, true, true, true),
       'send',

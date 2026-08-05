@@ -47,7 +47,10 @@ export interface Lead {
   sequence_name: string | null;
   reply_type: string | null;
   notes: string | null;
-  pause_outreach: number;
+  /** Postgres BOOLEAN. Typed as `number` until 2026-08: that mismatch produced a
+   *  `pause_outreach = 0` comparison that 500'd /api/crm for every tenant, and two
+   *  `=== 1` checks that silently never matched. */
+  pause_outreach: boolean;
   created_at: string;
 }
 
