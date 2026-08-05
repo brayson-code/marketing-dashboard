@@ -34,6 +34,8 @@ changes, visual/UX only unless agreed, never break functionality.
 
 | Tag | What |
 |---|---|
+| `leave-requests-v1` | Assistant requests time off, client approves, KeyPlayers has the record. Probation leave is marked **unpaid**, not refused. Working days counted against the assistant's own schedule. Migration **0064**, 13 tests |
+| `roster-at-activation-v1` | Every workspace card + the activation confirm now say what the client will actually find: "16 agents, none tuned to their industry" |
 | `daily-brief-v1` | **Role-aware "what needs doing today" on Overview.** Founder sees approvals + overdue; assistant additionally sees decay and personal act-by dates. Renders nothing when there's nothing. No new storage. 10 tests |
 | `operator-audit-v1` | "What we've done" in Portal Admin — every operator action as a sentence, failures first. Fetched on click, prefix-matched so new actions appear automatically |
 | `export-completeness-v1` | **The client export was missing 37 tenant-scoped tables** while promising "everything". Inverted to runtime discovery minus a named deny-list; withheld tables listed with reasons. 706KB → 731KB |
