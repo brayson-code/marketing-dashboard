@@ -34,6 +34,7 @@ changes, visual/UX only unless agreed, never break functionality.
 
 | Tag | What |
 |---|---|
+| `coverage-v1` | **"When is your assistant off"** — approved leave + statutory holidays merged, grouped by month with days totalled. Verified end to end on a temporary profile: Sept = 6 days (Labour Day + 5 leave), accrual 3.3/10 at 4 months. 10 tests |
 | `expiry-and-decay-v1` | Announcements can now expire (column existed, nothing set it); founder profile asks to be re-checked after 90 days untouched |
 | `briefings-queue-v1` | **"Needs reading"** on Briefings — agent-written drafts nobody has read, flagged immediately; owner drafts only once stale at 14 days. 8 tests |
 | `explainers-nav-complete-v1` | **Every nav-reachable client page now explains itself.** 25 → 35 of 71; the rest are detail routes, operator surfaces, legal, or the guide itself |
