@@ -34,6 +34,7 @@ changes, visual/UX only unless agreed, never break functionality.
 
 | Tag | What |
 |---|---|
+| `graph-idle-and-sparks-v1` | **Camera loop parks when settled** (was scheduling frames forever); ambient drift pauses off-screen; sparks run only on a focused node's edges. All four states verified live |
 | `mobile-pass-v1` | **Handset pass.** 3 split panes stacked below md, 18 fixed grids given a mobile fallback, 5 fixed-height panes moved to `dvh`, the pipeline unclipped, the graph inspector stopped overflowing. ⚠️ Code-verified + desktop-regression-checked; NOT seen on a real handset |
 | `coverage-v1` | **"When is your assistant off"** — approved leave + statutory holidays merged, grouped by month with days totalled. Verified end to end on a temporary profile: Sept = 6 days (Labour Day + 5 leave), accrual 3.3/10 at 4 months. 10 tests |
 | `expiry-and-decay-v1` | Announcements can now expire (column existed, nothing set it); founder profile asks to be re-checked after 90 days untouched |
@@ -146,8 +147,9 @@ Client workspaces BYO their own key (`anthropic-key.ts`), so this is HQ-specific
    roster quality (Phase 2), then apply (Phase 3, needs its own sign-off — it is the
    first feature that writes agent config into a live client workspace, and
    `agent_defs` RLS blocks cross-tenant writes by design).
-2. ~~Second Brain browse~~ — SHIPPED `second-brain-browse-v1`. Remaining polish only:
-   synapse sparks, idle throttling. Original item: the only surface with real data (656 entities across 7
+2. ~~Second Brain~~ — DONE. `second-brain-browse-v1` + `graph-idle-and-sparks-v1`.
+   Remaining from the original spec: the reference's Neural view / Fullscreen / LENS
+   filters / Directory sidebar, none of which anyone has asked for. Original item: the only surface with real data (656 entities across 7
    workspaces), so polish here is the only polish anyone will actually see. Remaining
    from `plans/second-brain-graph-templates.md`: angular-sector level-of-detail
    (currently a crude cap of 18/hub, which visibly lies at 656), synapse sparks,
