@@ -10,6 +10,7 @@ import {
   type WorkspaceStatus, type LifecycleAction,
 } from '@/lib/workspace-lifecycle-catalog';
 import { readiness, urgency } from '@/lib/readiness';
+import { adoption, adoptionHeadline } from '@/lib/adoption';
 
 // Client Success's control over who can get into a workspace.
 //
@@ -28,12 +29,15 @@ interface Row {
   captured_at: string | null; essentials_filled: number;
   has_assistant_name: boolean; has_start_date: boolean; has_assistant_login: boolean;
   agents: number; industry_agents: number;
+  last_activity_at: string | null;
 }
 
 const ESSENTIALS_TOTAL = 6;
 
 function factsFor(w: Row) {
   return {
+    name: w.name,
+    lastActivityAt: w.last_activity_at,
     status: w.status,
     capturedAt: w.captured_at,
     essentialsFilled: w.essentials_filled,
@@ -186,6 +190,41 @@ export function WorkspaceLifecyclePanel() {
             Build a workspace on the onboarding call. It stays closed until you open it on day one.
           </p>
         </div>
+
+        {/* Across the whole book, not per workspace. Every individual check said each
+            workspace was fine; nothing counted them, which is how fourteen went live
+            empty without anyone noticing. */}
+        {rows.length > 0 && (() => {
+          const a = adoption(rows.map(factsFor), Date.now());
+          const bad = a.liveButUnfinished.length > 0 || a.neverUsed > 0;
+          return (
+            <div
+              className="rounded-lg p-3 space-y-1.5"
+              style={{
+                background: bad
+                  ? 'color-mix(in srgb, var(--warning) 8%, transparent)'
+                  : 'color-mix(in srgb, var(--primary) 6%, transparent)',
+              }}
+            >
+              <p className="text-xs font-medium" style={bad ? { color: 'var(--warning)' } : undefined}>
+                {adoptionHeadline(a)}
+              </p>
+              <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-muted-foreground">
+                <span>{a.ready} of {a.total} ready</span>
+                <span>{a.captured} captured</span>
+                <span>{a.withAssistant} with an assistant</span>
+                <span>{a.activeThisWeek} used this week</span>
+                {a.neverUsed > 0 && <span>{a.neverUsed} never used</span>}
+              </div>
+              {a.goneQuiet.length > 0 && (
+                <p className="text-[11px] text-muted-foreground">
+                  Set up then went quiet: {a.goneQuiet.slice(0, 4).join(', ')}
+                  {a.goneQuiet.length > 4 && ` +${a.goneQuiet.length - 4}`}
+                </p>
+              )}
+            </div>
+          );
+        })()}
 
         {error && (
           <p className="text-xs flex items-start gap-1.5" style={{ color: 'var(--destructive)' }}>

@@ -44,6 +44,13 @@ export interface WorkspaceLifecycle {
   agents: number;
   /** Of those, how many are industry-tuned rather than the generic set everyone gets. */
   industry_agents: number;
+  /**
+   * The last time anything actually HAPPENED in this workspace.
+   *
+   * The difference between a workspace that is set up and one that is being used, which
+   * is the question nothing in the product could answer.
+   */
+  last_activity_at: string | null;
 }
 
 function admin() {
@@ -85,7 +92,15 @@ export async function listLifecycle(): Promise<WorkspaceLifecycle[]> {
              SELECT count(*) FROM public.agent_defs ad
              WHERE ad.tenant_id = t.id
                AND ad.id IN (SELECT al.id FROM public.agent_library al WHERE al.source = 'archetype')
-           )::int AS industry_agents
+           )::int AS industry_agents,
+           -- Newest signal of real work across the surfaces people actually touch.
+           -- LEFT JOIN LATERAL rather than correlated MAX() per table so this stays one
+           -- index-backed lookup each instead of a scan.
+           GREATEST(
+             (SELECT max(started_at) FROM public.agent_tasks x WHERE x.tenant_id = t.id),
+             (SELECT max(ts)         FROM public.activity_log x WHERE x.tenant_id = t.id),
+             (SELECT max(created_at) FROM public.messages     x WHERE x.tenant_id = t.id)
+           ) AS last_activity_at
     FROM public.tenants t
     LEFT JOIN public.service_profiles sp ON sp.tenant_id = t.id
     ORDER BY
@@ -111,6 +126,7 @@ export async function listLifecycle(): Promise<WorkspaceLifecycle[]> {
     has_assistant_login: !!r.has_assistant_login,
     agents: Number(r.agents ?? 0),
     industry_agents: Number(r.industry_agents ?? 0),
+    last_activity_at: iso(r.last_activity_at),
   }));
 }
 
