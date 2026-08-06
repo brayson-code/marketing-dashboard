@@ -34,6 +34,7 @@ changes, visual/UX only unless agreed, never break functionality.
 
 | Tag | What |
 |---|---|
+| `wizard-theme-v1` | **The onboarding wizard follows the workspace theme.** Was forcing `dark` + `#0a0a0f` on a client's very first screen while every screen after it was light. Verified light in prod |
 | `graph-idle-and-sparks-v1` | **Camera loop parks when settled** (was scheduling frames forever); ambient drift pauses off-screen; sparks run only on a focused node's edges. All four states verified live |
 | `mobile-pass-v1` | **Handset pass.** 3 split panes stacked below md, 18 fixed grids given a mobile fallback, 5 fixed-height panes moved to `dvh`, the pipeline unclipped, the graph inspector stopped overflowing. ⚠️ Code-verified + desktop-regression-checked; NOT seen on a real handset |
 | `coverage-v1` | **"When is your assistant off"** — approved leave + statutory holidays merged, grouped by month with days totalled. Verified end to end on a temporary profile: Sept = 6 days (Labour Day + 5 leave), accrual 3.3/10 at 4 months. 10 tests |
