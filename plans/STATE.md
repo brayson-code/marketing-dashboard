@@ -34,6 +34,8 @@ changes, visual/UX only unless agreed, never break functionality.
 
 | Tag | What |
 |---|---|
+| `explainers-nav-complete-v1` | **Every nav-reachable client page now explains itself.** 25 → 35 of 71; the rest are detail routes, operator surfaces, legal, or the guide itself |
+| `adoption-v1` | **Roll-up across the whole book** in Portal Admin. Separates SET UP from USED; adds `last_activity_at`. Live it reads "14 of 14 are open to a client with setup unfinished · 5 used this week · 5 never used". 8 tests |
 | `agent-departments-v1` | **The org chart's "General" bucket is gone.** 35 agents had no department; fixed at the seed AND in `squad.ts`'s runtime fallback roster, which was the actual cause. `SPECIALIST_CATEGORY` moved to a shared pure module. 7 tests |
 | `pause-outreach-fix-v1` | **A paused lead never showed as paused** — three `=== 1` checks against a Postgres boolean, always false. Type corrected, which surfaced the rest |
 | `leave-requests-v1` | Assistant requests time off, client approves, KeyPlayers has the record. Probation leave is marked **unpaid**, not refused. Working days counted against the assistant's own schedule. Migration **0064**, 13 tests |
@@ -146,7 +148,8 @@ Client workspaces BYO their own key (`anthropic-key.ts`), so this is HQ-specific
    from `plans/second-brain-graph-templates.md`: angular-sector level-of-detail
    (currently a crude cap of 18/hub, which visibly lies at 656), synapse sparks,
    idle throttling.
-3. **Explainers — 25 of 71 pages.** The day-one path is now covered; the rest are
+3. **Explainers — 35 of 71.** Every nav-reachable client page is done. Remaining are
+   detail routes, operator surfaces, legal and the guide. Original note: The day-one path is now covered; the rest are
    secondary surfaces. Original note: Worse coverage than previously recorded. 53 pages
    still have no on-page guidance at all.
 4. **Overview** — trimmed to 7 widgets but never rebuilt around the actual question,
