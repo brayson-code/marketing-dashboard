@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Settings2, Loader2, Save, Check, Trash2, Megaphone, ShieldAlert, Send,
+  Users, Megaphone as MegaphoneIcon, UserCog, History, ArrowDown,
 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Explainer } from '@/components/ui/explainer';
@@ -10,6 +11,7 @@ import { WorkspaceLifecyclePanel } from '@/components/portal/workspace-lifecycle
 import { OnboardingCaptureForm } from '@/components/portal/onboarding-capture-form';
 import { OperatorsPanel } from '@/components/portal/operators-panel';
 import { OperatorAuditPanel } from '@/components/portal/operator-audit-panel';
+import { Step, Section } from '@/components/portal/section';
 
 // HQ-only editor behind /portal. Two jobs: fill in a workspace's assistant details, and
 // publish announcements/events that every workspace sees.
@@ -131,26 +133,46 @@ export function PortalAdminPageClient() {
     <div className="space-y-4">
       <PageHeader
         icon={<Settings2 size={20} />}
-        title="Portal Admin"
-        subtitle="Fill in a client's assistant details, and publish what every workspace sees."
+        title="Client setup"
+        subtitle="Everything you need to set a client up, in the order you'll do it."
       />
 
       <Explainer
-        id="portal-admin"
-        title="What this is"
-        what="The operator side of Your KeyPlayers. Assistant details are per client; announcements and events publish to every workspace at once."
-        when="During onboarding for the assistant details, and any time there's something clients should know about."
-        example="Set the start date — probation and accrued leave are calculated from it."
+        id="client-setup"
+        title="How this page works"
+        what="Pick the client you're working on, then work down the three steps. Everything else on this page is tucked away until you need it."
+        when="On the onboarding call, and again on day one when you open their workspace."
+        example="Build the workspace while you're still on the call, then capture what they tell you."
       />
 
-      {/* Access first: a workspace has to exist and be open before its assistant
-          details matter. */}
-      <WorkspaceLifecyclePanel />
+      {/* WHO are we working on. One selection drives the whole page — there used to be
+          two different workspace pickers that did not talk to each other. */}
+      <div className="panel p-4 space-y-2">
+        <p className="text-sm font-semibold">Which client?</p>
+        <div className="flex gap-2 flex-wrap items-center">
+          <select
+            value={tenant}
+            onChange={(e) => setTenant(e.target.value)}
+            className="flex-1 min-w-[220px] text-sm bg-[var(--surface-2)] border border-border rounded-lg px-2.5 py-2"
+          >
+            <option value="">Choose a client…</option>
+            {workspaces.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+          </select>
+          <span className="text-xs text-muted-foreground">
+            New client? Build their workspace under <strong>All clients</strong> below.
+          </span>
+        </div>
+      </div>
 
-      {/* Who can do any of this, and what has been done. Both read occasionally rather
-          than daily, so they sit below the work. */}
-      <OperatorsPanel />
-      <OperatorAuditPanel />
+      {!tenant && (
+        <div className="panel p-6 text-center space-y-1">
+          <ArrowDown size={18} className="mx-auto text-muted-foreground" />
+          <p className="text-sm font-medium">Choose a client above to start</p>
+          <p className="text-xs text-muted-foreground">
+            The three setup steps appear here once you do.
+          </p>
+        </div>
+      )}
 
       {loading ? (
         <div className="panel p-8 flex items-center justify-center gap-2 text-sm text-muted-foreground">
@@ -158,17 +180,29 @@ export function PortalAdminPageClient() {
         </div>
       ) : (
         <>
-          <div className="panel p-4 space-y-3">
+          {tenant && (
+          <div className="panel p-4 space-y-1">
+          <Step
+            n={1}
+            title="Capture the onboarding call"
+            blurb="Fill this in while you talk to them, or paste your notes and let it draft. It writes their profile, so on day one they check it instead of facing a blank form."
+            done={!!capture?.captured_at}
+          >
+            <OnboardingCaptureForm
+              tenant={tenant}
+              capture={capture as never}
+              onSaved={() => load(tenant)}
+            />
+          </Step>
+
+          <Step
+            n={2}
+            title="Their assistant"
+            blurb="Who supports them and when. The start date drives probation and every accrued-leave figure the client sees, so it has to be the real one."
+            done={!!profile.ea_name && !!profile.ea_started_on}
+          >
+            <div className="space-y-3">
             <div className="flex items-center gap-2 flex-wrap">
-              <p className="text-sm font-semibold">Assistant details</p>
-              <select
-                value={tenant}
-                onChange={(e) => setTenant(e.target.value)}
-                className="text-xs bg-[var(--surface-2)] border border-border rounded-lg px-2 py-1.5"
-              >
-                <option value="">Pick a workspace…</option>
-                {workspaces.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-              </select>
               {tenant && (
                 <button
                   onClick={saveProfile} disabled={saving}
@@ -230,25 +264,31 @@ export function PortalAdminPageClient() {
                   </div>
                 </div>
               </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                Pick a workspace to fill in who supports them.
-              </p>
-            )}
-          </div>
+            ) : null}
+            </div>
+          </Step>
 
-          {/* The call comes before anything else about the placement, so it sits
-              directly under the workspace picker it belongs to. */}
-          {tenant && (
-            <OnboardingCaptureForm
-              tenant={tenant}
-              capture={capture as never}
-              onSaved={() => load(tenant)}
-            />
+          <Step
+            n={3}
+            title="Open it on day one"
+            blurb="Creates their logins and gives you a sign-in link to send. Do this on the day they start, not before — until then the workspace stays shut."
+          >
+            <p className="text-xs text-muted-foreground">
+              The button lives under <strong>All clients</strong> below, next to this
+              client, so you can see their setup is finished before you open it.
+            </p>
+          </Step>
+          </div>
           )}
 
-          {/* Publish */}
-          <div className="panel p-4 space-y-3">
+          {/* Everything below is occasional. Collapsed so the three steps above are the
+              page, rather than a third of it. */}
+          <Section title="All clients" blurb="Build, open, pause · and who still needs setting up" icon={Users} defaultOpen={!tenant}>
+            <WorkspaceLifecyclePanel />
+          </Section>
+
+          <Section title="Announcements and events" blurb="Publishes to every client at once" icon={MegaphoneIcon}>
+          <div className="space-y-3 pt-1">
             <p className="text-sm font-semibold">Publish to every workspace</p>
             <div className="grid gap-2 sm:grid-cols-4">
               <select
@@ -327,10 +367,9 @@ export function PortalAdminPageClient() {
             >
               <Send size={12} /> Publish
             </button>
-          </div>
 
           {announcements.length > 0 && (
-            <div className="panel p-4 space-y-1">
+            <div className="pt-3 space-y-1">
               <p className="text-sm font-semibold mb-1">Published</p>
               {announcements.map(a => (
                 <div key={a.id} className="flex items-start gap-2 py-1.5 border-b border-border/30 last:border-0">
@@ -354,6 +393,16 @@ export function PortalAdminPageClient() {
               ))}
             </div>
           )}
+          </div>
+          </Section>
+
+          <Section title="Who can set clients up" icon={UserCog}>
+            <OperatorsPanel />
+          </Section>
+
+          <Section title="What we've done" blurb="Every setup action, newest first" icon={History}>
+            <OperatorAuditPanel />
+          </Section>
         </>
       )}
     </div>
