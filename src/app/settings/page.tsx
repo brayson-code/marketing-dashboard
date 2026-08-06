@@ -652,7 +652,7 @@ export default function SettingsPage() {
 
         {syncInfo ? (
           <>
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
               <div>
                 <span className="text-xs text-muted-foreground block mb-0.5">DB Path</span>
                 <code className="text-[11px] bg-muted px-2 py-1 rounded block truncate">
@@ -1687,7 +1687,7 @@ export default function SettingsPage() {
       {/* Keyboard Shortcuts */}
       <div className="panel p-5 space-y-3">
         <h2 className="text-sm font-medium">Keyboard Shortcuts</h2>
-        <div className="grid grid-cols-2 gap-2 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
           {[
             ['⌘K', 'Command palette / search'],
             ['⌘.', 'Toggle live feed'],

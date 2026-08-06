@@ -111,7 +111,7 @@ export function InstagramPanel() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               <Stat label="Followers" value={fmt(account?.followers_count ?? 0)} />
               <Stat label="Following" value={fmt(account?.follows_count ?? 0)} />
               <Stat label="Media" value={fmt(account?.media_count ?? 0)} />
@@ -120,7 +120,7 @@ export function InstagramPanel() {
             {insights ? (
               <div>
                 <div className="text-micro text-muted-foreground mb-1">Last 30 days · {insights.start} → {insights.end}</div>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   <Stat label="Reach" value={fmt(insights.reach)} accent="var(--primary)" />
                   <Stat label="Views" value={fmt(insights.views)} />
                   <Stat
@@ -139,7 +139,7 @@ export function InstagramPanel() {
               {media.length === 0 ? (
                 <div className="text-small py-3 text-center">No recent posts.</div>
               ) : (
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                   {media.map((m) => (
                     <a
                       key={m.id}

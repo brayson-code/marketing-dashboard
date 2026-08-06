@@ -482,7 +482,7 @@ export function OrgGraphView({
         const col = colorOf(focusNode);
         return (
           <div
-            className="absolute top-3 right-24 z-10 w-72 rounded-lg overflow-hidden"
+            className="absolute z-10 rounded-lg overflow-hidden left-3 right-3 top-14 sm:left-auto sm:right-24 sm:top-3 sm:w-72"
             style={{ background: '#15151b', border: '1px solid rgba(255,255,255,0.12)' }}
           >
             <div className="px-3 py-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>

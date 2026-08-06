@@ -259,7 +259,9 @@ function FlowSkeleton() {
           <Skeleton className="h-5 w-16 rounded-full" />
         </div>
       </div>
-      <div className="panel p-4 flex items-stretch gap-3 overflow-hidden">
+      {/* overflow-x-auto, not overflow-hidden: hidden CLIPS the columns past the first
+          instead of letting them be scrolled to. */}
+      <div className="panel p-4 flex items-stretch gap-3 overflow-x-auto">
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="flex items-center gap-3">
             <div className="w-52 space-y-2 rounded-lg border border-border/60 bg-[var(--surface-2)] p-3">

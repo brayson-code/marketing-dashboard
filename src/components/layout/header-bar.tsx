@@ -294,7 +294,7 @@ function ProfileMenu() {
       >{initial}</button>
       {open && (
         <div
-          className="popover popover-from-trigger absolute right-0 top-full mt-2 w-64 card border shadow-lg z-50 overflow-hidden"
+          className="popover popover-from-trigger absolute right-0 top-full mt-2 w-64 max-w-[calc(100vw-1.5rem)] card border shadow-lg z-50 overflow-hidden"
           style={{ transformOrigin: 'top right' }}
         >
           <div className="px-3 py-2.5 border-b border-border/30">

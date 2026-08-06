@@ -345,7 +345,7 @@ function Board({ canvasId, initialNodes, initialEdges, initialViewport, title }:
 
   return (
     <Ctx.Provider value={ctx}>
-      <div ref={wrapperRef} className="relative rounded-xl border border-border overflow-hidden" style={{ height: 'calc(100vh - 210px)', minHeight: 520 }}>
+      <div ref={wrapperRef} className="relative rounded-xl border border-border overflow-hidden" style={{ height: 'calc(100dvh - 210px)', minHeight: 520 }}>
         <div className="absolute z-10 top-3 left-3 flex flex-wrap gap-1.5">
           {([
             ['prompt', 'Prompt', Type],

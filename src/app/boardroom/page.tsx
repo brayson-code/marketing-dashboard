@@ -297,7 +297,7 @@ function IMessageThread() {
         </div>
       )}
 
-      <div className="panel flex flex-col" style={{ height: 'calc(100vh - 260px)', minHeight: 400 }}>
+      <div className="panel flex flex-col" style={{ height: 'calc(100dvh - 260px)', minHeight: 400 }}>
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
           {messages.length === 0 && (
             <div className="h-full flex items-center justify-center text-xs text-muted-foreground">

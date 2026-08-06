@@ -330,10 +330,12 @@ export function AgentChat() {
         {expanded ? <ChevronUp size={16} className="text-muted-foreground" /> : <ChevronDown size={16} className="text-muted-foreground" />}
       </button>
 
+      {/* Column on a phone: a 192px agent list beside a chat on a 375px screen leaves
+          under 180px of message pane, which is not a conversation. */}
       {expanded && (
-        <div className="border-t border-border/30 flex" style={{ height: '480px' }}>
+        <div className="border-t border-border/30 flex flex-col md:flex-row" style={{ height: '480px' }}>
           {/* Sidebar */}
-          <div className="w-48 border-r border-border/30 flex flex-col shrink-0">
+          <div className="w-full md:w-48 max-h-32 md:max-h-none border-b md:border-b-0 md:border-r border-border/30 flex flex-col shrink-0">
             {/* Quick start buttons */}
             <div className="p-2 border-b border-border/20 space-y-1">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60 px-2 mb-1">Chat with</div>

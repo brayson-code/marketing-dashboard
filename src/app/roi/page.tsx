@@ -490,7 +490,7 @@ export default function RoiPage() {
             <div className="h-px bg-border/60" />
 
             {/* Secondary stats */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-0.5">
                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground">/ week</div>
                 <div className="text-h2 tabular-nums">

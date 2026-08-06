@@ -117,7 +117,7 @@ export function TikTokPanel() {
               {videos.length === 0 ? (
                 <div className="text-small py-3 text-center">No recent videos.</div>
               ) : (
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                   {videos.map((v) => (
                     <a
                       key={v.id}

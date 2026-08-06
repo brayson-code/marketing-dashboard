@@ -126,7 +126,7 @@ function ExperimentCard({ experiment: exp }: { experiment: Experiment }) {
           <p className="text-xs text-muted-foreground">Hypothesis</p>
           <p className="text-sm">{exp.hypothesis || '\u2014'}</p>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <p className="text-xs text-muted-foreground">Action</p>
             <p className="text-sm">{exp.action || '\u2014'}</p>

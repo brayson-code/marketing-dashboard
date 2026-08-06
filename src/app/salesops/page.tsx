@@ -689,7 +689,7 @@ function ReviewForm({
       <Field label="Buyer persona">
         <textarea value={draft.persona} onChange={(e) => set('persona', e.target.value)} style={{ width: '100%' }} rows={2} placeholder="Who you're typically selling to" />
       </Field>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <Field label="Company name">
           <input value={draft.company_name} onChange={(e) => set('company_name', e.target.value)} style={{ width: '100%' }} />
         </Field>
@@ -1324,7 +1324,7 @@ function AddSourceForm({
         </Field>
       )}
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <Field label="Label" hint="Optional — to recognize it later.">
           <input value={label} onChange={(e) => setLabel(e.target.value)} style={{ width: '100%' }} placeholder="e.g. Best discovery call" />
         </Field>

@@ -484,7 +484,7 @@ export default function CampaignsPage() {
           </div>
           <div className="panel-body space-y-4">
             {/* Stat tiles — missions total / done / running */}
-            <div className="grid grid-cols-3 gap-2.5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
               <div className="stat-tile">
                 <div className="text-micro text-muted-foreground flex items-center gap-1">
                   <ListChecks size={11} /> Missions

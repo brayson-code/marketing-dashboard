@@ -757,7 +757,7 @@ function WelcomeStep({
 
       <div className="space-y-1 pt-0.5">
         <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">How big is the team?</div>
-        <div className="grid grid-cols-3 gap-1.5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
           {AGENCY_SIZES.map((o) => {
             const active = agencySize === o.id;
             return (
@@ -929,7 +929,7 @@ function AutonomyStep({ value, onChange }: { value: Autonomy; onChange: (v: Auto
       <h1 className="text-lg font-semibold">How much should it run on its own?</h1>
       <p className="text-xs text-muted-foreground">You can change this anytime. We recommend starting at Propose.</p>
 
-      <div className="grid grid-cols-4 gap-1.5 rounded-xl border border-border bg-[var(--surface-2)] p-1.5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 rounded-xl border border-border bg-[var(--surface-2)] p-1.5">
         {AUTONOMY_STOPS.map((s, i) => {
           const Icon = icons[i];
           const isActive = s.id === value;

@@ -456,7 +456,7 @@ export default function AgentStudioPage() {
                     <span className="text-xs text-muted-foreground">Model</span>
                     <ModelSelect value={draft.model} onChange={(v) => patch('model', v)} />
                   </label>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <label className="space-y-1">
                       <span className="text-xs text-muted-foreground">Max tokens</span>
                       <input

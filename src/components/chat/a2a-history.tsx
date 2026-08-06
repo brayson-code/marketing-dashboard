@@ -492,9 +492,9 @@ export function A2AHistory() {
   }
 
   return (
-    <div className="panel flex" style={{ height: 'calc(100vh - 260px)', minHeight: 420 }}>
-      {/* Conversation list */}
-      <div className="w-64 shrink-0 overflow-y-auto border-r border-border/60">
+    <div className="panel flex flex-col md:flex-row" style={{ height: 'calc(100dvh - 260px)', minHeight: 420 }}>
+      {/* Conversation list — above the thread on a phone, beside it from md up. */}
+      <div className="w-full md:w-64 max-h-40 md:max-h-none shrink-0 overflow-y-auto border-b md:border-b-0 md:border-r border-border/60">
         <div className="px-3 py-2 text-[10px] uppercase tracking-wide text-muted-foreground">Boardroom threads</div>
         {convs.map((c) => {
           const last = c.messages[c.messages.length - 1];

@@ -374,7 +374,7 @@ export function SmsInbox() {
   // ── Two-pane layout (rendered even with zero threads, so "New" always works) ──
 
   return (
-    <div className="panel overflow-hidden" style={{ height: 'calc(100vh - 220px)', minHeight: 480, display: 'flex', flexDirection: 'column' }}>
+    <div className="panel overflow-hidden" style={{ height: 'calc(100dvh - 220px)', minHeight: 480, display: 'flex', flexDirection: 'column' }}>
       {/* Panel header */}
       <div className="panel-header flex items-center gap-2 shrink-0">
         <Smartphone size={14} className="text-[#7c3aed]" />

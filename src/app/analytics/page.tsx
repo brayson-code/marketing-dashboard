@@ -352,7 +352,7 @@ function DeviceSplitSection({ devices }: { devices: Ga4DeviceSplit[] }) {
         <Monitor size={12} />
         Devices
       </h4>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
         {devices.map((d) => {
           const Icon = DEVICE_ICONS[d.device.toLowerCase()] || Monitor;
           return (

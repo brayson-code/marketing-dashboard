@@ -161,7 +161,7 @@ function LiveReelCard({ reel, handle }: { reel: ReelRow; handle: string | null }
         </div>
 
         {/* Segmented stage bar — 3 segments fill as stages complete. */}
-        <div className="mt-2 grid grid-cols-3 gap-1">
+        <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-1">
           {STAGES.map((s) => {
             const st = stageState(status, s.key);
             return (

@@ -91,7 +91,7 @@ export function YouTubePanel() {
           <div className="py-6 text-center text-small text-destructive">{error}</div>
         ) : (
           <>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               <Stat label="Subscribers" value={fmt(channel?.subscribers ?? 0)} />
               <Stat label="Total views" value={fmt(channel?.views_total ?? 0)} />
               <Stat label="Videos" value={fmt(channel?.videos_total ?? 0)} />

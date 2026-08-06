@@ -381,7 +381,7 @@ function HealthCard({ health }: { health: HealthRollup | undefined }) {
             </span>
           )}
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
           <Stat label="Runs (24h)" value={health?.runs24h ?? 0} />
           <Stat label="Errors (24h)" value={health?.errors24h ?? 0} warn={(health?.errors24h ?? 0) > 0} />
           <Stat label="Stuck tasks" value={health?.stuckTasks ?? 0} warn={(health?.stuckTasks ?? 0) > 0} />

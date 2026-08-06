@@ -231,10 +231,16 @@ export default function MemoryPage() {
           nobody has read? Renders nothing when clean. */}
       {view === 'docs' && <NeedsReading docs={docs} onPick={(id) => setActiveId(id)} />}
 
+      {/* Column on a phone, row from md up. dvh not vh: on mobile Safari, vh counts
+          browser chrome that is not actually there, so the bottom of the pane sits under
+          the toolbar and cannot be scrolled to. */}
       {view === 'health' ? <HealthView /> : (
-      <div className="panel flex" style={{ height: 'calc(100vh - 220px)', minHeight: 460 }}>
+      <div
+        className="panel flex flex-col md:flex-row"
+        style={{ height: 'calc(100dvh - 220px)', minHeight: 460 }}
+      >
         {/* Document list */}
-        <div className="w-60 border-r border-border/60 flex flex-col shrink-0">
+        <div className="w-full md:w-60 max-h-52 md:max-h-none border-b md:border-b-0 md:border-r border-border/60 flex flex-col shrink-0">
           <div className="p-2 border-b border-border/40 space-y-1.5">
             <button onClick={createDoc} className="btn btn-primary btn-sm w-full"><Plus size={13} /> New document</button>
             <button onClick={() => setGenOpen(true)} className="btn btn-ghost btn-sm w-full"><Sparkles size={13} /> Generate SOP</button>
