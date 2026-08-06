@@ -34,6 +34,7 @@ changes, visual/UX only unless agreed, never break functionality.
 
 | Tag | What |
 |---|---|
+| `client-setup-flow-v1` | **`/portal-admin` rebuilt around the job.** Was 8 panels in one scroll ordered by data type; now pick a client once, then 3 numbered steps in the order the call happens. Everything occasional collapsed. Renamed "Portal Admin" → "Client setup" |
 | `wizard-theme-v1` | **The onboarding wizard follows the workspace theme.** Was forcing `dark` + `#0a0a0f` on a client's very first screen while every screen after it was light. Verified light in prod |
 | `graph-idle-and-sparks-v1` | **Camera loop parks when settled** (was scheduling frames forever); ambient drift pauses off-screen; sparks run only on a focused node's edges. All four states verified live |
 | `mobile-pass-v1` | **Handset pass.** 3 split panes stacked below md, 18 fixed grids given a mobile fallback, 5 fixed-height panes moved to `dvh`, the pipeline unclipped, the graph inspector stopped overflowing. ⚠️ Code-verified + desktop-regression-checked; NOT seen on a real handset |
@@ -121,6 +122,17 @@ agents, briefs, the boardroom chat. Fix in Connections → Anthropic.
 
 Client workspaces BYO their own key (`anthropic-key.ts`), so this is HQ-specific — but
 8 of 14 workspaces have a connected key and none have been tested.
+
+## 3c. ⚠️ Client Success currently needs TWO tools
+
+Brayson's **Key Matrix** (`keycommand-sales-console`, a separate Vercel project, not in
+this repo) runs the intake quiz and provisions. **Client setup** (`/portal-admin` here)
+does the workspace, the call capture, assistant details and opening on day one.
+
+Carl and Pow would have to learn both, and neither knows the other exists. That is a
+product decision, not a code one: either the Matrix calls `/api/lifecycle` and Client
+Setup becomes the single surface, or the two get explicitly divided by stage. **Nobody
+has decided.** Until then the handover to Client Success has to explain both.
 
 ## 3b. Open questions for Brayson (not ours to decide)
 
