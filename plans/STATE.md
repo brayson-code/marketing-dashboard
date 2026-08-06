@@ -34,6 +34,7 @@ changes, visual/UX only unless agreed, never break functionality.
 
 | Tag | What |
 |---|---|
+| `mobile-pass-v1` | **Handset pass.** 3 split panes stacked below md, 18 fixed grids given a mobile fallback, 5 fixed-height panes moved to `dvh`, the pipeline unclipped, the graph inspector stopped overflowing. ⚠️ Code-verified + desktop-regression-checked; NOT seen on a real handset |
 | `coverage-v1` | **"When is your assistant off"** — approved leave + statutory holidays merged, grouped by month with days totalled. Verified end to end on a temporary profile: Sept = 6 days (Labour Day + 5 leave), accrual 3.3/10 at 4 months. 10 tests |
 | `expiry-and-decay-v1` | Announcements can now expire (column existed, nothing set it); founder profile asks to be re-checked after 90 days untouched |
 | `briefings-queue-v1` | **"Needs reading"** on Briefings — agent-written drafts nobody has read, flagged immediately; owner drafts only once stale at 14 days. 8 tests |
@@ -200,6 +201,16 @@ wizard is hard-dark).
   adding explainers put one inside a `PageHeader` `actions` prop and five inside helper
   components at the bottom of the file. **Both passed tsc.** Anchor on a verified line
   and assert on it, or hand-place.
+- **⚠️ Neither browser tool can emulate a handset viewport in this setup.** The preview
+  pane wedges, and Chrome's window will not resize below its current width
+  (`innerWidth` stays put and `resize_window` reports success anyway). Mobile work can be
+  code-audited and desktop-regression-checked, but a real phone spot-check has to be done
+  by a human. Note: a STALE Chrome tab reports `innerWidth=0` for everything — open a
+  fresh tab before trusting any measurement.
+- **`100vh` is wrong on mobile Safari** — it counts browser chrome that is not there, so
+  the bottom of a fixed-height pane sits under the toolbar unreachable. Use `100dvh`.
+- **`overflow-hidden` CLIPS, it does not scroll.** A multi-column board with it loses
+  every column past the first on a narrow screen. Use `overflow-x-auto`.
 - **Client components render nothing to curl** — content hydrates. Verify UI in a
   browser, not with `curl | grep`.
 - **eslint baseline is 121 problems (41 errors, 80 warnings).** Keep parity; if it
