@@ -508,7 +508,7 @@ export function OnboardingWizard({ onDone }: { onDone?: () => void } = {}) {
   const showSkip = skippableKeys.has(meta.key);
 
   return (
-    <div className="fixed inset-0 z-50 h-[100dvh] overflow-hidden bg-[#0a0a0f] text-foreground dark">
+    <div className="fixed inset-0 z-50 h-[100dvh] overflow-hidden bg-[var(--background)] text-foreground">
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
@@ -518,7 +518,7 @@ export function OnboardingWizard({ onDone }: { onDone?: () => void } = {}) {
         }}
       />
 
-      <div className="absolute inset-x-0 top-0 z-20 h-1 bg-white/5">
+      <div className="absolute inset-x-0 top-0 z-20 h-1 bg-[var(--surface-2)]">
         <div
           className="h-full bg-[var(--primary)] transition-[width] duration-500 ease-out"
           style={{ width: `${progress}%`, boxShadow: '0 0 12px rgba(16,217,130,0.6)' }}
@@ -559,7 +559,7 @@ export function OnboardingWizard({ onDone }: { onDone?: () => void } = {}) {
                 className="h-1.5 rounded-full transition-all duration-300"
                 style={{
                   width: i === step ? 26 : 6,
-                  background: i <= step ? 'var(--primary)' : 'rgba(255,255,255,0.16)',
+                  background: i <= step ? 'var(--primary)' : 'var(--surface-2)',
                 }}
               />
             ))}
@@ -890,7 +890,7 @@ function BrandStep({ value, onChange }: { value: BrandData; onChange: (v: BrandD
           className="inline-flex h-8 w-8 items-center justify-center rounded-lg"
           style={{ background: value.primaryColor, boxShadow: `0 0 16px ${value.primaryColor}55` }}
         >
-          <Sparkles size={14} className="text-black/70" />
+          <Sparkles size={14} className="text-[var(--primary-foreground)] opacity-80" />
         </span>
         <div className="text-xs">
           <div className="font-medium">Preview</div>
@@ -957,7 +957,7 @@ function AutonomyStep({ value, onChange }: { value: Autonomy; onChange: (v: Auto
           <span
             key={s.id}
             className="h-1 flex-1 rounded-full transition-colors"
-            style={{ background: i <= activeIdx ? 'var(--primary)' : 'rgba(255,255,255,0.12)' }}
+            style={{ background: i <= activeIdx ? 'var(--primary)' : 'var(--surface-2)' }}
           />
         ))}
       </div>
@@ -1095,11 +1095,11 @@ function CadenceStep({
                         type="button"
                         onClick={() => onToggle(r.id, !enabled)}
                         className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors"
-                        style={{ background: enabled ? 'var(--primary)' : 'rgba(255,255,255,0.12)' }}
+                        style={{ background: enabled ? 'var(--primary)' : 'var(--surface-2)' }}
                         aria-pressed={enabled}
                       >
                         <span
-                          className="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform"
+                          className="inline-block h-4 w-4 transform rounded-full bg-[var(--background)] border border-border shadow transition-transform"
                           style={{ transform: enabled ? 'translateX(18px)' : 'translateX(2px)' }}
                         />
                       </button>
