@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Sparkles, Users, User, UserRound, Wrench, ClipboardList, X, CornerUpLeft,
   Target, FileText, Contact, Lightbulb, Maximize2, type LucideIcon,
@@ -129,6 +129,34 @@ export function OrgGraphView({
   const targetRef = useRef<Rect>(restingFrame(VIEW));
   const easeRef = useRef<number>(CAM_EASE_IN);
 
+  // The camera loop PARKS when the view has settled and is woken by anything that moves
+  // it. Previously it scheduled a frame forever: it already skipped the redundant DOM
+  // write, but a permanently-scheduled rAF keeps the compositor awake at 60fps for a
+  // picture that is not moving, which on a laptop left open on this page is real battery
+  // for nothing.
+  const rafRef = useRef(0);
+  const wake = useCallback(() => {
+    if (rafRef.current) return;              // already running
+    if (document.hidden) return;             // nothing to draw into
+    const reduced = prefersReduced();
+    const step = () => {
+      const next = lerpRect(camRef.current, targetRef.current, reduced ? 1 : easeRef.current);
+      const moved =
+        next.x !== camRef.current.x || next.y !== camRef.current.y
+        || next.w !== camRef.current.w || next.h !== camRef.current.h;
+      if (moved) {
+        camRef.current = next;
+        svgRef.current?.setAttribute('viewBox', rectStr(next));
+        rafRef.current = requestAnimationFrame(step);
+      } else {
+        // Settled. Stop scheduling; the next interaction calls wake().
+        rafRef.current = 0;
+      }
+    };
+    rafRef.current = requestAnimationFrame(step);
+  }, []);
+
+
   useEffect(() => {
     if (focus) {
       const n = nodeById.get(focus);
@@ -143,27 +171,35 @@ export function OrgGraphView({
       targetRef.current = restingFrame(VIEW);
       easeRef.current = CAM_EASE_HOME; // backing out is a snap, not a cruise
     }
-  }, [focus, nodeById, treePos]);
+    wake();
+  }, [focus, nodeById, treePos, wake]);
+
+
+  // Pause ambient motion when the graph is not on screen. Scrolled past, or on another
+  // tab, three infinite animations per node are compositing for nobody.
+  const [onScreen, setOnScreen] = useState(true);
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(
+      ([entry]) => setOnScreen(entry.isIntersecting),
+      { threshold: 0.05 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
 
   useEffect(() => {
-    const reduced = prefersReduced();
-    let raf = 0;
-    const step = () => {
-      const next = lerpRect(camRef.current, targetRef.current, reduced ? 1 : easeRef.current);
-      // Skip the DOM write when nothing changed — rewriting an identical viewBox
-      // invalidates the whole subtree's paint every frame for no reason.
-      if (
-        next.x !== camRef.current.x || next.y !== camRef.current.y
-        || next.w !== camRef.current.w || next.h !== camRef.current.h
-      ) {
-        camRef.current = next;
-        svgRef.current?.setAttribute('viewBox', rectStr(next));
-      }
-      raf = requestAnimationFrame(step);
+    wake();
+    // A backgrounded tab still runs rAF in some browsers, and always wastes the work.
+    const onVisible = () => { if (!document.hidden) wake(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = 0;
     };
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [wake]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setFocus(null); };
@@ -248,6 +284,9 @@ export function OrgGraphView({
     setMoved({});
     targetRef.current = restingFrame(VIEW);
     easeRef.current = CAM_EASE_HOME;
+    // Must wake explicitly: if focus was ALREADY null the focus effect does not re-run,
+    // so with a parked loop nothing would move and Reset would silently do nothing.
+    wake();
   };
 
   const focusNode = focus ? nodeById.get(focus) ?? null : null;
@@ -319,7 +358,12 @@ export function OrgGraphView({
 
       <svg
         ref={svgRef}
-        className={focus ? 'og-still' : undefined}
+        className={[
+          focus ? 'og-still' : '',
+          // Off-screen: ambient drift pauses, sparks pause. The camera loop parks
+          // itself separately once it settles.
+          onScreen ? '' : 'og-idle',
+        ].filter(Boolean).join(' ') || undefined}
         viewBox={rectStr(restingFrame(VIEW))}
         width="100%"
         height={height}
@@ -363,9 +407,13 @@ export function OrgGraphView({
             const pa = posOf(a);
             const pb = posOf(b);
             const off = lit && (!lit.has(e.a) || !lit.has(e.b));
+            // A spark only on the edges of what you just clicked. Answers "what is this
+            // connected to" at the moment you asked, and costs nothing at rest.
+            const sparking = !!focus && !off && (e.a === focus || e.b === focus);
             return (
               <line
                 key={i}
+                className={sparking ? 'og-spark' : undefined}
                 x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y}
                 stroke={EDGE_COLOR[e.rel]}
                 strokeWidth={e.rel === 'pillar' ? 1.4 : 1}

@@ -1154,3 +1154,29 @@ input.canvas-title-input:focus { background: color-mix(in srgb, var(--surface-2)
 @media (prefers-reduced-motion: reduce) {
   .og-layer-0, .og-layer-1, .og-layer-2 { animation: none; }
 }
+
+/* Off-screen is the same as not there. Scrolled past the graph, or on another tab, the
+   ambient drift is pure battery — three infinite animations per node compositing for a
+   picture nobody is looking at. The observer adds .og-idle; CSS stops the work. */
+.og-idle .og-layer-0,
+.og-idle .og-layer-1,
+.og-idle .og-layer-2 { animation-play-state: paused; }
+
+/* ─── Synapse sparks ───────────────────────────────────────
+   Deliberately NOT ambient. A pulse on every edge all the time is noise, and would
+   undo the throttling above. These run ONLY on the edges of a focused node, so the
+   motion answers a question you just asked — "what is this connected to?" — and costs
+   nothing at rest. */
+.og-spark {
+  stroke-dasharray: 4 10;
+  animation: og-spark-run 1.4s linear infinite;
+}
+@keyframes og-spark-run {
+  from { stroke-dashoffset: 14; }
+  to   { stroke-dashoffset: 0; }
+}
+.og-idle .og-spark { animation-play-state: paused; }
+
+@media (prefers-reduced-motion: reduce) {
+  .og-spark { animation: none; stroke-dasharray: none; }
+}
