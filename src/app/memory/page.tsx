@@ -8,6 +8,7 @@ import remarkGfm from 'remark-gfm';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/components/ui/toast';
 import { Explainer } from '@/components/ui/explainer';
+import { NeedsReading } from '@/components/memory/needs-reading';
 
 // Supported export formats — kept in sync with src/lib/export/markdown-export.ts.
 const EXPORT_FORMATS: Array<{ format: string; label: string }> = [
@@ -66,6 +67,8 @@ interface DocListItem {
   version: number;
   updated_at: string;
   excerpt: string;
+  created_by: string | null;
+  created_at: string;
 }
 interface Doc extends DocListItem {
   content: string;
@@ -222,6 +225,11 @@ export default function MemoryPage() {
           <button onClick={() => setView('health')} className={`tab ${view === 'health' ? 'active' : ''}`}>Health</button>
         </div>
       </div>
+
+      {/* Above the library: browsing is right for finding a specific document, this is
+          right for the question nobody else answers — what did an agent write that
+          nobody has read? Renders nothing when clean. */}
+      {view === 'docs' && <NeedsReading docs={docs} onPick={(id) => setActiveId(id)} />}
 
       {view === 'health' ? <HealthView /> : (
       <div className="panel flex" style={{ height: 'calc(100vh - 220px)', minHeight: 460 }}>

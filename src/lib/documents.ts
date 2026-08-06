@@ -26,11 +26,16 @@ export interface DocListItem {
   version: number;
   updated_at: string;
   excerpt: string;
+  created_by: string | null;
+  created_at: string;
 }
 
 export async function listDocuments(): Promise<DocListItem[]> {
   const rows = (await sql()`
-    SELECT id, type, title, status, version, updated_at, left(content, 160) AS excerpt
+    -- created_by + created_at are additive: they drive the "needs reading" queue, which
+    -- distinguishes an agent-written draft nobody asked for from one the owner made.
+    SELECT id, type, title, status, version, updated_at, created_by, created_at,
+           left(content, 160) AS excerpt
     FROM public.documents
     WHERE tenant_id = ${tenantId()}
     ORDER BY updated_at DESC
