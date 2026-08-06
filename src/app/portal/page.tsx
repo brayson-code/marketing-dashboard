@@ -266,6 +266,7 @@ export default function PortalPage() {
               workingDayNames={profile.ea_days}
               accrued={accrual.accrued}
               inProbation={accrual.inProbation}
+              region={profile.holiday_region}
             />
           )}
 

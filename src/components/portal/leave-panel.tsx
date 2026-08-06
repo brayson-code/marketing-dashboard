@@ -8,7 +8,8 @@ import {
   workingDays, remaining, checkRequest,
   type LeaveRequest,
 } from '@/lib/leave-catalog';
-import { ENTITLEMENTS, type LeaveKind } from '@/lib/service-policy';
+import { ENTITLEMENTS, type LeaveKind, type HolidayRegion } from '@/lib/service-policy';
+import { coverage, nextAbsence } from '@/lib/coverage';
 
 // Requesting and approving time off.
 //
@@ -37,12 +38,14 @@ export function LeavePanel({
   workingDayNames,
   accrued,
   inProbation,
+  region,
 }: {
   isVa: boolean;
   workingDayNames: string[];
   /** Days accrued per kind, from the same accrual the page already computed. */
   accrued: Record<LeaveKind, number>;
   inProbation: boolean;
+  region: HolidayRegion;
 }) {
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -100,6 +103,15 @@ export function LeavePanel({
 
   const pending = requests.filter(r => r.status === 'pending');
   const decided = requests.filter(r => r.status !== 'pending');
+
+  // "Who is away in September" needs BOTH approved leave and statutory holidays — a
+  // holiday costs the same day as booked leave does. Derived from requests already
+  // loaded, so it adds no fetch.
+  const months = useMemo(
+    () => coverage({ requests, region, now: Date.now() }),
+    [requests, region],
+  );
+  const next = nextAbsence(months);
 
   if (loading) return null;
 
@@ -181,6 +193,40 @@ export function LeavePanel({
             {busy === 'new' && <Loader2 size={11} className="animate-spin" />}
             Request it
           </button>
+        </div>
+      )}
+
+      {/* Coverage. Above the request list because planning around an absence is the
+          more common reason to open this. */}
+      {months.length > 0 && (
+        <div className="rounded-lg bg-[var(--surface-2)] p-3 space-y-2">
+          <p className="text-xs font-medium">
+            {isVa ? 'When you are off' : 'When your assistant is off'}
+            {next && (
+              <span className="text-muted-foreground font-normal">
+                {' '}· next is {next.label.toLowerCase()} on{' '}
+                {new Date(`${next.startsOn}T12:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+              </span>
+            )}
+          </p>
+          {months.map(m => (
+            <div key={m.key} className="space-y-0.5">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                {m.label} · {m.days} {m.days === 1 ? 'day' : 'days'}
+              </p>
+              {m.absences.map(a => (
+                <div key={`${a.kind}:${a.startsOn}:${a.label}`} className="flex items-baseline gap-2 text-[11px]">
+                  <span className="text-muted-foreground tabular-nums w-24 shrink-0">
+                    {fmt(a.startsOn)}{a.endsOn !== a.startsOn && `–${fmt(a.endsOn)}`}
+                  </span>
+                  <span className={a.kind === 'holiday' ? 'text-muted-foreground' : ''}>
+                    {a.label}
+                    {a.unpaid && <span style={{ color: 'var(--warning)' }}> · unpaid</span>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
       )}
 
