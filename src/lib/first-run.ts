@@ -14,7 +14,7 @@ import { CAPTURE_FIELDS } from './onboarding-capture-catalog';
 export type Viewer = 'owner' | 'member' | 'va';
 
 export interface FirstRunCard {
-  tone: 'prompt' | 'confirm';
+  tone: 'prompt' | 'confirm' | 'refresh';
   title: string;
   body: string;
   /** Concrete things still unanswered, phrased for whoever is reading. */
@@ -32,12 +32,15 @@ function missingEssentials(answers: FounderAnswers) {
   );
 }
 
+/** After this long untouched, boundaries are worth re-confirming rather than trusted. */
+export const STALE_PROFILE_DAYS = 90;
+
 /**
  * What to show at the top of the Overview, or null to show nothing.
  *
- * Returns null the moment the essentials are answered. A prompt that never goes away
- * stops being read, and worse, teaches people that the app nags regardless of whether
- * they have done the thing.
+ * Returns null the moment the essentials are answered AND the profile is recent. A
+ * prompt that never goes away stops being read, and worse, teaches people that the app
+ * nags regardless of whether they have done the thing.
  */
 export function firstRunCard(input: {
   viewer: Viewer;
@@ -46,6 +49,9 @@ export function firstRunCard(input: {
   captured: boolean;
   /** How the founder wants to be addressed, when known. */
   founderName?: string | null;
+  /** When the profile was last saved, and the clock. Both needed for the decay nudge. */
+  updatedAt?: string | null;
+  now?: number;
 }): FirstRunCard | null {
   const missing = missingEssentials(input.answers);
   const who = input.founderName?.trim();
@@ -79,7 +85,27 @@ export function firstRunCard(input: {
     };
   }
 
-  if (missing.length === 0) return null;
+  if (missing.length === 0) {
+    // ── Decay ───────────────────────────────────────────────────────────────
+    // A complete profile is not a permanent one. Approval limits, working hours and
+    // who matters all change, and agents treat every one of them as binding until
+    // somebody says otherwise. Nothing else in the product ever asks again.
+    const updated = input.updatedAt ? Date.parse(input.updatedAt) : NaN;
+    if (Number.isFinite(updated) && typeof input.now === 'number') {
+      const days = Math.floor((input.now - updated) / 86_400_000);
+      if (days >= STALE_PROFILE_DAYS) {
+        return {
+          tone: 'refresh',
+          title: 'Worth a look — this has not changed in a while',
+          body: `Nothing here has been updated in ${Math.floor(days / 30)} months. Your agents treat these as binding, so it is worth checking that the approval limits and boundaries still match how you actually work.`,
+          items: [],
+          ctaLabel: 'Review it',
+          ctaHref: who ? '/founder' : '/business-setup',
+        };
+      }
+    }
+    return null;
+  }
 
   return input.captured
     ? {

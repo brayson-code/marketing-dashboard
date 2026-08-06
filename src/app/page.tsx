@@ -69,7 +69,11 @@ export default async function OverviewPage() {
 
   const founderName = (answers as Record<string, string>).name ?? null;
 
-  const card = firstRunCard({ viewer, answers, captured, founderName });
+  const card = firstRunCard({
+    viewer, answers, captured, founderName,
+    // Drives the 90-day decay nudge: a complete profile is not a permanent one.
+    updatedAt: profile.updated_at, now: Date.now(),
+  });
 
   // What actually needs doing today. Every source already exists — the approval queue,
   // contact decay, and the personal-life ACT-BY dates — so this adds no new storage.

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowRight, ClipboardCheck, Sparkles } from 'lucide-react';
+import { ArrowRight, ClipboardCheck, Sparkles, RefreshCw } from 'lucide-react';
 import type { FirstRunCard as Card } from '@/lib/first-run';
 
 // The first thing each person sees on day one. PRESENTATIONAL ONLY.
@@ -18,7 +18,9 @@ import type { FirstRunCard as Card } from '@/lib/first-run';
 export function FirstRunCard({ card }: { card: Card | null }) {
   if (!card) return null;
 
-  const Icon = card.tone === 'confirm' ? ClipboardCheck : Sparkles;
+  const Icon = card.tone === 'confirm' ? ClipboardCheck
+    : card.tone === 'refresh' ? RefreshCw
+    : Sparkles;
 
   return (
     <div

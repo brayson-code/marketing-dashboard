@@ -71,3 +71,35 @@ test('a member sees the client view rather than falling through to nothing', () 
   assert.ok(card, 'a member on an unset workspace should still be prompted');
   assert.equal(card!.ctaHref, '/business-setup');
 });
+
+// ── Decay ───────────────────────────────────────────────────────────────────
+
+const NOW = Date.parse('2026-08-05T12:00:00Z');
+const agoDays = (d: number) => new Date(NOW - d * 86_400_000).toISOString();
+
+test('a recently-updated complete profile is still silent', () => {
+  assert.equal(
+    firstRunCard({ viewer: 'owner', answers: COMPLETE, captured: false, updatedAt: agoDays(10), now: NOW }),
+    null,
+  );
+});
+
+test('a complete profile untouched for 90 days asks to be re-checked', () => {
+  const card = firstRunCard({
+    viewer: 'owner', answers: COMPLETE, captured: false, updatedAt: agoDays(120), now: NOW,
+  })!;
+  assert.equal(card.tone, 'refresh');
+  assert.match(card.body, /approval limits/, 'names the thing that matters most if it drifted');
+});
+
+test('the decay nudge needs BOTH a date and a clock, or it stays quiet', () => {
+  assert.equal(firstRunCard({ viewer: 'owner', answers: COMPLETE, captured: false, updatedAt: agoDays(200) }), null);
+  assert.equal(firstRunCard({ viewer: 'owner', answers: COMPLETE, captured: false, now: NOW }), null);
+  assert.equal(firstRunCard({ viewer: 'owner', answers: COMPLETE, captured: false, updatedAt: 'nonsense', now: NOW }), null);
+});
+
+test('an INCOMPLETE profile is never shown the decay nudge', () => {
+  // Missing essentials is the more urgent message; two nags is one too many.
+  const card = firstRunCard({ viewer: 'owner', answers: {}, captured: false, updatedAt: agoDays(400), now: NOW })!;
+  assert.equal(card.tone, 'prompt');
+});

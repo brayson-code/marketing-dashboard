@@ -28,6 +28,7 @@ interface Profile {
 interface Announcement {
   id: string; kind: string; audience: string; title: string; body: string;
   starts_at: string | null; location: string | null; link: string | null; pinned: boolean;
+  expires_at: string | null;
 }
 
 const BLANK: Profile = {
@@ -52,7 +53,7 @@ export function PortalAdminPageClient() {
 
   const [draft, setDraft] = useState({
     kind: 'announcement', audience: 'client', title: '', body: '',
-    starts_at: '', location: '', link: '', pinned: false,
+    starts_at: '', location: '', link: '', pinned: false, expires_at: '',
   });
 
   const load = useCallback(async (t: string) => {
@@ -89,7 +90,7 @@ export function PortalAdminPageClient() {
       body: JSON.stringify({ action: 'announce', announcement: draft }),
     });
     if (res.ok) {
-      setDraft({ kind: 'announcement', audience: 'client', title: '', body: '', starts_at: '', location: '', link: '', pinned: false });
+      setDraft({ kind: 'announcement', audience: 'client', title: '', body: '', starts_at: '', location: '', link: '', pinned: false, expires_at: '' });
       load(tenant);
     }
   };
@@ -294,6 +295,19 @@ export function PortalAdminPageClient() {
               onChange={(e) => setDraft(d => ({ ...d, body: e.target.value }))}
               className="w-full text-sm bg-[var(--surface-2)] border border-border rounded-lg px-2.5 py-1.5"
             />
+            <label className="block">
+              <span className="text-[11px] text-muted-foreground">
+                Stop showing it after (optional) — an event still listed as upcoming a
+                month later makes the whole page look abandoned
+              </span>
+              <input
+                type="date"
+                value={draft.expires_at}
+                onChange={(e) => setDraft(d => ({ ...d, expires_at: e.target.value }))}
+                className="mt-0.5 block text-sm bg-[var(--surface-2)] border border-border rounded-lg px-2.5 py-1.5"
+              />
+            </label>
+
             <div className="grid gap-2 sm:grid-cols-2">
               <input
                 placeholder="Location (optional)" value={draft.location}
@@ -326,6 +340,7 @@ export function PortalAdminPageClient() {
                     <p className="text-[11px] text-muted-foreground">
                       {a.kind} · {a.audience}{a.pinned && ' · pinned'}
                       {a.starts_at && ` · ${new Date(a.starts_at).toLocaleDateString()}`}
+                      {a.expires_at && ` · until ${new Date(a.expires_at).toLocaleDateString()}`}
                     </p>
                   </div>
                   <button
