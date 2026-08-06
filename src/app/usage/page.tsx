@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar } from 'recharts';
 import { DollarSign, Cpu, Zap, Activity, Bot, Database, Mic, Gauge, AlertTriangle } from 'lucide-react';
+import { Explainer } from '@/components/ui/explainer';
 
 interface DailyUsage { day: string; input_tokens: number; output_tokens: number; cost_usd: number; calls: number }
 interface AgentUsage { agent_id: string; model: string; calls: number; input_tokens: number; output_tokens: number; cost_usd: number; avg_duration_sec: number }
@@ -79,6 +80,13 @@ export default function UsagePage() {
 
   return (
     <div className="space-y-4 animate-in">
+      <Explainer
+        id="usage"
+        title="What this is"
+        what="What your agents are spending on Claude, and which of them is spending it."
+        when="When the bill looks wrong, or before you turn something up."
+        example="One agent running hourly is most of the cost."
+      />
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="space-y-1">
           <h1 className="text-xl font-semibold">Usage</h1>

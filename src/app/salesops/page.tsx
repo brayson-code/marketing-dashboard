@@ -9,6 +9,7 @@ import {
   Loader2, Quote, ArrowRight, RefreshCw, Clock,
 } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
+import { Explainer } from '@/components/ui/explainer';
 
 // SalesOps — re-host of the PIF AI Sales Co-Pilot Chrome extension as a multi-tenant
 // Command Center feature. This page is the OWNER/MEMBER control surface:
@@ -192,6 +193,13 @@ export default function SalesOpsPage() {
 
   return (
     <div className="space-y-8 animate-in">
+      <Explainer
+        id="salesops"
+        title="What this is"
+        what="Your company, your offer and your buyer, written down so sales conversations stay consistent."
+        when="When you are briefing someone new, or the pitch has drifted."
+        example="Everyone describes the offer the same way, because it is written in one place."
+      />
       <div className="space-y-1">
         <h1 className="text-h1 flex items-center gap-2">
           <PhoneCall size={18} className="text-primary" /> SalesOps

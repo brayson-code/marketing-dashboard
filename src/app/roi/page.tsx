@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
+import { Explainer } from '@/components/ui/explainer';
 
 interface KeyAudit {
   annual_revenue: number | null;
@@ -329,6 +330,13 @@ export default function RoiPage() {
 
   return (
     <div className="space-y-6 animate-in">
+      <Explainer
+        id="roi"
+        title="What this is"
+        what="How much time your AI team has taken off you, and what that is worth."
+        when="When you want to know whether this is paying for itself."
+        example="Eleven hours of follow-up and admin last month that nobody had to do."
+      />
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="space-y-1">
           <h1 className="text-h1 flex items-center gap-2"><Timer size={18} className="text-primary" /> ROI · Time Audit</h1>

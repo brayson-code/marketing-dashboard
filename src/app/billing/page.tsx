@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Check, Sparkles, Loader2, Zap } from 'lucide-react';
+import { Explainer } from '@/components/ui/explainer';
 
 interface Catalog { [k: string]: { label: string; rank: number; pages: { boardroom: boolean; kg: boolean; genes: boolean }; autonomy: string[]; connections_max: number; agents_max: number } }
 interface Entitlements { plan: string; features: Catalog[string]; next: string | null; catalog: Catalog }
@@ -51,6 +52,12 @@ export default function BillingPage() {
 
   return (
     <div className="space-y-6 animate-in max-w-4xl">
+      <Explainer
+        id="billing"
+        title="What this is"
+        what="Your plan, and what the workspace is costing to run."
+        when="When you are deciding whether to add people, or want to see where the spend goes."
+      />
       <div className="space-y-1">
         <h1 className="text-xl font-semibold flex items-center gap-2">
           <Sparkles size={18} className="text-primary" /> Plans &amp; Billing

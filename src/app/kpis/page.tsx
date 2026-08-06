@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { TrendChart } from '@/components/ui/trend-chart';
 import { useDashboard } from '@/store';
 import type { DailyMetrics, WeeklyKPI } from '@/types';
+import { Explainer } from '@/components/ui/explainer';
 
 // 90-day targets from the plan
 const TARGETS = {
@@ -34,6 +35,13 @@ export default function KPIsPage() {
 
   return (
     <div className="space-y-6 animate-in">
+      <Explainer
+        id="kpis"
+        title="What this is"
+        what="The numbers you have chosen to watch, week over week."
+        when="Weekly, to see the direction rather than the daily noise."
+        example="Bookings per week, so a slow Monday does not read as a problem."
+      />
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-h1">KPIs</h1>
         <div className="text-xs text-muted-foreground">

@@ -29,6 +29,7 @@ const STATUS_BADGE: Record<GeneStatus, string> = { active: 'badge-success', prop
 const FILTERS: Array<GeneStatus | 'all'> = ['active', 'proposed', 'retired', 'all'];
 
 import { UpgradeGate } from '@/components/upgrade-gate';
+import { Explainer } from '@/components/ui/explainer';
 
 export default function GenesPage() {
   return <UpgradeGate feature="genes" title="Genes"><GenesContent /></UpgradeGate>;
@@ -92,6 +93,13 @@ function GenesContent() {
 
   return (
     <div className="space-y-4 animate-in">
+      <Explainer
+        id="genes"
+        title="What this is"
+        what="The strategies your agents have learned work for your business, and the ones they have ruled out."
+        when="When you want to see why the AI keeps making a particular choice."
+        example="It stopped posting on Sundays because nothing ever landed."
+      />
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="space-y-1">
           <h1 className="text-h1 flex items-center gap-2"><Dna size={18} className="text-primary" /> Strategy Genes</h1>

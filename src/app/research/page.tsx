@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { SignalCard } from '@/components/ui/signal-card';
 import { useDashboard } from '@/store';
 import type { Signal } from '@/types';
+import { Explainer } from '@/components/ui/explainer';
 
 const SIGNAL_TYPES: { key: string; label: string }[] = [
   { key: '', label: 'All' },
@@ -35,6 +36,14 @@ export default function ResearchPage() {
 
   return (
     <div className="space-y-6 animate-in">
+      <Explainer
+        id="research"
+        title="What this is"
+        what="What your agents have found out in the wild — competitors, market signals, and anything worth knowing that you did not ask for directly."
+        when="Before a decision where being wrong is expensive."
+        example="A competitor quietly dropped their price two weeks ago."
+        say="Or just ask: “What are our competitors doing differently this month?”"
+      />
       <div className="panel">
         <div className="panel-header flex items-center justify-between flex-wrap gap-3">
           <h1 className="text-h1">Research</h1>

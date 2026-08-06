@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Eye, Lightbulb, Zap, Rocket, Check, Loader2, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from '@/components/ui/toast';
+import { Explainer } from '@/components/ui/explainer';
 
 type Autonomy = 'observe' | 'propose' | 'act_notify' | 'full_auto';
 type OverrideValue = 'auto' | 'approve';
@@ -64,6 +65,13 @@ export default function AutonomyPage() {
 
   return (
     <div className="space-y-6 animate-in max-w-3xl">
+      <Explainer
+        id="autonomy"
+        title="What this is"
+        what="How much your agents may do without asking. From drafting only, through to acting and telling you afterwards."
+        when="When approving everything has become the bottleneck, or when something went further than you wanted."
+        example="Let them send routine follow-ups on their own, but never anything with a price in it."
+      />
       <div className="space-y-1">
         <Link href="/" className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
           <ArrowLeft size={11} /> Back to dashboard

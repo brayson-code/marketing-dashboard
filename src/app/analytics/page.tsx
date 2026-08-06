@@ -31,6 +31,7 @@ import { DataTable } from "@/components/ui/data-table";
 import type { SocialAnalyticsPoint, SocialAnalyticsSummary } from "@/lib/analytics";
 import { formatDurationSeconds } from "@/lib/analytics";
 import { timeAgo } from "@/lib/utils";
+import { Explainer } from '@/components/ui/explainer';
 import type {
   Ga4TopPage,
   Ga4TrafficSource,
@@ -179,6 +180,13 @@ export default function AnalyticsPage() {
 
   return (
     <div className="space-y-5 animate-in">
+      <Explainer
+        id="analytics"
+        title="What this is"
+        what="How your content, outreach and pipeline are actually performing, over whatever period you pick."
+        when="When you want to know whether something is working, rather than whether it happened."
+        example="Outreach replies are up but bookings are flat, so the problem is the call, not the email."
+      />
       <PageHeader
         icon={<LineChart size={18} />}
         title="Analytics"

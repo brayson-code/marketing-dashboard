@@ -10,6 +10,7 @@ import { StatCard } from '@/components/ui/stat-card';
 import { ContentTabs } from '@/components/content/content-tabs';
 import { useSmartPoll } from '@/hooks/use-smart-poll';
 import { useDashboard } from '@/store';
+import { Explainer } from '@/components/ui/explainer';
 
 // Content hub Overview — the high-level landing for the whole content workflow.
 // Top row: a few live counts pulled from the same /api/counts the nav rail uses
@@ -38,6 +39,14 @@ export default function ContentOverviewPage() {
 
   return (
     <div className="space-y-5 animate-in">
+      <Explainer
+        id="content-lab"
+        title="What this is"
+        what="Everything your agents write, from first idea through to the finished post — drafts, scripts, images and the pipeline they move along."
+        when="When you want content produced without writing it yourself, or want to see what is queued."
+        example="Ask for a week of posts, then approve the three you like."
+        say="Or just say: “Write me three posts about what we launched this week.”"
+      />
       <PageHeader
         icon={<LayoutGrid size={18} />}
         title="Content Lab"
