@@ -34,6 +34,8 @@ changes, visual/UX only unless agreed, never break functionality.
 
 | Tag | What |
 |---|---|
+| `expiry-and-decay-v1` | Announcements can now expire (column existed, nothing set it); founder profile asks to be re-checked after 90 days untouched |
+| `briefings-queue-v1` | **"Needs reading"** on Briefings — agent-written drafts nobody has read, flagged immediately; owner drafts only once stale at 14 days. 8 tests |
 | `explainers-nav-complete-v1` | **Every nav-reachable client page now explains itself.** 25 → 35 of 71; the rest are detail routes, operator surfaces, legal, or the guide itself |
 | `adoption-v1` | **Roll-up across the whole book** in Portal Admin. Separates SET UP from USED; adds `last_activity_at`. Live it reads "14 of 14 are open to a client with setup unfinished · 5 used this week · 5 never used". 8 tests |
 | `agent-departments-v1` | **The org chart's "General" bucket is gone.** 35 agents had no department; fixed at the seed AND in `squad.ts`'s runtime fallback roster, which was the actual cause. `SPECIALIST_CATEGORY` moved to a shared pure module. 7 tests |
